@@ -5,6 +5,12 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### Environment Variables ###
+.env
+
+### docs instructions ###
+docs/
+
 ### STS ###
 .apt_generated
 .classpath

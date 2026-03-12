@@ -1,3 +1,15 @@
 spring:
   application:
     name: demo
+  jpa:
+    hibernate:
+      ddl-auto: none
+    generate-ddl: false
+
+springdoc:
+  swagger-ui:
+    url: /v3/api-docs
+
+server:
+  port: ${PORT:8080}
+ 
