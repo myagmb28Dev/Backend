@@ -47,3 +47,13 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// Ensure Spring Boot creates only the executable bootJar and not the plain jar
+bootJar {
+	enabled = true
+}
+
+jar {
+	enabled = false
+}
+
