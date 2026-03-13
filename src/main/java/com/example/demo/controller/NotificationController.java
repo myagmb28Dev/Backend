@@ -5,6 +5,7 @@ import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/notifications")
+@Tag(name = "Notifications", description = "알림 관련 API")
 public class NotificationController {
 
     @GetMapping
@@ -42,11 +44,11 @@ public class NotificationController {
     }
 
     @PostMapping("/fcm-token")
-    @Operation(summary = "FCM 토큰 등록/갱신", description = "기기 FCM 토큰을 등록하거나 갱신합니다.")
+    @Operation(summary = "FCM 토큰 갱신", description = "사용자의 FCM 토큰을 갱신합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> upsertFcmToken(@RequestBody Map<String, String> request) {
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
-                "FCM 토큰 등록/갱신 성공",
+                "FCM 토큰 갱신 성공",
                 Map.of("token", request.getOrDefault("token", "sample-fcm-token"), "platform", request.getOrDefault("platform", "ANDROID"))
         ));
     }

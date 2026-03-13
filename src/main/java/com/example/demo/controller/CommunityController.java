@@ -6,6 +6,7 @@ import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,10 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/community/posts")
+@Tag(name = "Community", description = "커뮤니티 API")
 public class CommunityController {
 
     @GetMapping
-    @Operation(summary = "커뮤니티 글 목록 조회", description = "커뮤니티 글 목록을 조회합니다. 카테고리/태그/검색을 지원합니다.")
+    @Operation(summary = "커뮤니티 글 목록 조회", description = "커뮤니티 글 목록을 조회합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> list(
             @RequestParam(required = false, defaultValue = "LATEST") String type,
             @RequestParam(required = false) String category,

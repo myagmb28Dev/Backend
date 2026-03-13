@@ -5,6 +5,7 @@ import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/bookmarks")
+@Tag(name = "Bookmarks", description = "즐겨찾기 관련 API")
 public class BookmarkController {
 
     @PostMapping("/{noticeId}")

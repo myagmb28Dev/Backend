@@ -9,6 +9,8 @@ spring:
 springdoc:
   swagger-ui:
     url: /v3/api-docs
+    # Using local dark theme CSS
+    custom-css-path: /swagger-ui/dark.css
 
 server:
   port: ${PORT:8080}

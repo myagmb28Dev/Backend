@@ -2,10 +2,13 @@ package com.example.demo.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.example.demo.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,19 +16,48 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import org.springframework.web.bind.annotation.RequestPart;
 
 @RestController
 @RequestMapping("/api/ai")
+@Tag(name = "AI", description = "이미지 분석 AI API")
 public class AiController {
 
-    @PostMapping("/photos")
-    @Operation(summary = "사진 업로드", description = "분석용 사진을 업로드합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadPhoto(@RequestBody Map<String, Object> request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
-                HttpStatus.CREATED,
-                "분석용 사진 업로드 성공",
-                Map.of("photoId", "photo-1", "fileName", request.getOrDefault("fileName", "sample.jpg"))
-        ));
+    @PostMapping(value = "/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "사진 업로드", description = "분석용 사진을 multipart/form-data로 업로드합니다. 허용 확장자: .png, .jpg; 최대 5MB")
+    public ResponseEntity<ApiResponse<?>> uploadPhoto(
+            @RequestPart("file") MultipartFile file
+    ) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "파일이 첨부되지 않았습니다.", null));
+        }
+
+        long maxBytes = 5L * 1024L * 1024L; // 5MB
+        if (file.getSize() > maxBytes) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "파일 크기가 5MB를 초과합니다.", Map.of("maxSizeBytes", maxBytes, "size", file.getSize())));
+        }
+
+        String filename = file.getOriginalFilename();
+        if (filename == null) filename = "unknown";
+        String ext = "";
+        if (filename != null && filename.contains(".")) {
+            ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+        }
+        Set<String> allowed = Set.of(".png", ".jpg", ".jpeg");
+        if (!allowed.contains(ext)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "허용되지 않는 파일 확장자입니다.", Map.of("allowed", allowed, "ext", ext)));
+        }
+
+        Map<String, Object> resp = Map.of(
+                "photoId", "photo-" + System.currentTimeMillis(),
+                "fileName", filename,
+                "size", file.getSize(),
+                "contentType", file.getContentType()
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(HttpStatus.CREATED, "분석용 사진 업로드 성공", resp));
     }
 
     @PostMapping("/analysis")
