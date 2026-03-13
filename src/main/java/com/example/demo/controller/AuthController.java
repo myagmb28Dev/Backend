@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
+import com.example.demo.dto.LoginRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
@@ -21,10 +22,13 @@ public class AuthController {
 
     @PostMapping("/login/google")
     @Operation(summary = "구글 로그인", description = "FCM 토큰을 사용하여 구글 로그인을 합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseSignIn(@RequestBody Map<String, String> request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseSignIn(@RequestBody LoginRequest request) {
+        String provider = request.getProvider() != null ? request.getProvider() : "GOOGLE";
+        String firebaseIdToken = request.getFirebaseIdToken() != null ? request.getFirebaseIdToken() : "sample-token";
+
         Map<String, Object> data = Map.of(
-                "provider", request.getOrDefault("provider", "GOOGLE"),
-                "firebaseIdToken", request.getOrDefault("firebaseIdToken", "sample-token"),
+                "provider", provider,
+                "firebaseIdToken", firebaseIdToken,
                 "firebaseUid", "firebase_uid_sample_001",
                 "email", "user@example.com",
                 "isNewUser", true,
