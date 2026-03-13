@@ -51,6 +51,7 @@ tasks.named('test') {
 // Ensure Spring Boot creates only the executable bootJar and not the plain jar
 bootJar {
 	enabled = true
+	archiveFileName = 'app.jar'
 }
 
 jar {

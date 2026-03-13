@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Auth", description = "인증 API")
 public class AuthController {
 
-    @PostMapping("/login")
+    @PostMapping("/login/google")
     @Operation(summary = "구글 로그인", description = "FCM 토큰을 사용하여 구글 로그인을 합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseSignIn(@RequestBody Map<String, String> request) {
         Map<String, Object> data = Map.of(
