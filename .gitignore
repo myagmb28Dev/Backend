@@ -11,6 +11,10 @@ build/
 ### docs instructions ###
 docs/
 
+
+### resources secrets ###
+src/main/resources/config/
+
 ### STS ###
 .apt_generated
 .classpath

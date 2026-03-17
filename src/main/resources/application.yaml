@@ -1,17 +1,33 @@
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
   application:
     name: demo
+
+  # PostgreSQL Database Configuration
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
   jpa:
     hibernate:
-      ddl-auto: none
-    generate-ddl: false
+      ddl-auto: update
+    generate-ddl: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+
+  # ----------------------------------
 
 springdoc:
   swagger-ui:
     url: /v3/api-docs
-    # Using local dark theme CSS
     custom-css-path: /swagger-ui/dark.css
 
 server:
   port: ${PORT:8080}
- 

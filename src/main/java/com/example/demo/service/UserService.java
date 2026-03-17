@@ -6,7 +6,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
-public class ProfileService {
+public class UserService {
 
     public Map<String, Object> getProfile() {
         return Map.of(

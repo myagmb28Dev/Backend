@@ -19,7 +19,7 @@ public class OpenApiConfig {
         String subtitle = "반려동물 실종 공고 플랫폼";
         return new OpenAPI()
                 .info(new Info()
-                        .title("Pogun Backend API")
+                        .title("Poguen Backend API")
                         .version("v1")
                         .description(subtitle + "\n\n" + "Pogun API Contract based temporary implementation"))
                 .addSecurityItem(new SecurityRequirement().addList(schemeName))
