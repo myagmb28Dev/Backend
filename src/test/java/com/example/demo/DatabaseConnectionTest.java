@@ -9,7 +9,7 @@ import org.springframework.test.context.TestPropertySource;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@TestPropertySource(locations = "file:./.env") // .env 파일을 읽어와서 프로퍼티로 사용 (spring.datasource.* 등에 매핑되도록 처리)
+@TestPropertySource(locations = "file:./.env")
 class DatabaseConnectionTest {
 
     @Autowired
@@ -17,7 +17,6 @@ class DatabaseConnectionTest {
 
     @Test
     void testConnection() {
-        // NeonDB (PostgreSQL)에 연결하여 1을 반환하는 간단한 쿼리 실행
         Integer result = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         
         System.out.println("==========================================");

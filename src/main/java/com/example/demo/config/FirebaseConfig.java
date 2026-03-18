@@ -26,11 +26,9 @@ public class FirebaseConfig {
         InputStream serviceAccount;
 
         if (base64Key != null && !base64Key.isBlank()) {
-            // 1. Base64로 인코딩된 키가 있는 경우 (권장 방식)
             byte[] decodedBytes = java.util.Base64.getDecoder().decode(base64Key);
             serviceAccount = new java.io.ByteArrayInputStream(decodedBytes);
         } else if (firebaseConfigJson != null && !firebaseConfigJson.isBlank()) {
-            // 2. 환경 변수에 JSON 문자열이 있는 경우 (폴백)
             serviceAccount = new java.io.ByteArrayInputStream(firebaseConfigJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } else {
             throw new IOException("Firebase 인증 정보를 찾을 수 없습니다. (환경변수 'FIREBASE_KEY_BASE64' 또는 'FIREBASE_CONFIG_JSON'이 누락됨)");

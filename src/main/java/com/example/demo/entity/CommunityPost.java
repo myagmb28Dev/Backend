@@ -23,6 +23,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -78,7 +81,6 @@ public class CommunityPost {
     @Column(name = "poll_question", length = 255)
     private String pollQuestion;
 
-    // PostgreSQL jsonb 필드에 선택지 배열을 저장한다.
     @Builder.Default
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "poll_options", columnDefinition = "jsonb")
@@ -93,6 +95,11 @@ public class CommunityPost {
 
     @Column(name = "poll_max_choices")
     private Integer pollMaxChoices;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<CommunityPostImage> images = new ArrayList<>();
 }
 
 

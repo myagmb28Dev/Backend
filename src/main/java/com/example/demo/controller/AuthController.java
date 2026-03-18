@@ -31,19 +31,18 @@ public class AuthController {
     @PostMapping("/login/google")
     @Operation(summary = "구글 로그인", description = "Firebase ID Token을 사용하여 구글 로그인을 수행합니다. 없으면 자동 가입됩니다.")
     public ResponseEntity<ApiResponse<?>> firebaseSignIn(@RequestBody LoginRequest request) {
-        try {
-            String idToken = request.getFirebaseIdToken();
-            if (idToken == null || idToken.isBlank()) {
-                return ResponseEntity.badRequest().body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "토큰이 비어있습니다.", null));
-            }
+        String idToken = request.getFirebaseIdToken();
+        if (idToken == null || idToken.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "토큰이 비어있습니다.", null));
+        }
 
+        try {
             Map<String, Object> data = authService.loginOrSignUp(idToken);
             return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그인 성공", data));
-
         } catch (Exception e) {
             log.error("로그인 중 오류 발생: ", e);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ApiResponse.fail(HttpStatus.UNAUTHORIZED, "AUTH_FAILED", "인증에 실패했습니다: " + e.getMessage(), null));
+                    .body(ApiResponse.fail(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "인증에 실패했습니다: " + e.getMessage(), null));
         }
     }
 

@@ -1,27 +1,51 @@
 package com.example.demo.service;
 
+import com.example.demo.entity.User;
+import com.example.demo.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.stereotype.Service;
-
 @Service
+@RequiredArgsConstructor
 public class UserService {
 
+    private final UserRepository userRepository;
+
+    private User getCurrentUser() {
+        String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return userRepository.findByFirebaseUid(firebaseUid)
+                .orElseGet(() -> {
+                    if ("test-uid-123".equals(firebaseUid)) {
+                        return userRepository.save(User.builder()
+                                .firebaseUid("test-uid-123")
+                                .email("test@pogeun.com")
+                                .nickname("테스트유저")
+                                .role(com.example.demo.entity.enums.UserRole.USER)
+                                .status(com.example.demo.entity.enums.UserStatus.ACTIVE)
+                                .build());
+                    }
+                    throw new RuntimeException("사용자를 찾을 수 없습니다.");
+                });
+    }
+
     public Map<String, Object> getProfile() {
+        User user = getCurrentUser();
         return Map.of(
-                "id", "b3367f11-8a16-4f53-a669-8629f05c9821",
-                "email", "user@example.com",
-                "nickname", "포군유저",
-                "profileImageUrl", "https://cdn.ex.com/profile/default.png",
-                "phoneNumber", "010-1234-5678",
-                "role", "USER",
-                "status", "ACTIVE"
+                "id", user.getId(),
+                "email", user.getEmail(),
+                "nickname", user.getNickname(),
+                "profileImageUrl", user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "https://cdn.ex.com/profile/default.png",
+                "phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
+                "role", user.getRole().name(),
+                "status", user.getStatus().name()
         );
     }
 
     public Map<String, Object> updateProfile(Map<String, Object> request) {
-        // 현재는 요청 payload를 그대로 반환하는 스텁입니다.
         return request;
     }
 

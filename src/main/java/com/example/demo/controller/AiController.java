@@ -37,7 +37,7 @@ public class AiController {
             return ResponseEntity.badRequest().body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "파일이 첨부되지 않았습니다.", null));
         }
 
-        long maxBytes = 5L * 1024L * 1024L; // 5MB
+        long maxBytes = 5L * 1024L * 1024L;
         if (file.getSize() > maxBytes) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "파일 크기가 5MB를 초과합니다.", Map.of("maxSizeBytes", maxBytes, "size", file.getSize())));
         }

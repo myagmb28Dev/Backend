@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
+import com.example.demo.dto.CommunityCommentRequest;
+import com.example.demo.dto.CommunityPostRequest;
 import com.example.demo.service.CommunityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -43,7 +45,7 @@ public class CommunityController {
 
     @PostMapping
     @Operation(summary = "커뮤니티 글 생성", description = "커뮤니티 글을 생성합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> create(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> create(@RequestBody CommunityPostRequest request) {
         Map<String, Object> data = communityService.createPost(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "커뮤니티 글 생성 성공", data));
@@ -58,7 +60,7 @@ public class CommunityController {
 
     @PatchMapping("/{postId}")
     @Operation(summary = "커뮤니티 글 수정", description = "커뮤니티 글을 수정합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> update(@PathVariable String postId, @RequestBody Map<String, Object> request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> update(@PathVariable String postId, @RequestBody CommunityPostRequest request) {
         Map<String, Object> data = communityService.updatePost(postId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 수정 성공", data));
     }
@@ -79,7 +81,7 @@ public class CommunityController {
 
     @PostMapping("/{postId}/comments")
     @Operation(summary = "댓글 작성", description = "지정된 글에 댓글을 작성합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createComment(@PathVariable String postId, @RequestBody Map<String, String> request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createComment(@PathVariable String postId, @RequestBody CommunityCommentRequest request) {
         Map<String, Object> data = communityService.createComment(postId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "댓글 작성 성공", data));
