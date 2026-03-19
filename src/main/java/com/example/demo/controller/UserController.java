@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
+import com.example.demo.dto.UpdateProfileRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,7 +36,7 @@ public class UserController {
 
     @PatchMapping("/me")
     @Operation(summary = "프로필 수정", description = "로그인한 사용자의 프로필 정보를 수정합니다.")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(@RequestBody UpdateProfileRequest request) {
         Map<String, Object> updated = userService.updateProfile(request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "프로필 수정 성공", updated));
     }

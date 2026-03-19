@@ -28,8 +28,8 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login/google")
-    @Operation(summary = "구글 로그인", description = "Firebase ID Token을 사용하여 구글 로그인을 수행합니다. 없으면 자동 가입됩니다.")
+    @PostMapping("/login")
+    @Operation(summary = "소셜 로그인", description = "Firebase ID Token을 사용하여 소셜 로그인을 수행합니다. 없으면 자동 가입됩니다.")
     public ResponseEntity<ApiResponse<?>> firebaseSignIn(@RequestBody LoginRequest request) {
         String idToken = request.getFirebaseIdToken();
         if (idToken == null || idToken.isBlank()) {

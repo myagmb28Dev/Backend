@@ -8,9 +8,6 @@ import lombok.Setter;
 @Setter
 @Schema(description = "로그인 요청 정보")
 public class LoginRequest {
-    @Schema(description = "소셜 제공자", example = "Google")
-    private String provider;
-
     @Schema(description = "Firebase ID Token", example = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjIy...")
     private String firebaseIdToken;
 }

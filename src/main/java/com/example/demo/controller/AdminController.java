@@ -4,8 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 import com.example.demo.dto.ApiResponse;
+import com.example.demo.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,7 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/admin")
 @Tag(name = "Admin", description = "관리자 대시보드 API")
+@RequiredArgsConstructor
 public class AdminController {
+    private final ReportService reportService;
 
     @GetMapping("/dashboard")
     @Operation(summary = "대시보드 통계 조회", description = "접수된 신고 건, 숨김 처리된 건, 신고된 사용자 등을 관리자 대시보드를 통해 조회합니다.")
@@ -76,21 +80,15 @@ public class AdminController {
     @GetMapping("/reports")
     @Operation(summary = "전체 신고 내역 조회", description = "사용자들이 접수한 모든 신고 목록을 조회합니다.")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> adminReports() {
-        List<Map<String, Object>> data = List.of(
-                Map.of("id", "report-1", "status", "RECEIVED", "reason", "SPAM"),
-                Map.of("id", "report-2", "status", "REVIEWING", "reason", "ABUSE")
-        );
+        List<Map<String, Object>> data = reportService.getAllReports();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 내역 조회 성공", data));
     }
 
     @PatchMapping("/reports/{reportId}")
     @Operation(summary = "신고 처리 상태 업데이트", description = "특정 신고 건의 진행 상태(접수, 검토 중, 처리 완료 등)를 변경합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateReportStatus(@PathVariable String reportId, @RequestBody Map<String, Object> request) {
-        return ResponseEntity.ok(ApiResponse.success(
-                HttpStatus.OK,
-                "신고 처리 상태 변경 성공",
-                Map.of("reportId", reportId, "status", request.getOrDefault("status", "RESOLVED"))
-        ));
+        Map<String, Object> data = reportService.updateReportStatus(reportId, request.get("status"));
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 처리 상태 변경 성공", data));
     }
 
     @DeleteMapping("/posts/{postId}")

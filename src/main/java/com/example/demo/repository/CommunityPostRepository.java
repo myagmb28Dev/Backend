@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -19,4 +20,6 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     Page<CommunityPost> findPosts(@Param("status") CommunityPostStatus status, 
                                  @Param("q") String q, 
                                  Pageable pageable);
+
+    List<CommunityPost> findByAuthorIdOrderByCreatedAtDesc(UUID authorId);
 }
