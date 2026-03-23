@@ -10,6 +10,8 @@ build/
 
 ### docs instructions ###
 docs/
+.local/
+firebase-debug.log
 
 
 ### resources secrets ###

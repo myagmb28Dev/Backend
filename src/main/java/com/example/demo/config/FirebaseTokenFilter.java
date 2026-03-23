@@ -1,5 +1,7 @@
 package com.example.demo.config;
 
+import com.example.demo.entity.enums.UserRole;
+import com.example.demo.repository.UserRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.FilterChain;
@@ -14,7 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -22,20 +24,13 @@ public class
 FirebaseTokenFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
         String header = request.getHeader("Authorization");
-
-        if (header != null && header.equals("Bearer test-token")) {
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    "test-uid-123", null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            filterChain.doFilter(request, response);
-            return;
-        }
 
         if (header != null && header.startsWith("Bearer ")) {
             String idToken = header.substring(7);
@@ -45,7 +40,7 @@ FirebaseTokenFilter extends OncePerRequestFilter {
                 String uid = decodedToken.getUid();
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        uid, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
+                        uid, null, resolveAuthorities(uid));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
             } catch (Exception e) {
@@ -56,5 +51,13 @@ FirebaseTokenFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private List<SimpleGrantedAuthority> resolveAuthorities(String firebaseUid) {
+        UserRole role = userRepository.findByFirebaseUid(firebaseUid)
+                .map(user -> user.getRole() != null ? user.getRole() : UserRole.USER)
+                .orElse(UserRole.USER);
+
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 }

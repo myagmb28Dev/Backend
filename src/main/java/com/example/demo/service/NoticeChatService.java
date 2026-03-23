@@ -1,5 +1,4 @@
 package com.example.demo.service;
-
 import com.example.demo.dto.NoticeChatMessageRequest;
 import com.example.demo.dto.NoticeChatTypingRequest;
 import com.example.demo.entity.NoticeChatMessage;
@@ -12,6 +11,7 @@ import com.example.demo.repository.NoticeChatRoomRepository;
 import com.example.demo.repository.PetNoticeRepository;
 import com.example.demo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class NoticeChatService {
     private final NoticeChatRoomRepository noticeChatRoomRepository;
@@ -65,6 +66,8 @@ public class NoticeChatService {
     public List<Map<String, Object>> getMessages(String roomId) {
         User currentUser = getCurrentUser();
         NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
+        log.info("채팅 메시지 조회 시작 roomId={} userId={} firebaseUid={}",
+                room.getId(), currentUser.getId(), currentUser.getFirebaseUid());
 
         List<NoticeChatMessage> messages = noticeChatMessageRepository.findByRoomOrderByCreatedAtAsc(room);
         boolean changed = false;
@@ -76,7 +79,16 @@ public class NoticeChatService {
         }
         if (changed) {
             noticeChatMessageRepository.saveAll(messages);
+            log.info("채팅 메시지 읽음 처리 roomId={} updatedCount={} readerUserId={}",
+                    room.getId(),
+                    messages.stream()
+                            .filter(message -> !message.getSenderUser().getId().equals(currentUser.getId()))
+                            .count(),
+                    currentUser.getId());
         }
+
+        log.info("채팅 메시지 조회 완료 roomId={} messageCount={} userId={}",
+                room.getId(), messages.size(), currentUser.getId());
 
         return messages.stream().map(message -> toMessageResponse(message, currentUser)).toList();
     }
@@ -88,6 +100,8 @@ public class NoticeChatService {
         }
         User sender = getUserByFirebaseUid(principal.getName());
         NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), sender);
+        log.info("채팅 메시지 전송 시작 roomId={} senderUserId={} firebaseUid={} rawMessage={}",
+                room.getId(), sender.getId(), sender.getFirebaseUid(), request.getMessage());
 
         if (room.getStatus() == NoticeChatRoomStatus.CLOSED) {
             throw new RuntimeException("종료된 채팅방입니다.");
@@ -106,9 +120,12 @@ public class NoticeChatService {
 
         room.setLastMessageAt(saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now());
         noticeChatRoomRepository.save(room);
+        log.info("채팅 메시지 저장 완료 roomId={} messageId={} senderUserId={} createdAt={}",
+                room.getId(), saved.getId(), sender.getId(), saved.getCreatedAt());
 
         Map<String, Object> payload = toMessageResponse(saved, sender);
         simpMessagingTemplate.convertAndSend("/topic/chat/rooms/" + room.getId(), (Object) payload);
+        log.info("채팅 메시지 브로드캐스트 완료 roomId={} messageId={}", room.getId(), saved.getId());
         return payload;
     }
 
@@ -122,6 +139,8 @@ public class NoticeChatService {
 
         User sender = getUserByFirebaseUid(principal.getName());
         NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), sender);
+        log.info("채팅 입력중 이벤트 roomId={} senderUserId={} isTyping={}",
+                room.getId(), sender.getId(), Boolean.TRUE.equals(request.getTyping()));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("roomId", room.getId());
@@ -140,24 +159,13 @@ public class NoticeChatService {
 
     private User getUserByFirebaseUid(String firebaseUid) {
         return userRepository.findByFirebaseUid(firebaseUid)
-                .orElseGet(() -> {
-                    if ("test-uid-123".equals(firebaseUid)) {
-                        return userRepository.save(User.builder()
-                                .firebaseUid("test-uid-123")
-                                .email("test@pogeun.com")
-                                .nickname("테스트유저")
-                                .authProvider("GOOGLE")
-                                .role(com.example.demo.entity.enums.UserRole.USER)
-                                .status(com.example.demo.entity.enums.UserStatus.ACTIVE)
-                                .build());
-                    }
-                    throw new RuntimeException("사용자를 찾을 수 없습니다.");
-                });
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
     }
 
     private PetNotice getNotice(String noticeId) {
         try {
-            return petNoticeRepository.findById(UUID.fromString(noticeId))
+            UUID parsedId = UUID.fromString(noticeId);
+            return petNoticeRepository.findById(parsedId)
                     .orElseThrow(() -> new RuntimeException("실종 공고를 찾을 수 없습니다."));
         } catch (IllegalArgumentException e) {
             throw new RuntimeException("올바르지 않은 공고 ID 형식입니다.");

@@ -1,5 +1,4 @@
 package com.example.demo.service;
-
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserSocialAccount;
 import com.example.demo.entity.enums.UserRole;
@@ -33,37 +32,6 @@ public class AuthService {
 
     @Transactional
     public Map<String, Object> loginOrSignUp(String idToken) throws Exception {
-        if ("test-token".equals(idToken)) {
-            String uid = "test-uid-123";
-            String email = "test@pogeun.com";
-            String name = "테스트유저";
-            String picture = "";
-            String normalizedProvider = "GOOGLE";
-
-            User user = userRepository.findByFirebaseUid(uid)
-                    .map(existingUser -> {
-                        existingUser.setEmail(email);
-                        existingUser.setNickname(name);
-                        existingUser.setAuthProvider(normalizedProvider);
-                        existingUser.setStatus(UserStatus.ACTIVE);
-                        return userRepository.save(existingUser);
-                    })
-                    .orElseGet(() -> {
-                        User newUser = User.builder()
-                                .firebaseUid(uid)
-                                .email(email)
-                                .nickname(name)
-                                .authProvider(normalizedProvider)
-                                .role(UserRole.USER)
-                                .status(UserStatus.ACTIVE)
-                                .build();
-                        return userRepository.save(newUser);
-                    });
-
-            syncSingleProvider(user, normalizedProvider, uid, email);
-            return buildAuthResponse(user);
-        }
-
         try {
             FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
             String uid = decodedToken.getUid();
@@ -108,19 +76,7 @@ public class AuthService {
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return userRepository.findByFirebaseUid(firebaseUid)
-                .orElseGet(() -> {
-                    if ("test-uid-123".equals(firebaseUid)) {
-                        return userRepository.save(User.builder()
-                                .firebaseUid("test-uid-123")
-                                .email("test@pogeun.com")
-                                .nickname("테스트유저")
-                                .authProvider("GOOGLE")
-                                .role(UserRole.USER)
-                                .status(UserStatus.ACTIVE)
-                                .build());
-                    }
-                    throw new RuntimeException("사용자를 찾을 수 없습니다.");
-                });
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
     }
 
     public Map<String, Object> logout() {
@@ -128,9 +84,7 @@ public class AuthService {
         log.info("사용자 로그아웃 처리 (RefreshToken 만료): {}", user.getEmail());
 
         try {
-            if (!"test-uid-123".equals(user.getFirebaseUid())) {
-                firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
-            }
+            firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
             return Map.of("revoked", true, "message", "로그아웃 성공. 모든 세션이 만료되었습니다.");
         } catch (FirebaseAuthException e) {
             log.error("Firebase 로그아웃 처리 중 오류 발생: {}", e.getMessage());
@@ -144,9 +98,7 @@ public class AuthService {
         log.info("사용자 탈퇴 처리 시작 (Firebase 계정 삭제 포함): {}", user.getEmail());
 
         try {
-            if (!"test-uid-123".equals(user.getFirebaseUid())) {
-                firebaseAuth.deleteUser(user.getFirebaseUid());
-            }
+            firebaseAuth.deleteUser(user.getFirebaseUid());
 
             user.setStatus(UserStatus.WITHDRAWN);
             userRepository.save(user);
@@ -193,9 +145,7 @@ public class AuthService {
         userRepository.save(user);
 
         try {
-            if (!"test-uid-123".equals(user.getFirebaseUid())) {
-                firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
-            }
+            firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
         } catch (FirebaseAuthException e) {
             log.error("Firebase 소셜 연결 해제 중 오류 발생: {}", e.getMessage());
             throw new RuntimeException("연결 해제 중 오류가 발생했습니다.");
@@ -322,4 +272,5 @@ public class AuthService {
             default -> providerId.toUpperCase().replace('.', '_');
         };
     }
+
 }

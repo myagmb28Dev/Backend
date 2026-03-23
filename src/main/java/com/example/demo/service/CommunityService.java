@@ -36,18 +36,7 @@ public class CommunityService {
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return userRepository.findByFirebaseUid(firebaseUid)
-                .orElseGet(() -> {
-                    if ("test-uid-123".equals(firebaseUid)) {
-                        return userRepository.save(User.builder()
-                                .firebaseUid("test-uid-123")
-                                .email("test@pogeun.com")
-                                .nickname("테스트유저")
-                                .role(com.example.demo.entity.enums.UserRole.USER)
-                                .status(com.example.demo.entity.enums.UserStatus.ACTIVE)
-                                .build());
-                    }
-                    throw new RuntimeException("사용자를 찾을 수 없습니다.");
-                });
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
     }
 
     public Map<String, Object> getPostList(String type, String category, String tag, String q) {

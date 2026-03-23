@@ -32,10 +32,6 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     private String resolveUid(String token) {
-        if ("test-token".equals(token)) {
-            return "test-uid-123";
-        }
-
         try {
             FirebaseToken decodedToken = firebaseAuth.verifyIdToken(token, true);
             return decodedToken.getUid();
