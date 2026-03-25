@@ -1,6 +1,7 @@
 package com.example.pogun.controller.community;
 
 import com.example.pogun.dto.community.CommunityCommentCreateResponse;
+import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
 import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
 import com.example.pogun.dto.community.CommunityPollResponse;
@@ -10,6 +11,7 @@ import com.example.pogun.dto.community.CommunityPostDetailResponse;
 import com.example.pogun.dto.community.CommunityPostListResponse;
 import com.example.pogun.dto.community.CommunityPostRequest;
 import com.example.pogun.dto.community.CommunityPostSummaryResponse;
+import com.example.pogun.dto.community.CommunityPostUpdateRequest;
 import com.example.pogun.dto.community.CommunityPostUpdateResponse;
 import com.example.pogun.dto.community.CommunityReactionRequest;
 import com.example.pogun.dto.community.CommunityReactionResponse;
@@ -65,7 +67,7 @@ class CommunityControllerTest {
     @DisplayName("커뮤니티 글 목록 조회 성공")
     void listSuccess() throws Exception {
         UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440020");
-        given(communityService.getPostList("LATEST", "FREE", "dog", "hello"))
+        given(communityService.getPostList("LATEST", "FREE", "dog", "hello", 0, 20))
                 .willReturn(new CommunityPostListResponse(
                         1,
                         1,
@@ -131,12 +133,11 @@ class CommunityControllerTest {
     @DisplayName("커뮤니티 글 수정 성공")
     void updateSuccess() throws Exception {
         UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440023");
-        CommunityPostRequest request = new CommunityPostRequest();
+        CommunityPostUpdateRequest request = new CommunityPostUpdateRequest();
         request.setTitle("수정 제목");
-        request.setContent("수정 본문");
         request.setCategory("FREE");
         request.setTags(List.of("dog"));
-        given(communityService.updatePost(eq("post-1"), any(CommunityPostRequest.class))).willReturn(new CommunityPostUpdateResponse(postId, true, "FREE", List.of("dog")));
+        given(communityService.updatePost(eq("post-1"), any(CommunityPostUpdateRequest.class))).willReturn(new CommunityPostUpdateResponse(postId, true, "FREE", List.of("dog")));
 
         mockMvc.perform(patch("/api/community/posts/{postId}", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -161,11 +162,25 @@ class CommunityControllerTest {
     }
 
     @Test
+    @DisplayName("댓글 삭제 성공")
+    void deleteCommentSuccess() throws Exception {
+        UUID commentId = UUID.fromString("550e8400-e29b-41d4-a716-446655440025");
+        UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440026");
+        given(communityService.deleteComment("post-1", "comment-1")).willReturn(new CommunityCommentDeleteResponse(commentId, postId, true));
+
+        mockMvc.perform(delete("/api/community/posts/{postId}/comments/{commentId}", "post-1", "comment-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("댓글 삭제 성공"))
+                .andExpect(jsonPath("$.data.deleted").value(true))
+                .andDo(print());
+    }
+
+    @Test
     @DisplayName("댓글 목록 조회 성공")
     void commentsSuccess() throws Exception {
         UUID commentId = UUID.fromString("550e8400-e29b-41d4-a716-446655440025");
         given(communityService.getComments("post-1")).willReturn(List.of(
-                new CommunityCommentResponse(commentId, "댓글", "작성자", Instant.parse("2026-03-20T11:00:00Z"))
+                new CommunityCommentResponse(commentId, "댓글", "작성자", Instant.parse("2026-03-20T11:00:00Z"), null, List.of())
         ));
 
         mockMvc.perform(get("/api/community/posts/{postId}/comments", "post-1"))
@@ -182,7 +197,7 @@ class CommunityControllerTest {
         UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440027");
         CommunityCommentRequest request = new CommunityCommentRequest();
         request.setContent("댓글");
-        given(communityService.createComment(eq("post-1"), any(CommunityCommentRequest.class))).willReturn(new CommunityCommentCreateResponse(commentId, postId));
+        given(communityService.createComment(eq("post-1"), any(CommunityCommentRequest.class))).willReturn(new CommunityCommentCreateResponse(commentId, postId, null));
 
         mockMvc.perform(post("/api/community/posts/{postId}/comments", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -227,3 +242,6 @@ class CommunityControllerTest {
                 .andDo(print());
     }
 }
+
+
+

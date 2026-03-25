@@ -13,3 +13,4 @@ public record AiSimilarPostsResponse(
         List<String> items
 ) {
 }
+

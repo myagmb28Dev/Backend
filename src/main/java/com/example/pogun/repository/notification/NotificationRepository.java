@@ -17,3 +17,4 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     long countByUserAndIsReadFalse(User user);
 }
+

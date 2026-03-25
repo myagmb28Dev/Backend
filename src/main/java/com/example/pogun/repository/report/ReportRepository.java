@@ -2,8 +2,8 @@ package com.example.pogun.repository.report;
 
 import com.example.pogun.entity.report.Report;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.report.ReportStatus;
-import com.example.pogun.entity.report.ReportTargetType;
+import com.example.pogun.entity.report.enums.ReportStatus;
+import com.example.pogun.entity.report.enums.ReportTargetType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,7 +1,7 @@
 package com.example.pogun.repository.community;
 
 import com.example.pogun.entity.community.CommunityPost;
-import com.example.pogun.entity.community.CommunityPostStatus;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 /**
@@ -56,7 +57,10 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
                                  @Param("q") String q,
                                  Pageable pageable);
 
-    List<CommunityPost> findByAuthorIdOrderByCreatedAtDesc(UUID authorId);
+    List<CommunityPost> findByAuthorIdAndStatusNotOrderByCreatedAtDesc(UUID authorId, CommunityPostStatus status);
+
+    List<CommunityPost> findByStatusAndUpdatedAtBefore(CommunityPostStatus status, Instant updatedAt);
 
     long countByStatus(CommunityPostStatus status);
 }
+

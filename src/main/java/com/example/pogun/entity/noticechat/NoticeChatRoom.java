@@ -2,7 +2,7 @@ package com.example.pogun.entity.noticechat;
 
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.noticechat.NoticeChatRoomStatus;
+import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -83,3 +83,5 @@ public class NoticeChatRoom {
     @Column(name = "last_message_at")
     private Instant lastMessageAt;
 }
+
+

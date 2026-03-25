@@ -7,6 +7,7 @@ import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
 import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
@@ -69,7 +70,7 @@ public class UserService {
 
     public List<UserCommunityPostSummaryResponse> myCommunityPosts() {
         User user = getCurrentUser();
-        return communityPostRepository.findByAuthorIdOrderByCreatedAtDesc(user.getId()).stream()
+        return communityPostRepository.findByAuthorIdAndStatusNotOrderByCreatedAtDesc(user.getId(), CommunityPostStatus.DELETED).stream()
                 .map(this::toCommunityPostSummary)
                 .toList();
     }
@@ -126,3 +127,4 @@ public class UserService {
         );
     }
 }
+

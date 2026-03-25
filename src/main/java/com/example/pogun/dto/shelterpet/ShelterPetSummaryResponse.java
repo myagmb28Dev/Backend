@@ -13,3 +13,4 @@ public record ShelterPetSummaryResponse(
         String status
 ) {
 }
+

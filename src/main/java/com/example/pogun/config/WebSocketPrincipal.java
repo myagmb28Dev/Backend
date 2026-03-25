@@ -12,3 +12,4 @@ public record WebSocketPrincipal(String name) implements Principal {
         return name;
     }
 }
+

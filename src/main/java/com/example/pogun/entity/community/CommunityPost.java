@@ -1,6 +1,7 @@
 package com.example.pogun.entity.community;
 
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -124,3 +125,6 @@ public class CommunityPost {
     @OrderBy("sortOrder ASC")
     private List<CommunityPostImage> images = new ArrayList<>();
 }
+
+
+

@@ -45,3 +45,4 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         }
     }
 }
+

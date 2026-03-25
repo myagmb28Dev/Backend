@@ -15,3 +15,4 @@ public record MissingPetListResponse(
         List<MissingPetSummaryResponse> items
 ) {
 }
+

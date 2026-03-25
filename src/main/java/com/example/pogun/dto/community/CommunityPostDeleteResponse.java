@@ -13,3 +13,4 @@ public record CommunityPostDeleteResponse(
         boolean deleted
 ) {
 }
+

@@ -1,7 +1,7 @@
 package com.example.pogun.entity.ai;
 
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.ai.AiAnalysisStatus;
+import com.example.pogun.entity.ai.enums.AiAnalysisStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -83,3 +83,4 @@ public class AiAnalysis {
     @Column(name = "similar_notice_ids", columnDefinition = "jsonb")
     private List<String> similarNoticeIds = new ArrayList<>();
 }
+

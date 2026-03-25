@@ -20,3 +20,4 @@ public interface UserSocialAccountRepository extends JpaRepository<UserSocialAcc
 
     Optional<UserSocialAccount> findByUserAndProvider(User user, String provider);
 }
+

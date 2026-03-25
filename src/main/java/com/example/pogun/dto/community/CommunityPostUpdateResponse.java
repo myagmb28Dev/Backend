@@ -16,3 +16,4 @@ public record CommunityPostUpdateResponse(
         List<String> tags
 ) {
 }
+

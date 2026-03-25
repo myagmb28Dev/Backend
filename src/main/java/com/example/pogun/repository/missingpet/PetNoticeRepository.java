@@ -2,7 +2,7 @@ package com.example.pogun.repository.missingpet;
 
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

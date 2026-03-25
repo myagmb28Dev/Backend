@@ -13,3 +13,4 @@ public record AiPhotoUploadResponse(
         String contentType
 ) {
 }
+

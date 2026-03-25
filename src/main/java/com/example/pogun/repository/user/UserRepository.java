@@ -1,7 +1,7 @@
 package com.example.pogun.repository.user;
 
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.user.enums.UserStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

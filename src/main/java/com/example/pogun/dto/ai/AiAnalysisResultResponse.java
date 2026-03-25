@@ -14,3 +14,4 @@ public record AiAnalysisResultResponse(
         List<String> features
 ) {
 }
+

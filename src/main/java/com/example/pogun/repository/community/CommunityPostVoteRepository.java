@@ -6,6 +6,7 @@ import com.example.pogun.entity.user.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 /**
@@ -16,4 +17,6 @@ import java.util.UUID;
 public interface CommunityPostVoteRepository extends JpaRepository<CommunityPostVote, UUID> {
     Optional<CommunityPostVote> findByPostAndUser(CommunityPost post, User user);
     long countByPostAndSelectedOption(CommunityPost post, String selectedOption);
+    void deleteByPostIn(List<CommunityPost> posts);
 }
+

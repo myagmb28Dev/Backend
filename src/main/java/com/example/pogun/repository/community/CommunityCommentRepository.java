@@ -1,10 +1,12 @@
 package com.example.pogun.repository.community;
 
 import com.example.pogun.entity.community.CommunityComment;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.CommunityPost;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 /**
@@ -13,5 +15,10 @@ import java.util.UUID;
 
 @Repository
 public interface CommunityCommentRepository extends JpaRepository<CommunityComment, UUID> {
-    List<CommunityComment> findByPostOrderByCreatedAtAsc(CommunityPost post);
+    List<CommunityComment> findByPostAndStatusOrderByCreatedAtAsc(CommunityPost post, CommunityCommentStatus status);
+
+    List<CommunityComment> findByStatusAndUpdatedAtBefore(CommunityCommentStatus status, Instant updatedAt);
+
+    void deleteByPostIn(List<CommunityPost> posts);
 }
+

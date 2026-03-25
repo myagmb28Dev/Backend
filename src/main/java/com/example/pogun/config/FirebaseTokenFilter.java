@@ -1,6 +1,6 @@
 package com.example.pogun.config;
 
-import com.example.pogun.entity.user.UserRole;
+import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.repository.user.UserRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
@@ -73,3 +73,4 @@ FirebaseTokenFilter extends OncePerRequestFilter {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 }
+

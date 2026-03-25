@@ -2,6 +2,7 @@ package com.example.pogun.controller.community;
 
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.community.CommunityCommentCreateResponse;
+import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
 import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
 import com.example.pogun.dto.community.CommunityPostCreateResponse;
@@ -9,6 +10,7 @@ import com.example.pogun.dto.community.CommunityPostDeleteResponse;
 import com.example.pogun.dto.community.CommunityPostDetailResponse;
 import com.example.pogun.dto.community.CommunityPostListResponse;
 import com.example.pogun.dto.community.CommunityPostRequest;
+import com.example.pogun.dto.community.CommunityPostUpdateRequest;
 import com.example.pogun.dto.community.CommunityPostUpdateResponse;
 import com.example.pogun.dto.community.CommunityReactionRequest;
 import com.example.pogun.dto.community.CommunityReactionResponse;
@@ -50,10 +52,12 @@ public class CommunityController {
             @RequestParam(required = false, defaultValue = "LATEST") String type,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String tag,
-            @RequestParam(required = false) String q
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
     ) {
         // 정렬 타입과 검색어 같은 화면용 파라미터를 서비스의 목록 조회 규칙으로 위임한다.
-        CommunityPostListResponse data = communityService.getPostList(type, category, tag, q);
+        CommunityPostListResponse data = communityService.getPostList(type, category, tag, q, page, size);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 목록 조회 성공", data));
     }
 
@@ -74,7 +78,7 @@ public class CommunityController {
 
     @PatchMapping("/{postId}")
     @Operation(summary = "커뮤니티 글 수정", description = "커뮤니티 글을 수정합니다.")
-    public ResponseEntity<ApiResponse<CommunityPostUpdateResponse>> update(@PathVariable String postId, @Valid @RequestBody CommunityPostRequest request) {
+    public ResponseEntity<ApiResponse<CommunityPostUpdateResponse>> update(@PathVariable String postId, @Valid @RequestBody CommunityPostUpdateRequest request) {
         CommunityPostUpdateResponse data = communityService.updatePost(postId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 수정 성공", data));
     }
@@ -101,6 +105,13 @@ public class CommunityController {
                 .body(ApiResponse.success(HttpStatus.CREATED, "댓글 작성 성공", data));
     }
 
+    @DeleteMapping("/{postId}/comments/{commentId}")
+    @Operation(summary = "댓글 삭제", description = "지정된 글의 댓글을 삭제합니다.")
+    public ResponseEntity<ApiResponse<CommunityCommentDeleteResponse>> deleteComment(@PathVariable String postId, @PathVariable String commentId) {
+        CommunityCommentDeleteResponse data = communityService.deleteComment(postId, commentId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "댓글 삭제 성공", data));
+    }
+
     @PostMapping("/{postId}/votes")
     @Operation(summary = "투표 참여", description = "지정된 글의 투표에 참여합니다.")
     public ResponseEntity<ApiResponse<CommunityVoteResponse>> vote(@PathVariable String postId, @Valid @RequestBody CommunityVoteRequest request) {
@@ -117,3 +128,4 @@ public class CommunityController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요/반응 처리 성공", data));
     }
 }
+

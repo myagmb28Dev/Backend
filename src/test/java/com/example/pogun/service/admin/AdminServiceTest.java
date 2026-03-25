@@ -1,19 +1,21 @@
 package com.example.pogun.service.admin;
 
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
+import com.example.pogun.entity.missingpet.enums.PetGender;
 import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.community.CommunityPostStatus;
-import com.example.pogun.entity.missingpet.PetGender;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
-import com.example.pogun.repository.community.CommunityPostRepository;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
+import com.example.pogun.repository.community.CommunityCommentRepository;
+import com.example.pogun.repository.community.CommunityPostRepository;
+import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
-import com.example.pogun.repository.missingpet.PetNoticeRepository;
-import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,16 +39,25 @@ class AdminServiceTest {
 
     @Mock
     private CommunityPostRepository communityPostRepository;
+
+    @Mock
+    private CommunityCommentRepository communityCommentRepository;
+
     @Mock
     private PetNoticeRepository petNoticeRepository;
+
     @Mock
     private UserRepository userRepository;
+
     @Mock
     private ReportRepository reportRepository;
+
     @Mock
     private NoticeBookmarkRepository noticeBookmarkRepository;
+
     @Mock
     private NoticeChatRoomRepository noticeChatRoomRepository;
+
     @Mock
     private NoticeChatMessageRepository noticeChatMessageRepository;
 
@@ -150,6 +161,7 @@ class AdminServiceTest {
     @DisplayName("커뮤니티 글 강제 삭제는 DELETED 상태로 변경한다")
     void deleteCommunityPost_marksDeleted() {
         given(communityPostRepository.findById(communityPost.getId())).willReturn(Optional.of(communityPost));
+        given(communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(communityPost, CommunityCommentStatus.NORMAL)).willReturn(java.util.List.of());
         given(communityPostRepository.save(communityPost)).willReturn(communityPost);
 
         var result = adminService.deleteCommunityPost(communityPost.getId().toString());
@@ -159,3 +171,6 @@ class AdminServiceTest {
         verify(communityPostRepository).save(communityPost);
     }
 }
+
+
+

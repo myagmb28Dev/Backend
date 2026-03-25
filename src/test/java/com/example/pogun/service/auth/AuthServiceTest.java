@@ -4,8 +4,8 @@ import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.google.firebase.auth.FirebaseAuth;
@@ -232,3 +232,4 @@ class AuthServiceTest {
         verify(firebaseAuth, never()).revokeRefreshTokens(anyString());
     }
 }
+

@@ -21,3 +21,5 @@ public record CommunityPostSummaryResponse(
         Instant createdAt
 ) {
 }
+
+

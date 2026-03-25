@@ -11,3 +11,4 @@ public record ShelterPetViewResponse(
         int viewCount
 ) {
 }
+

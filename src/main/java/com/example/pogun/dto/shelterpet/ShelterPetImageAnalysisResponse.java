@@ -10,3 +10,4 @@ public record ShelterPetImageAnalysisResponse(
         ShelterPetImageAnalysisDetailResponse analysis
 ) {
 }
+

@@ -17,3 +17,4 @@ public record ShelterPetDetailResponse(
         List<String> images
 ) {
 }
+

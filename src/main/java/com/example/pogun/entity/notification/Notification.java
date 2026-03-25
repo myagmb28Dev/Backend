@@ -4,8 +4,8 @@ import com.example.pogun.entity.user.User;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.example.pogun.entity.notification.NotificationTargetType;
-import com.example.pogun.entity.notification.NotificationType;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 import jakarta.persistence.Column;
@@ -77,5 +77,7 @@ public class Notification {
     @Column(name = "is_read", nullable = false)
     private Boolean isRead = false;
 }
+
+
 
 

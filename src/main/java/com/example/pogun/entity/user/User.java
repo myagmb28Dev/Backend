@@ -3,8 +3,8 @@ package com.example.pogun.entity.user;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
@@ -74,5 +74,6 @@ public class User {
     @Column(name = "status", nullable = false, length = 20)
     private UserStatus status;
 }
+
 
 

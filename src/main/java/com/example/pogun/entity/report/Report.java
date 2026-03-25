@@ -4,8 +4,8 @@ import com.example.pogun.entity.user.User;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.example.pogun.entity.report.ReportStatus;
-import com.example.pogun.entity.report.ReportTargetType;
+import com.example.pogun.entity.report.enums.ReportStatus;
+import com.example.pogun.entity.report.enums.ReportTargetType;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 import jakarta.persistence.Column;
@@ -76,5 +76,7 @@ public class Report {
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
 }
+
+
 
 

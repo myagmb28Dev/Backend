@@ -78,3 +78,4 @@ public class UserFcmToken {
     @Column(name = "last_seen_at")
     private Instant lastSeenAt;
 }
+

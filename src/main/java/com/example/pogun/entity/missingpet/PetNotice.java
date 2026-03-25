@@ -4,8 +4,8 @@ import com.example.pogun.entity.user.User;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.example.pogun.entity.missingpet.PetGender;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
+import com.example.pogun.entity.missingpet.enums.PetGender;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
@@ -122,3 +122,4 @@ public class PetNotice {
     @OrderBy("sortOrder ASC")
     private List<PetNoticeImage> images = new ArrayList<>();
 }
+

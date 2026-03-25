@@ -27,3 +27,4 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
         apiErrorResponseWriter.write(response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다.", null);
     }
 }
+

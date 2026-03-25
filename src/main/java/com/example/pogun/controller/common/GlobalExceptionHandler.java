@@ -118,3 +118,4 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.", null));
     }
 }
+

@@ -4,7 +4,7 @@ import com.example.pogun.entity.user.User;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.example.pogun.entity.community.CommunityCommentStatus;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
@@ -75,5 +75,7 @@ public class CommunityComment {
     @Column(name = "status", nullable = false, length = 20)
     private CommunityCommentStatus status;
 }
+
+
 
 

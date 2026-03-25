@@ -14,3 +14,4 @@ public record CommunityPostListResponse(
         List<CommunityPostSummaryResponse> items
 ) {
 }
+

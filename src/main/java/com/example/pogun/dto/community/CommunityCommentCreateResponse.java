@@ -10,6 +10,8 @@ import java.util.UUID;
 @Schema(description = "커뮤니티 댓글 생성 응답")
 public record CommunityCommentCreateResponse(
         UUID id,
-        UUID postId
+        UUID postId,
+        UUID parentCommentId
 ) {
 }
+

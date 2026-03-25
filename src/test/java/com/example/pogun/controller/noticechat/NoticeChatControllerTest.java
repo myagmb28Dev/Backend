@@ -132,3 +132,4 @@ class NoticeChatControllerTest {
                 .andDo(print());
     }
 }
+

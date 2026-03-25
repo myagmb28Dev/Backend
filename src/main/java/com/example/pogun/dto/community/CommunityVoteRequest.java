@@ -16,3 +16,4 @@ public class CommunityVoteRequest {
     @Schema(description = "선택한 옵션", example = "A사료")
     private String option;
 }
+

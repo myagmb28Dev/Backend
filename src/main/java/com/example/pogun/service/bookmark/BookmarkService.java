@@ -86,7 +86,7 @@ public class BookmarkService {
                 notice.getMissingRegion(),
                 notice.getStatus().name(),
                 getStatusLabel(notice),
-                notice.getStatus() != com.example.pogun.entity.missingpet.PetNoticeStatus.OPEN,
+                notice.getStatus() != com.example.pogun.entity.missingpet.enums.PetNoticeStatus.OPEN,
                 true,
                 bookmarkedAt
         );

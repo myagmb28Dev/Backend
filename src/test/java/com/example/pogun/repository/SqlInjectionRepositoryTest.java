@@ -3,11 +3,11 @@ package com.example.pogun;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.community.CommunityPostStatus;
-import com.example.pogun.entity.missingpet.PetGender;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
+import com.example.pogun.entity.missingpet.enums.PetGender;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -139,3 +139,4 @@ class SqlInjectionRepositoryTest {
     static class TestApplication {
     }
 }
+

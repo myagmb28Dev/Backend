@@ -28,3 +28,4 @@ public class ApiErrorResponseWriter {
         objectMapper.writeValue(response.getWriter(), ApiResponse.fail(status, code, message, detail));
     }
 }
+

@@ -27,3 +27,4 @@ public class ApiAccessDeniedHandler implements AccessDeniedHandler {
         apiErrorResponseWriter.write(response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다.", null);
     }
 }
+

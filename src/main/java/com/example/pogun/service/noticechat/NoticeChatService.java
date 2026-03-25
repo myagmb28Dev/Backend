@@ -10,7 +10,7 @@ import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.noticechat.NoticeChatRoomStatus;
+import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
@@ -239,3 +239,4 @@ public class NoticeChatService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 }
+

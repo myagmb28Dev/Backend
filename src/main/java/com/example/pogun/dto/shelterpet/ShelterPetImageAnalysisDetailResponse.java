@@ -15,3 +15,4 @@ public record ShelterPetImageAnalysisDetailResponse(
         List<String> similarNotices
 ) {
 }
+

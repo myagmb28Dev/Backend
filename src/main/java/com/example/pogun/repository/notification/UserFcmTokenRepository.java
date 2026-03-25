@@ -18,3 +18,4 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
 
     List<UserFcmToken> findByUserAndActiveTrueOrderByUpdatedAtDesc(User user);
 }
+

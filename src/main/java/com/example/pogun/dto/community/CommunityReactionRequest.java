@@ -16,3 +16,4 @@ public class CommunityReactionRequest {
     @Schema(description = "반응 타입", example = "LIKE")
     private String reaction;
 }
+

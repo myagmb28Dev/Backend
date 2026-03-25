@@ -8,11 +8,13 @@ import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.community.CommunityPostStatus;
-import com.example.pogun.entity.report.ReportStatus;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
+import com.example.pogun.entity.report.enums.ReportStatus;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.repository.community.CommunityPostRepository;
+import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
@@ -39,6 +41,7 @@ public class AdminService {
     private static final Set<ReportStatus> PENDING_REPORT_STATUSES = Set.of(ReportStatus.RECEIVED, ReportStatus.REVIEWING);
 
     private final CommunityPostRepository communityPostRepository;
+    private final CommunityCommentRepository communityCommentRepository;
     private final PetNoticeRepository petNoticeRepository;
     private final UserRepository userRepository;
     private final ReportRepository reportRepository;
@@ -63,6 +66,9 @@ public class AdminService {
     @Transactional
     public AdminVisibilityResponse updateCommunityVisibility(String postId, String visibility) {
         CommunityPost post = getCommunityPost(postId);
+        if (post.getStatus() == CommunityPostStatus.DELETED) {
+            throw ApiException.notFound("COMMUNITY_POST_NOT_FOUND", "커뮤니티 게시글을 찾을 수 없습니다.");
+        }
         CommunityPostStatus nextStatus = isVisible(visibility) ? CommunityPostStatus.ACTIVE : CommunityPostStatus.HIDDEN;
         post.setStatus(nextStatus);
         CommunityPost saved = communityPostRepository.save(post);
@@ -105,8 +111,10 @@ public class AdminService {
     public AdminDeleteResponse deleteCommunityPost(String postId) {
         CommunityPost post = getCommunityPost(postId);
         post.setStatus(CommunityPostStatus.DELETED);
-        CommunityPost saved = communityPostRepository.save(post);
-        return new AdminDeleteResponse(saved.getId(), true, saved.getStatus().name());
+        communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL)
+                .forEach(comment -> comment.setStatus(CommunityCommentStatus.DELETED));
+        communityPostRepository.save(post);
+        return new AdminDeleteResponse(post.getId(), true, post.getStatus().name());
     }
 
     private CommunityPost getCommunityPost(String postId) {
@@ -150,3 +158,4 @@ public class AdminService {
         };
     }
 }
+

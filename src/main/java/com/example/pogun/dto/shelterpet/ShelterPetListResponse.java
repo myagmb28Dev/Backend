@@ -14,3 +14,4 @@ public record ShelterPetListResponse(
         List<ShelterPetSummaryResponse> items
 ) {
 }
+

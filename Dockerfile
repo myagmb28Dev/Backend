@@ -21,5 +21,4 @@ WORKDIR /app
 # 빌드 결과물을 app.jar로 복사
 COPY --from=build /app/build/libs/*.jar app.jar
 
-# Railway 등 클라우드 포트 바인딩 지원
 ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT:-8080} -Dfile.encoding=UTF-8 -jar app.jar"]

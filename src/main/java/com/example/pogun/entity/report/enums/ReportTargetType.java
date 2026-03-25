@@ -1,4 +1,4 @@
-package com.example.pogun.entity.report;
+package com.example.pogun.entity.report.enums;
 /**
  * 도메인에서 사용하는 ReportTargetType 열거형이다.
  */
@@ -9,4 +9,6 @@ public enum ReportTargetType {
     PET_NOTICE,
     USER
 }
+
+
 

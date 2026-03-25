@@ -37,3 +37,4 @@ public class CommunityPostRequest {
     @Schema(description = "이미지 URL 목록", example = "[\"https://.../img1.jpg\", \"https://.../img2.jpg\"]")
     private List<String> imageUrls;
 }
+

@@ -7,8 +7,8 @@ import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.google.firebase.auth.FirebaseAuth;
@@ -287,3 +287,4 @@ public class AuthService {
     }
 
 }
+

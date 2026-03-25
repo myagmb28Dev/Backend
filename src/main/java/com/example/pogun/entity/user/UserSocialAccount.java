@@ -77,3 +77,4 @@ public class UserSocialAccount {
     @Column(name = "last_linked_at")
     private Instant lastLinkedAt;
 }
+

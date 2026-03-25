@@ -57,3 +57,4 @@ public class CommunityPostImage {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
 }
+

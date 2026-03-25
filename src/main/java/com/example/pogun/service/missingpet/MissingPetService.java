@@ -11,10 +11,10 @@ import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.service.notification.NotificationService;
-import com.example.pogun.entity.notification.NotificationTargetType;
-import com.example.pogun.entity.notification.NotificationType;
-import com.example.pogun.entity.missingpet.PetGender;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
+import com.example.pogun.entity.missingpet.enums.PetGender;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -393,3 +393,4 @@ public class MissingPetService {
         };
     }
 }
+

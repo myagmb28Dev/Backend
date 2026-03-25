@@ -8,11 +8,11 @@ import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
-import com.example.pogun.entity.community.CommunityPostStatus;
-import com.example.pogun.entity.missingpet.PetGender;
-import com.example.pogun.entity.missingpet.PetNoticeStatus;
-import com.example.pogun.entity.user.UserRole;
-import com.example.pogun.entity.user.UserStatus;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
+import com.example.pogun.entity.missingpet.enums.PetGender;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -145,7 +145,7 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("내 커뮤니티 글 목록 조회 시 작성한 글 요약 목록을 반환한다")
+    @DisplayName("내 커뮤니티 글 목록 조회 시 삭제 글을 제외한 요약 목록을 반환한다")
     void myCommunityPosts_returnsSummaries() {
         CommunityPost post = CommunityPost.builder()
                 .id(UUID.randomUUID())
@@ -156,7 +156,7 @@ class UserServiceTest {
                 .viewCount(7L)
                 .createdAt(Instant.parse("2026-03-20T12:00:00Z"))
                 .build();
-        given(communityPostRepository.findByAuthorIdOrderByCreatedAtDesc(user.getId())).willReturn(List.of(post));
+        given(communityPostRepository.findByAuthorIdAndStatusNotOrderByCreatedAtDesc(user.getId(), CommunityPostStatus.DELETED)).willReturn(List.of(post));
 
         List<UserCommunityPostSummaryResponse> result = userService.myCommunityPosts();
 
@@ -165,3 +165,4 @@ class UserServiceTest {
         assertThat(result.get(0).status()).isEqualTo("ACTIVE");
     }
 }
+

@@ -13,3 +13,4 @@ public record MissingPetViewResponse(
         Long viewCount
 ) {
 }
+

@@ -24,3 +24,5 @@ public record CommunityPostDetailResponse(
         List<String> imageUrls
 ) {
 }
+
+

@@ -13,3 +13,4 @@ public record CommunityPollResponse(
         List<String> options
 ) {
 }
+
