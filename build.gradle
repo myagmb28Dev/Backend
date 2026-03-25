@@ -51,6 +51,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	jvmArgs '-Xshare:off'
 }
 
 // Load environment variables from .env file for bootRun

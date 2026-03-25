@@ -1,5 +1,5 @@
 param(
-    [string]$ProjectId = "pogun-local",
+    [string]$ProjectId = "",
     [string]$Email = "tester@local.dev",
     [string]$Password = "Test1234!",
     [int]$AuthPort = 9099,
@@ -14,6 +14,52 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $localDir = Join-Path $repoRoot ".local"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
+
+function Get-DotEnvValue {
+    param(
+        [string]$FilePath,
+        [string]$Key
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        return $null
+    }
+
+    $line = Select-String -Path $FilePath -Pattern "^$Key=" | Select-Object -First 1
+    if (-not $line) {
+        return $null
+    }
+
+    return ($line.Line -split '=', 2)[1]
+}
+
+function Resolve-DefaultProjectId {
+    $envFile = Join-Path $repoRoot ".env"
+
+    $dotenvProjectId = Get-DotEnvValue -FilePath $envFile -Key "FIREBASE_PROJECT_ID"
+    if ($dotenvProjectId) {
+        return $dotenvProjectId.Trim()
+    }
+
+    $dotenvGcloudProject = Get-DotEnvValue -FilePath $envFile -Key "GCLOUD_PROJECT"
+    if ($dotenvGcloudProject) {
+        return $dotenvGcloudProject.Trim()
+    }
+
+    $dotenvBase64 = Get-DotEnvValue -FilePath $envFile -Key "FIREBASE_KEY_BASE64"
+    if ($dotenvBase64) {
+        try {
+            $jsonText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($dotenvBase64.Trim()))
+            $serviceAccount = $jsonText | ConvertFrom-Json
+            if ($serviceAccount.project_id) {
+                return [string]$serviceAccount.project_id
+            }
+        } catch {
+        }
+    }
+
+    return "pogun-local"
+}
 
 function Get-ExecutablePath {
     param([string[]]$Names)
@@ -133,6 +179,10 @@ function Ensure-EmulatorUserAndGetToken {
 
 $firebaseExe = Get-ExecutablePath -Names @("firebase.cmd", "firebase")
 
+if ([string]::IsNullOrWhiteSpace($ProjectId)) {
+    $ProjectId = Resolve-DefaultProjectId
+}
+
 if (-not (Test-TcpPort -Port $AuthPort)) {
     $emulatorCommand = "& `"$firebaseExe`" emulators:start --only auth --project $ProjectId"
     Start-DetachedPowerShell -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
@@ -143,6 +193,7 @@ Wait-TcpPort -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $Timeout
 if (-not (Test-TcpPort -Port $BackendPort)) {
     $backendCommand = @(
         "`$env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:$AuthPort'",
+        "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
         "`$env:GCLOUD_PROJECT = '$ProjectId'",
         "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
         "& '.\\gradlew.bat' bootRun"
@@ -155,16 +206,29 @@ Wait-TcpPort -Port $BackendPort -Name "Spring Boot backend" -TimeoutSec $Timeout
 
 $idToken = Ensure-EmulatorUserAndGetToken
 
-$tokenPath = Join-Path $localDir "firebase-id-token.txt"
-$authHeaderPath = Join-Path $localDir "authorization-header.txt"
-$loginBodyPath = Join-Path $localDir "login-request.json"
+$legacyFiles = @(
+    (Join-Path $localDir "firebase-id-token.txt"),
+    (Join-Path $localDir "authorization-header.txt"),
+    (Join-Path $localDir "login-request.json")
+)
+foreach ($legacyFile in $legacyFiles) {
+    if (Test-Path $legacyFile) {
+        Remove-Item $legacyFile -Force
+    }
+}
+
+$tokenPath = Join-Path $localDir "emulator-firebase-id-token.txt"
+$authHeaderPath = Join-Path $localDir "emulator-authorization-header.txt"
+$loginBodyPath = Join-Path $localDir "emulator-login-request.json"
 
 [System.IO.File]::WriteAllText($tokenPath, $idToken, [System.Text.UTF8Encoding]::new($false))
 [System.IO.File]::WriteAllText($authHeaderPath, "Authorization: Bearer $idToken", [System.Text.UTF8Encoding]::new($false))
 [System.IO.File]::WriteAllText($loginBodyPath, "{`n  `"firebaseIdToken`": `"$idToken`"`n}", [System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
-Write-Host "Local auth stack is ready." -ForegroundColor Green
+Write-Host "Local auth emulator stack is ready." -ForegroundColor Green
+Write-Host "These token files are emulator-only. Do not use them against real Firebase mode or deployed servers." -ForegroundColor Yellow
+Write-Host "Project       : $ProjectId"
 Write-Host "Auth Emulator : http://127.0.0.1:$AuthPort"
 Write-Host "Emulator UI   : http://127.0.0.1:$UiPort"
 Write-Host "Backend       : http://localhost:$BackendPort"

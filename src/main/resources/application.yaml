@@ -27,7 +27,12 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    show-sql: true
+    show-sql: ${JPA_SHOW_SQL:false}
+
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: ${P6SPY_ENABLE_LOGGING:false}
 
   # ----------------------------------
 
