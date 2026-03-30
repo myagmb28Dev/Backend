@@ -47,3 +47,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local Tooling ###
+.tools/
+.codex/
