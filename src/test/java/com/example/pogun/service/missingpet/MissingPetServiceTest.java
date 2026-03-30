@@ -5,11 +5,12 @@ import com.example.pogun.dto.missingpet.MissingPetListResponse;
 import com.example.pogun.dto.missingpet.MissingPetViewResponse;
 import com.example.pogun.entity.bookmark.NoticeBookmark;
 import com.example.pogun.entity.missingpet.PetNotice;
-import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.notification.enums.NotificationTargetType;
-import com.example.pogun.entity.notification.enums.NotificationType;
+import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.missingpet.enums.PetGender;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
+import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
@@ -25,8 +26,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,8 +39,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -56,6 +59,9 @@ class MissingPetServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private MissingPetImageStorageService missingPetImageStorageService;
 
     @InjectMocks
     private MissingPetService missingPetService;
@@ -104,8 +110,7 @@ class MissingPetServiceTest {
                 "gender", "MALE",
                 "missingDate", "2026-03-20T10:00:00Z",
                 "missingRegion", "서울",
-                "status", "OPEN",
-                "imageUrls", List.of("https://example.com/a.jpg")
+                "status", "OPEN"
         );
 
         MissingPetDetailResponse result = missingPetService.createMissingPet(request);
@@ -118,8 +123,9 @@ class MissingPetServiceTest {
         assertThat(saved.getAnimalType()).isEqualTo("DOG");
         assertThat(saved.getBreed()).isEqualTo("말티즈");
         assertThat(saved.getGender()).isEqualTo(PetGender.MALE);
-        assertThat(saved.getImages()).hasSize(1);
+        assertThat(saved.getImages()).isEmpty();
         assertThat(result.title()).isEqualTo("말티즈를 찾습니다");
+        assertThat(result.imageUrls()).isEmpty();
 
         verify(notificationService).createAndSendNotification(
                 eq(author),
@@ -130,6 +136,32 @@ class MissingPetServiceTest {
                 eq("말티즈를 찾습니다 공고 등록이 완료되었습니다."),
                 anyMap()
         );
+    }
+
+    @Test
+    @DisplayName("실종 공고 생성 시 로컬 이미지를 저장한다")
+    void createMissingPet_storesLocalImages() {
+        given(missingPetImageStorageService.storeImages(eq(author.getId()), any())).willReturn(List.of(
+                "/uploads/missing-pets/notices/" + author.getId() + "/a.jpg",
+                "/uploads/missing-pets/notices/" + author.getId() + "/b.jpg"
+        ));
+
+        Map<String, Object> request = Map.of(
+                "title", "말티즈를 찾습니다",
+                "animalType", "DOG",
+                "missingDate", "2026-03-20T10:00:00Z",
+                "missingRegion", "서울"
+        );
+        MultipartFile image1 = new MockMultipartFile("images", "a.jpg", "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0});
+        MultipartFile image2 = new MockMultipartFile("images", "b.jpg", "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE1});
+
+        MissingPetDetailResponse result = missingPetService.createMissingPet(request, List.of(image1, image2));
+
+        assertThat(result.imageUrls()).containsExactly(
+                "/uploads/missing-pets/notices/" + author.getId() + "/a.jpg",
+                "/uploads/missing-pets/notices/" + author.getId() + "/b.jpg"
+        );
+        verify(missingPetImageStorageService).storeImages(eq(author.getId()), any());
     }
 
     @Test
@@ -154,6 +186,44 @@ class MissingPetServiceTest {
 
         assertThat(result.totalElements()).isEqualTo(1);
         assertThat(result.items()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("실종 공고 수정 시 로컬 이미지를 저장하고 기존 이미지를 대체한다")
+    void updateMissingPet_storesLocalImages() {
+        PetNotice notice = PetNotice.builder()
+                .id(UUID.randomUUID())
+                .author(author)
+                .title("공고 제목")
+                .animalType("DOG")
+                .breed("말티즈")
+                .gender(PetGender.MALE)
+                .missingDate(Instant.parse("2026-03-20T10:00:00Z"))
+                .missingRegion("서울")
+                .status(PetNoticeStatus.OPEN)
+                .viewCount(3L)
+                .build();
+        notice.getImages().add(PetNoticeImage.builder()
+                .notice(notice)
+                .imageUrl("https://example.com/old.jpg")
+                .sortOrder(0)
+                .build());
+
+        given(petNoticeRepository.findById(notice.getId())).willReturn(Optional.of(notice));
+        given(missingPetImageStorageService.storeImages(eq(author.getId()), any())).willReturn(List.of(
+                "/uploads/missing-pets/notices/" + author.getId() + "/c.jpg"
+        ));
+
+        Map<String, Object> request = Map.of(
+                "title", "수정 제목"
+        );
+        MultipartFile image = new MockMultipartFile("images", "c.jpg", "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0});
+
+        MissingPetDetailResponse result = missingPetService.updateMissingPet(notice.getId().toString(), request, List.of(image));
+
+        assertThat(notice.getImages()).hasSize(1);
+        assertThat(result.imageUrls()).containsExactly("/uploads/missing-pets/notices/" + author.getId() + "/c.jpg");
+        verify(missingPetImageStorageService).storeImages(eq(author.getId()), any());
     }
 
     @Test
@@ -227,4 +297,5 @@ class MissingPetServiceTest {
         verify(petNoticeRepository).save(notice);
     }
 }
+
 

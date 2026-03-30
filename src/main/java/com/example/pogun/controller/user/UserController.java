@@ -11,12 +11,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 /**
@@ -43,6 +46,16 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         // 프로필 수정은 현재 로그인한 사용자 한 명만 대상으로 하며, 서비스에서 변경 가능한 필드만 반영한다.
         UserProfileResponse updated = userService.updateProfile(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "프로필 수정 성공", updated));
+    }
+
+    @PatchMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "프로필 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `profileImage` 파일을 함께 받아 로그인한 사용자의 프로필과 로컬 이미지를 수정합니다.")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfileWithFile(
+            @Valid @RequestPart("request") UpdateProfileRequest request,
+            @RequestPart(value = "profileImage", required = false) MultipartFile profileImage
+    ) {
+        UserProfileResponse updated = userService.updateProfile(request, profileImage);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "프로필 수정 성공", updated));
     }
 

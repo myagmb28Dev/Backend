@@ -14,6 +14,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -24,6 +25,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -98,6 +100,50 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("프로필 수정 파일 첨부 성공")
+    void updateProfileWithFileSuccess() throws Exception {
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setNickname("수정닉");
+        request.setPhoneNumber("010-1234-5678");
+        given(userService.updateProfile(any(UpdateProfileRequest.class), any(org.springframework.web.multipart.MultipartFile.class))).willReturn(new UserProfileResponse(
+                UUID.randomUUID(),
+                "user@example.com",
+                "수정닉",
+                "/uploads/profile/users/11111111-1111-1111-1111-111111111111/profile.png",
+                "010-1234-5678",
+                "GOOGLE",
+                List.of("GOOGLE"),
+                "USER",
+                "ACTIVE"
+        ));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                "application/json",
+                objectMapper.writeValueAsBytes(request)
+        );
+        MockMultipartFile imagePart = new MockMultipartFile(
+                "profileImage",
+                "profile.png",
+                MediaType.IMAGE_PNG_VALUE,
+                new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+        );
+
+        mockMvc.perform(multipart("/api/users/me")
+                        .file(requestPart)
+                        .file(imagePart)
+                        .with(requestBuilder -> {
+                            requestBuilder.setMethod("PATCH");
+                            return requestBuilder;
+                        }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("프로필 수정 성공"))
+                .andExpect(jsonPath("$.data.nickname").value("수정닉"))
+                .andDo(print());
+    }
+
+    @Test
     @DisplayName("내 실종 공고 목록 조회 성공")
     void myPostsSuccess() throws Exception {
         given(userService.myPetNotices()).willReturn(List.of(new UserPetNoticeSummaryResponse(
@@ -137,4 +183,3 @@ class UserControllerTest {
                 .andDo(print());
     }
 }
-

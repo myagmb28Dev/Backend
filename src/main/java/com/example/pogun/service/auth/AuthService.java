@@ -51,29 +51,40 @@ public class AuthService {
             String normalizedProvider = resolveSignInProvider(decodedToken, userRecord);
             String name = userRecord.getDisplayName();
             String picture = userRecord.getPhotoUrl();
+            String resolvedNickname = name != null ? name : "User_" + uid.substring(0, 5);
 
             User user = userRepository.findByFirebaseUid(uid)
                     .map(existingUser -> {
                         existingUser.setEmail(email);
-                        existingUser.setNickname(name != null ? name : "User_" + uid.substring(0, 5));
+                        existingUser.setNickname(resolvedNickname);
                         existingUser.setProfileImageUrl(picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setStatus(UserStatus.ACTIVE);
                         return userRepository.save(existingUser);
                     })
+                    .orElseGet(() -> userRepository.findByEmail(email)
+                            .map(existingByEmail -> {
+                                // 에뮬레이터/소셜 재연동 등으로 UID가 바뀐 경우 기존 계정에 새 UID를 연결한다.
+                                existingByEmail.setFirebaseUid(uid);
+                                existingByEmail.setNickname(resolvedNickname);
+                                existingByEmail.setProfileImageUrl(picture);
+                                existingByEmail.setAuthProvider(normalizedProvider);
+                                existingByEmail.setStatus(UserStatus.ACTIVE);
+                                return userRepository.save(existingByEmail);
+                            })
                     .orElseGet(() -> {
                         log.info("신규 사용자 가입 진행: firebaseUid={}", uid);
                         User newUser = User.builder()
                                 .firebaseUid(uid)
                                 .email(email)
-                                .nickname(name != null ? name : "User_" + uid.substring(0, 5))
+                                .nickname(resolvedNickname)
                                 .profileImageUrl(picture)
                                 .authProvider(normalizedProvider)
                                 .role(UserRole.USER)
                                 .status(UserStatus.ACTIVE)
                                 .build();
                         return userRepository.save(newUser);
-                    });
+                    }));
 
             syncProviders(user, userRecord);
             return buildAuthResponse(user);

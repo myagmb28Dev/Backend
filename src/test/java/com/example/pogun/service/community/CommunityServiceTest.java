@@ -8,6 +8,7 @@ import com.example.pogun.dto.community.CommunityPostUpdateRequest;
 import com.example.pogun.entity.community.CommunityComment;
 import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.CommunityPostImage;
 import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
@@ -17,6 +18,7 @@ import com.example.pogun.repository.community.CommunityPostReactionRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.community.CommunityImageStorageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +31,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -58,6 +61,9 @@ class CommunityServiceTest {
     private CommunityPostReactionRepository communityPostReactionRepository;
 
     @Mock
+    private CommunityImageStorageService communityImageStorageService;
+
+    @Mock
     private UserRepository userRepository;
 
     @InjectMocks
@@ -80,6 +86,11 @@ class CommunityServiceTest {
                 .status(CommunityPostStatus.ACTIVE)
                 .build();
         post.getTags().addAll(List.of("dog"));
+        post.getImages().add(CommunityPostImage.builder()
+                .post(post)
+                .imageUrl("https://example.com/thumb.jpg")
+                .sortOrder(0)
+                .build());
 
         Page<CommunityPost> page = new PageImpl<>(List.of(post));
         given(communityPostRepository.findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), any(Pageable.class)))
@@ -97,6 +108,7 @@ class CommunityServiceTest {
         assertThat(result.totalElements()).isEqualTo(1);
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().get(0).authorNickname()).isEqualTo("작성자");
+        assertThat(result.items().get(0).thumbnailImageUrl()).isEqualTo("https://example.com/thumb.jpg");
     }
 
     @Test
@@ -149,6 +161,29 @@ class CommunityServiceTest {
         verify(communityPostRepository, never()).save(any());
     }
 
+    @Test
+    void createPost_storesLocalImages() {
+        User author = user("작성자");
+        given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
+        given(communityImageStorageService.storeImages(eq(author.getId()), any())).willReturn(List.of("/uploads/community/posts/" + author.getId() + "/a.jpg", "/uploads/community/posts/" + author.getId() + "/b.jpg"));
+        given(communityPostRepository.save(any(CommunityPost.class))).willAnswer(invocation -> { CommunityPost post = invocation.getArgument(0); post.setId(UUID.randomUUID()); return post; });
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
+
+        CommunityPostRequest request = new CommunityPostRequest();
+        request.setTitle("제목");
+        request.setContent("본문");
+
+        MultipartFile image1 = new MockMultipartFile("images", "a.jpg", "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x10, 0x4A, 0x46});
+        MultipartFile image2 = new MockMultipartFile("images", "b.jpg", "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE1, 0x00, 0x11, 0x45, 0x58});
+
+        var result = communityService.createPost(request, List.of(image1, image2));
+
+        assertThat(result.id()).isNotNull();
+        assertThat(result.title()).isEqualTo("제목");
+        assertThat(communityImageStorageService).isNotNull();
+        verify(communityImageStorageService).storeImages(eq(author.getId()), any());
+        verify(communityPostRepository).save(any(CommunityPost.class));
+    }
     @Test
     void deletePost_marksPostAndCommentsAsDeleted() {
         User author = user("작성자");
@@ -294,6 +329,27 @@ class CommunityServiceTest {
         assertThat(result.get(0).replies().get(0).parentCommentId()).isEqualTo(parent.getId());
     }
 
+    @Test
+    void getPostList_defaultsToLatestSort() {
+        User author = user("작성자");
+        CommunityPost post = CommunityPost.builder()
+                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440042"))
+                .author(author)
+                .title("제목")
+                .content("본문")
+                .category("FREE")
+                .status(CommunityPostStatus.ACTIVE)
+                .build();
+        given(communityPostRepository.findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(post)));
+
+        communityService.getPostList("LATEST", "FREE", "dog", "검색", 0, 20);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(communityPostRepository).findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), pageableCaptor.capture());
+        Pageable pageable = pageableCaptor.getValue();
+        assertThat(pageable.getSort().getOrderFor("createdAt")).isNotNull();
+    }
     private User user(String nickname) {
         return User.builder()
                 .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440099"))
@@ -305,6 +361,14 @@ class CommunityServiceTest {
                 .build();
     }
 }
+
+
+
+
+
+
+
+
 
 
 

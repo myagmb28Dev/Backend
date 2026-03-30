@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -25,10 +26,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -116,6 +120,34 @@ class MissingPetControllerTest {
     }
 
     @Test
+    @DisplayName("실종 공고 생성 파일 첨부 성공")
+    void createWithFilesSuccess() throws Exception {
+        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440021");
+        MissingPetCreateRequest request = new MissingPetCreateRequest();
+        request.setTitle("말티즈를 찾습니다");
+        request.setAnimalType("DOG");
+        request.setMissingDate("2026-03-18T10:00:00Z");
+        request.setMissingRegion("서울 강남구");
+        given(missingPetService.createMissingPet(anyMap(), anyList())).willReturn(buildDetailResponse(noticeId, "OPEN", 0L));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                "application/json",
+                objectMapper.writeValueAsBytes(request)
+        );
+        MockMultipartFile image1 = new MockMultipartFile("images", "a.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0});
+
+        mockMvc.perform(multipart("/api/missing-pets")
+                        .file(requestPart)
+                        .file(image1))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("행방불명 공고 생성 성공"))
+                .andExpect(jsonPath("$.data.id").value(noticeId.toString()))
+                .andDo(print());
+    }
+
+    @Test
     @DisplayName("실종 공고 상세 조회 성공")
     void detailSuccess() throws Exception {
         UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440012");
@@ -146,9 +178,38 @@ class MissingPetControllerTest {
     }
 
     @Test
+    @DisplayName("실종 공고 수정 파일 첨부 성공")
+    void updateWithFilesSuccess() throws Exception {
+        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440014");
+        MissingPetUpdateRequest request = new MissingPetUpdateRequest();
+        request.setTitle("수정된 제목");
+        given(missingPetService.updateMissingPet(eq("notice-1"), anyMap(), anyList())).willReturn(buildDetailResponse(noticeId, "OPEN", 1L));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                "application/json",
+                objectMapper.writeValueAsBytes(request)
+        );
+        MockMultipartFile image1 = new MockMultipartFile("images", "b.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0});
+
+        mockMvc.perform(multipart("/api/missing-pets/{missingPetId}", "notice-1")
+                        .file(requestPart)
+                        .file(image1)
+                        .with(requestBuilder -> {
+                            requestBuilder.setMethod("PATCH");
+                            return requestBuilder;
+                        }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("실종 공고 수정 성공"))
+                .andExpect(jsonPath("$.data.id").value(noticeId.toString()))
+                .andDo(print());
+    }
+
+    @Test
     @DisplayName("실종 공고 상태 변경 성공")
     void changeStatusSuccess() throws Exception {
-        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440014");
+        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440015");
         MissingPetStatusUpdateRequest request = new MissingPetStatusUpdateRequest();
         request.setStatus("RESOLVED");
         given(missingPetService.changeMissingPetStatus("notice-1", "RESOLVED")).willReturn(buildDetailResponse(noticeId, "RESOLVED", 1L));
@@ -165,7 +226,7 @@ class MissingPetControllerTest {
     @Test
     @DisplayName("실종 공고 조회수 증가 성공")
     void increaseViewSuccess() throws Exception {
-        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440015");
+        UUID noticeId = UUID.fromString("550e8400-e29b-41d4-a716-446655440016");
         given(missingPetService.increaseMissingPetView("notice-1")).willReturn(new MissingPetViewResponse(noticeId, 10L));
 
         mockMvc.perform(post("/api/missing-pets/{missingPetId}/view", "notice-1"))

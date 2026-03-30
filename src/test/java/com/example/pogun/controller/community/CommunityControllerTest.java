@@ -25,8 +25,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -39,6 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -49,17 +52,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CommunityControllerTest {
 
     private MockMvc mockMvc;
-    private ObjectMapper objectMapper;
+    private final ObjectMapper testObjectMapper = new ObjectMapper();
 
     @Mock
     private CommunityService communityService;
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private CommunityController communityController;
 
     @BeforeEach
     void setUp() {
-        objectMapper = new ObjectMapper();
+
         mockMvc = MockMvcBuilders.standaloneSetup(communityController).build();
     }
 
@@ -71,7 +76,7 @@ class CommunityControllerTest {
                 .willReturn(new CommunityPostListResponse(
                         1,
                         1,
-                        List.of(new CommunityPostSummaryResponse(postId, "제목", "FREE", List.of("dog"), "작성자", 5L, 3L, Instant.parse("2026-03-20T10:00:00Z")))
+                        List.of(new CommunityPostSummaryResponse(postId, "제목", "https://example.com/thumb.jpg", "FREE", List.of("dog"), "작성자", 5L, 3L, Instant.parse("2026-03-20T10:00:00Z")))
                 ));
 
         mockMvc.perform(get("/api/community/posts")
@@ -82,6 +87,7 @@ class CommunityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("커뮤니티 글 목록 조회 성공"))
                 .andExpect(jsonPath("$.data.items[0].id").value(postId.toString()))
+                .andExpect(jsonPath("$.data.items[0].thumbnailImageUrl").value("https://example.com/thumb.jpg"))
                 .andDo(print());
     }
 
@@ -97,13 +103,39 @@ class CommunityControllerTest {
 
         mockMvc.perform(post("/api/community/posts")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(testObjectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value("커뮤니티 글 생성 성공"))
                 .andExpect(jsonPath("$.data.id").value(postId.toString()))
                 .andDo(print());
     }
 
+    @Test
+    @DisplayName("커뮤니티 글 생성 파일 첨부 성공")
+    void createWithFilesSuccess() throws Exception {
+        UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440031");
+        CommunityPostRequest request = new CommunityPostRequest();
+        request.setTitle("제목");
+        request.setContent("본문");
+        request.setPollOptions(List.of("A", "B"));
+        given(communityService.createPost(any(CommunityPostRequest.class), any())).willReturn(new CommunityPostCreateResponse(postId, "제목", "FREE", List.of("dog")));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                "application/json",
+                testObjectMapper.writeValueAsBytes(request)
+        );
+        MockMultipartFile image1 = new MockMultipartFile("images", "a.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x10, 0x4A, 0x46});
+
+        mockMvc.perform(multipart("/api/community/posts")
+                        .file(requestPart)
+                        .file(image1))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("커뮤니티 글 생성 성공"))
+                .andExpect(jsonPath("$.data.id").value(postId.toString()))
+                .andDo(print());
+    }
     @Test
     @DisplayName("커뮤니티 글 상세 조회 성공")
     void detailSuccess() throws Exception {
@@ -130,6 +162,36 @@ class CommunityControllerTest {
     }
 
     @Test
+    @DisplayName("커뮤니티 글 수정 파일 첨부 성공")
+    void updateWithFilesSuccess() throws Exception {
+        UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440032");
+        CommunityPostUpdateRequest request = new CommunityPostUpdateRequest();
+        request.setTitle("수정 제목");
+        request.setCategory("FREE");
+        request.setTags(List.of("dog"));
+        given(communityService.updatePost(eq("post-1"), any(CommunityPostUpdateRequest.class), any())).willReturn(new CommunityPostUpdateResponse(postId, true, "FREE", List.of("dog")));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                "application/json",
+                testObjectMapper.writeValueAsBytes(request)
+        );
+        MockMultipartFile image1 = new MockMultipartFile("images", "a.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x10, 0x4A, 0x46});
+
+        mockMvc.perform(multipart("/api/community/posts/{postId}", "post-1")
+                        .file(requestPart)
+                        .file(image1)
+                        .with(requestBuilder -> {
+                            requestBuilder.setMethod("PATCH");
+                            return requestBuilder;
+                        }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("커뮤니티 글 수정 성공"))
+                .andExpect(jsonPath("$.data.id").value(postId.toString()))
+                .andDo(print());
+    }
+    @Test
     @DisplayName("커뮤니티 글 수정 성공")
     void updateSuccess() throws Exception {
         UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440023");
@@ -141,7 +203,7 @@ class CommunityControllerTest {
 
         mockMvc.perform(patch("/api/community/posts/{postId}", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(testObjectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("커뮤니티 글 수정 성공"))
                 .andExpect(jsonPath("$.data.id").value(postId.toString()))
@@ -201,7 +263,7 @@ class CommunityControllerTest {
 
         mockMvc.perform(post("/api/community/posts/{postId}/comments", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(testObjectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value("댓글 작성 성공"))
                 .andExpect(jsonPath("$.data.id").value(commentId.toString()))
@@ -218,7 +280,7 @@ class CommunityControllerTest {
 
         mockMvc.perform(post("/api/community/posts/{postId}/votes", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(testObjectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("투표 참여 성공"))
                 .andExpect(jsonPath("$.data.selection").value("option-1"))
@@ -235,13 +297,26 @@ class CommunityControllerTest {
 
         mockMvc.perform(post("/api/community/posts/{postId}/reactions", "post-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(testObjectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("좋아요/반응 처리 성공"))
                 .andExpect(jsonPath("$.data.reaction").value("LIKE"))
                 .andDo(print());
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
