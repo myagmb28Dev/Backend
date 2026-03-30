@@ -17,6 +17,7 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.user.ProfileImageStorageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.util.List;
@@ -54,6 +57,9 @@ class UserServiceTest {
     @Mock
     private UserSocialAccountRepository userSocialAccountRepository;
 
+    @Mock
+    private ProfileImageStorageService profileImageStorageService;
+
     @InjectMocks
     private UserService userService;
 
@@ -79,6 +85,7 @@ class UserServiceTest {
 
         lenient().when(userRepository.findByFirebaseUid("firebase-uid-1")).thenReturn(Optional.of(user));
         lenient().when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(profileImageStorageService.storeProfileImage(any(), any())).thenReturn("/uploads/profile/users/" + user.getId() + "/profile.png");
     }
 
     @AfterEach
@@ -99,6 +106,28 @@ class UserServiceTest {
         assertThat(result.linkedProviders()).isEqualTo(List.of("GOOGLE"));
     }
 
+    @Test
+    @DisplayName("프로필 수정 시 로컬 이미지를 저장한다")
+    void updateProfile_withLocalImage() {
+        given(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user))
+                .willReturn(List.of(UserSocialAccount.builder().provider("GOOGLE").linked(true).build()));
+
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setNickname("새닉네임");
+
+        MultipartFile profileImage = new MockMultipartFile(
+                "profileImage",
+                "profile.png",
+                "image/png",
+                new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+        );
+
+        UserProfileResponse result = userService.updateProfile(request, profileImage);
+
+        assertThat(user.getProfileImageUrl()).isEqualTo("/uploads/profile/users/" + user.getId() + "/profile.png");
+        assertThat(result.profileImageUrl()).isEqualTo("/uploads/profile/users/" + user.getId() + "/profile.png");
+        verify(profileImageStorageService).storeProfileImage(any(), any());
+    }
     @Test
     @DisplayName("프로필 수정 시 변경된 값을 저장한다")
     void updateProfile_updatesUser() {

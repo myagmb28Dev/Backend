@@ -32,7 +32,5 @@ public class CommunityPostUpdateRequest {
     @Schema(description = "태그 목록", example = "[\"강아지\", \"산책\", \"일상\"]")
     private List<String> tags;
 
-    @Schema(description = "이미지 URL 목록", example = "[\"https://.../img1.jpg\", \"https://.../img2.jpg\"]")
-    private List<String> imageUrls;
 }
 

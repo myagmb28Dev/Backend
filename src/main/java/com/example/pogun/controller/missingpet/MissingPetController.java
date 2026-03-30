@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,7 +22,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import java.util.List;
 /**
  * HTTP/WebSocket 진입점을 담당하는 MissingPetController이다.
  */
@@ -59,6 +63,17 @@ public class MissingPetController {
                 .body(ApiResponse.success(HttpStatus.CREATED, "행방불명 공고 생성 성공", data));
     }
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "실종 공고 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 로컬 이미지를 저장합니다.")
+    public ResponseEntity<ApiResponse<MissingPetDetailResponse>> createWithFiles(
+            @Valid @RequestPart("request") MissingPetCreateRequest request,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images
+    ) {
+        MissingPetDetailResponse data = missingPetService.createMissingPet(request.toRequestMap(), images);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED, "행방불명 공고 생성 성공", data));
+    }
+
     @GetMapping("/{missingPetId}")
     @Operation(summary = "실종 공고 상세 조회", description = "실종 동물 공고의 상세 정보를 조회합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> detail(@PathVariable String missingPetId) {
@@ -73,6 +88,17 @@ public class MissingPetController {
             @Valid @RequestBody MissingPetUpdateRequest request
     ) {
         MissingPetDetailResponse data = missingPetService.updateMissingPet(missingPetId, request.toRequestMap());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 수정 성공", data));
+    }
+
+    @PatchMapping(value = "/{missingPetId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "실종 공고 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 로컬 이미지를 수정합니다.")
+    public ResponseEntity<ApiResponse<MissingPetDetailResponse>> updateWithFiles(
+            @PathVariable String missingPetId,
+            @Valid @RequestPart("request") MissingPetUpdateRequest request,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images
+    ) {
+        MissingPetDetailResponse data = missingPetService.updateMissingPet(missingPetId, request.toRequestMap(), images);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 수정 성공", data));
     }
 

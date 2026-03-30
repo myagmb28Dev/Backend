@@ -16,12 +16,15 @@ import com.example.pogun.dto.community.CommunityReactionRequest;
 import com.example.pogun.dto.community.CommunityReactionResponse;
 import com.example.pogun.dto.community.CommunityVoteRequest;
 import com.example.pogun.dto.community.CommunityVoteResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.pogun.service.community.CommunityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +35,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 /**
@@ -45,6 +50,7 @@ import java.util.List;
 public class CommunityController {
 
     private final CommunityService communityService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
     @Operation(summary = "커뮤니티 글 목록 조회", description = "커뮤니티 글 목록을 조회합니다.")
@@ -69,6 +75,17 @@ public class CommunityController {
                 .body(ApiResponse.success(HttpStatus.CREATED, "커뮤니티 글 생성 성공", data));
     }
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "커뮤니티 글 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 로컬 이미지를 저장합니다.")
+    public ResponseEntity<ApiResponse<CommunityPostCreateResponse>> createWithFiles(
+            @RequestPart("request") String request,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images
+    ) {
+        CommunityPostCreateResponse data = communityService.createPost(parseRequest(request, CommunityPostRequest.class), images);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED, "커뮤니티 글 생성 성공", data));
+    }
+
     @GetMapping("/{postId}")
     @Operation(summary = "커뮤니티 글 상세 조회", description = "커뮤니티 글의 상세 정보를 조회합니다.")
     public ResponseEntity<ApiResponse<CommunityPostDetailResponse>> detail(@PathVariable String postId) {
@@ -80,6 +97,17 @@ public class CommunityController {
     @Operation(summary = "커뮤니티 글 수정", description = "커뮤니티 글을 수정합니다.")
     public ResponseEntity<ApiResponse<CommunityPostUpdateResponse>> update(@PathVariable String postId, @Valid @RequestBody CommunityPostUpdateRequest request) {
         CommunityPostUpdateResponse data = communityService.updatePost(postId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 수정 성공", data));
+    }
+
+    @PatchMapping(value = "/{postId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "커뮤니티 글 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 로컬 이미지를 수정합니다.")
+    public ResponseEntity<ApiResponse<CommunityPostUpdateResponse>> updateWithFiles(
+            @PathVariable String postId,
+            @RequestPart("request") String request,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images
+    ) {
+        CommunityPostUpdateResponse data = communityService.updatePost(postId, parseRequest(request, CommunityPostUpdateRequest.class), images);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 수정 성공", data));
     }
 
@@ -126,6 +154,17 @@ public class CommunityController {
         // 반응은 같은 사용자의 기존 값이 있으면 덮어써서 최신 상태만 유지한다.
         CommunityReactionResponse data = communityService.react(postId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요/반응 처리 성공", data));
+    }
+
+    private <T> T parseRequest(String request, Class<T> type) {
+        try {
+            return objectMapper.readValue(request, type);
+        } catch (JsonProcessingException e) {
+            throw com.example.pogun.dto.common.ApiResponse.ApiException.badRequest(
+                    "INVALID_REQUEST_BODY",
+                    "request JSON을 파싱할 수 없습니다."
+            );
+        }
     }
 }
 

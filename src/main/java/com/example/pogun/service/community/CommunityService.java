@@ -38,6 +38,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -57,6 +58,7 @@ public class CommunityService {
     private final CommunityCommentRepository communityCommentRepository;
     private final CommunityPostVoteRepository communityPostVoteRepository;
     private final CommunityPostReactionRepository communityPostReactionRepository;
+    private final CommunityImageStorageService communityImageStorageService;
     private final UserRepository userRepository;
 
     private User getCurrentUser() {
@@ -65,6 +67,7 @@ public class CommunityService {
                 .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
     }
 
+    @Transactional(readOnly = true)
     public CommunityPostListResponse getPostList(String type, String category, String tag, String q, int page, int size) {
         String normalizedCategory = normalizeFilter(category);
         String normalizedTag = normalizeFilter(tag);
@@ -87,6 +90,7 @@ public class CommunityService {
                 .map(post -> new CommunityPostSummaryResponse(
                         post.getId(),
                         post.getTitle(),
+                        resolveThumbnailImageUrl(post),
                         post.getCategory(),
                         List.copyOf(post.getTags()),
                         post.getAuthor().getNickname(),
@@ -101,6 +105,11 @@ public class CommunityService {
 
     @Transactional
     public CommunityPostCreateResponse createPost(CommunityPostRequest request) {
+        return createPost(request, List.of());
+    }
+
+    @Transactional
+    public CommunityPostCreateResponse createPost(CommunityPostRequest request, List<MultipartFile> imageFiles) {
         User author = getCurrentUser();
 
         List<String> pollOptions = normalizePollOptions(request.getPollOptions());
@@ -115,15 +124,7 @@ public class CommunityService {
         post.getTags().addAll(normalizeTags(request.getTags()));
         applyPoll(post, request.getPollQuestion(), pollOptions, false);
 
-        if (request.getImageUrls() != null) {
-            for (int i = 0; i < request.getImageUrls().size(); i++) {
-                post.getImages().add(CommunityPostImage.builder()
-                        .post(post)
-                        .imageUrl(request.getImageUrls().get(i))
-                        .sortOrder(i)
-                        .build());
-            }
-        }
+        attachImages(author.getId(), post, imageFiles, true);
 
         CommunityPost saved = communityPostRepository.save(post);
         return new CommunityPostCreateResponse(saved.getId(), saved.getTitle(), saved.getCategory(), List.copyOf(saved.getTags()));
@@ -157,6 +158,11 @@ public class CommunityService {
 
     @Transactional
     public CommunityPostUpdateResponse updatePost(String postId, CommunityPostUpdateRequest request) {
+        return updatePost(postId, request, List.of());
+    }
+
+    @Transactional
+    public CommunityPostUpdateResponse updatePost(String postId, CommunityPostUpdateRequest request, List<MultipartFile> imageFiles) {
         CommunityPost post = getPost(postId);
 
         User currentUser = getCurrentUser();
@@ -174,16 +180,7 @@ public class CommunityService {
 
         applyPoll(post, request.getPollQuestion(), request.getPollOptions(), true);
 
-        if (request.getImageUrls() != null) {
-            post.getImages().clear();
-            for (int i = 0; i < request.getImageUrls().size(); i++) {
-                post.getImages().add(CommunityPostImage.builder()
-                        .post(post)
-                        .imageUrl(request.getImageUrls().get(i))
-                        .sortOrder(i)
-                        .build());
-            }
-        }
+        attachImages(post.getAuthor().getId(), post, imageFiles, imageFiles != null && !imageFiles.isEmpty());
 
         return new CommunityPostUpdateResponse(post.getId(), true, post.getCategory(), List.copyOf(post.getTags()));
     }
@@ -343,6 +340,13 @@ public class CommunityService {
         return Math.min(Math.max(size, 1), 100);
     }
 
+    private String resolveThumbnailImageUrl(CommunityPost post) {
+        if (post.getImages() == null || post.getImages().isEmpty()) {
+            return null;
+        }
+        return post.getImages().get(0).getImageUrl();
+    }
+
     private List<String> normalizePollOptions(List<String> pollOptions) {
         if (pollOptions == null) {
             return null;
@@ -418,6 +422,27 @@ public class CommunityService {
     private void softDeleteCommentsForPost(CommunityPost post) {
         List<CommunityComment> comments = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL);
         comments.forEach(comment -> comment.setStatus(CommunityCommentStatus.DELETED));
+    }
+
+    private void attachImages(UUID ownerId, CommunityPost post, List<MultipartFile> imageFiles, boolean shouldReplaceImages) {
+        if (!shouldReplaceImages) {
+            return;
+        }
+
+        post.getImages().clear();
+
+        List<String> resolvedImageUrls = new ArrayList<>();
+        if (imageFiles != null && !imageFiles.isEmpty()) {
+            resolvedImageUrls.addAll(communityImageStorageService.storeImages(ownerId, imageFiles));
+        }
+
+        for (int i = 0; i < resolvedImageUrls.size(); i++) {
+            post.getImages().add(CommunityPostImage.builder()
+                    .post(post)
+                    .imageUrl(resolvedImageUrls.get(i))
+                    .sortOrder(i)
+                    .build());
+        }
     }
 
     private CommunityComment getActiveComment(CommunityPost post, UUID commentId) {

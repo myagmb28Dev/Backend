@@ -22,11 +22,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,6 +43,7 @@ public class MissingPetService {
     private final UserRepository userRepository;
     private final NoticeBookmarkRepository noticeBookmarkRepository;
     private final NotificationService notificationService;
+    private final MissingPetImageStorageService missingPetImageStorageService;
 
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
         List<PetNotice> filteredNotices = petNoticeRepository.findNotices(
@@ -67,6 +70,11 @@ public class MissingPetService {
     // 공고 생성 시 작성자 연관과 이미지 정규화를 한 번에 처리하고, 등록 확인 알림도 같은 흐름에서 남긴다.
     @Transactional
     public MissingPetDetailResponse createMissingPet(Map<String, Object> request) {
+        return createMissingPet(request, List.of());
+    }
+
+    @Transactional
+    public MissingPetDetailResponse createMissingPet(Map<String, Object> request, List<MultipartFile> imageFiles) {
         User author = getCurrentUser();
 
         PetNotice notice = PetNotice.builder()
@@ -87,7 +95,7 @@ public class MissingPetService {
                 .hidden(false)
                 .build();
 
-        appendImages(notice, request.get("imageUrls"));
+        attachImages(author.getId(), notice, imageFiles, true);
 
         PetNotice saved = petNoticeRepository.save(notice);
         notificationService.createAndSendNotification(
@@ -109,6 +117,11 @@ public class MissingPetService {
 
     @Transactional
     public MissingPetDetailResponse updateMissingPet(String missingPetId, Map<String, Object> request) {
+        return updateMissingPet(missingPetId, request, List.of());
+    }
+
+    @Transactional
+    public MissingPetDetailResponse updateMissingPet(String missingPetId, Map<String, Object> request, List<MultipartFile> imageFiles) {
         PetNotice notice = getOwnedNotice(missingPetId);
 
         if (request.containsKey("title")) notice.setTitle(requiredString(request, "title"));
@@ -124,10 +137,7 @@ public class MissingPetService {
         if (request.containsKey("rewardAmount")) notice.setRewardAmount(parseInteger(request.get("rewardAmount")));
         if (request.containsKey("contactPhone")) notice.setContactPhone(optionalString(request, "contactPhone"));
         if (request.containsKey("status")) notice.setStatus(parseStatusOrDefault(optionalString(request, "status"), notice.getStatus()));
-        if (request.containsKey("imageUrls")) {
-            notice.getImages().clear();
-            appendImages(notice, request.get("imageUrls"));
-        }
+        attachImages(notice.getAuthor().getId(), notice, imageFiles, imageFiles != null && !imageFiles.isEmpty());
 
         return toNoticeDetail(petNoticeRepository.save(notice));
     }
@@ -240,20 +250,23 @@ public class MissingPetService {
         );
     }
 
-    private void appendImages(PetNotice notice, Object imageUrlsValue) {
-        if (!(imageUrlsValue instanceof List<?> imageUrls)) {
+    private void attachImages(UUID ownerId, PetNotice notice, List<MultipartFile> imageFiles, boolean shouldReplaceImages) {
+        if (!shouldReplaceImages) {
             return;
         }
 
-        for (int i = 0; i < imageUrls.size(); i++) {
-            String imageUrl = String.valueOf(imageUrls.get(i)).trim();
-            if (!imageUrl.isEmpty()) {
-                notice.getImages().add(PetNoticeImage.builder()
-                        .notice(notice)
-                        .imageUrl(imageUrl)
-                        .sortOrder(i)
-                        .build());
-            }
+        notice.getImages().clear();
+        List<String> resolvedImageUrls = new ArrayList<>();
+        if (imageFiles != null && !imageFiles.isEmpty()) {
+            resolvedImageUrls.addAll(missingPetImageStorageService.storeImages(ownerId, imageFiles));
+        }
+
+        for (int i = 0; i < resolvedImageUrls.size(); i++) {
+            notice.getImages().add(PetNoticeImage.builder()
+                    .notice(notice)
+                    .imageUrl(resolvedImageUrls.get(i))
+                    .sortOrder(i)
+                    .build());
         }
     }
 

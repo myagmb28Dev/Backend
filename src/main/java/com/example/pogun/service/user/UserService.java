@@ -15,6 +15,8 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import org.springframework.web.multipart.MultipartFile;
+import com.example.pogun.service.user.ProfileImageStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class UserService {
     private final PetNoticeRepository petNoticeRepository;
     private final CommunityPostRepository communityPostRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
+    private final ProfileImageStorageService profileImageStorageService;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -45,6 +48,10 @@ public class UserService {
     }
 
     public UserProfileResponse updateProfile(UpdateProfileRequest request) {
+        return updateProfile(request, null);
+    }
+
+    public UserProfileResponse updateProfile(UpdateProfileRequest request, MultipartFile profileImage) {
         User user = getCurrentUser();
 
         if (request.getNickname() != null && !request.getNickname().isBlank()) {
@@ -53,7 +60,9 @@ public class UserService {
         if (request.getPhoneNumber() != null) {
             user.setPhoneNumber(request.getPhoneNumber().trim());
         }
-        if (request.getProfileImageUrl() != null) {
+        if (profileImage != null && !profileImage.isEmpty()) {
+            user.setProfileImageUrl(profileImageStorageService.storeProfileImage(user.getId(), profileImage));
+        } else if (request.getProfileImageUrl() != null) {
             user.setProfileImageUrl(request.getProfileImageUrl().trim());
         }
 

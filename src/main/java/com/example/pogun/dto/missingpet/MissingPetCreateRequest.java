@@ -7,7 +7,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 /**
  * API 요청/응답 데이터 전송 객체인 MissingPetCreateRequest이다.
@@ -62,9 +61,6 @@ public class MissingPetCreateRequest {
     @Schema(description = "공고 상태", example = "OPEN")
     private String status;
 
-    @Schema(description = "이미지 URL 목록")
-    private List<String> imageUrls;
-
     public Map<String, Object> toRequestMap() {
         Map<String, Object> request = new LinkedHashMap<>();
         putIfNotNull(request, "title", title);
@@ -80,9 +76,6 @@ public class MissingPetCreateRequest {
         putIfNotNull(request, "rewardAmount", rewardAmount);
         putIfNotNull(request, "contactPhone", contactPhone);
         putIfNotNull(request, "status", status);
-        if (imageUrls != null) {
-            request.put("imageUrls", imageUrls);
-        }
         return request;
     }
 

@@ -13,6 +13,7 @@ import java.util.UUID;
 public record CommunityPostSummaryResponse(
         UUID id,
         String title,
+        String thumbnailImageUrl,
         String category,
         List<String> tags,
         String authorNickname,
