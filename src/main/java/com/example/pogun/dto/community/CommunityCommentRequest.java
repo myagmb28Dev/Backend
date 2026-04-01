@@ -2,6 +2,7 @@ package com.example.pogun.dto.community;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 @Schema(description = "댓글 작성 요청")
 public class CommunityCommentRequest {
     @NotBlank
+    @Size(max = 2000)
     @Schema(description = "댓글 내용", example = "저도 근처에서 본 것 같아요.")
     private String content;
 

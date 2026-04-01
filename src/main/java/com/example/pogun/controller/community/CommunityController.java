@@ -156,6 +156,22 @@ public class CommunityController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요/반응 처리 성공", data));
     }
 
+    @PostMapping("/{postId}/likes")
+    @Operation(summary = "좋아요 추가", description = "지정된 글에 좋아요 반응을 추가합니다.")
+    public ResponseEntity<ApiResponse<CommunityReactionResponse>> like(@PathVariable String postId) {
+        CommunityReactionRequest request = new CommunityReactionRequest();
+        request.setReaction("LIKE");
+        CommunityReactionResponse data = communityService.react(postId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요 추가 성공", data));
+    }
+
+    @DeleteMapping("/{postId}/likes")
+    @Operation(summary = "좋아요 취소", description = "지정된 글의 좋아요 반응을 취소합니다.")
+    public ResponseEntity<ApiResponse<CommunityReactionResponse>> unlike(@PathVariable String postId) {
+        CommunityReactionResponse data = communityService.unlike(postId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요 취소 성공", data));
+    }
+
     private <T> T parseRequest(String request, Class<T> type) {
         try {
             return objectMapper.readValue(request, type);

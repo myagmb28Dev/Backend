@@ -1,5 +1,6 @@
 package com.example.pogun.integration.community;
 
+import com.example.pogun.controller.common.GlobalExceptionHandler;
 import com.example.pogun.controller.community.CommunityController;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.community.CommunityPostImage;
@@ -134,16 +135,72 @@ class CommunityListApiIntegrationTest {
         assertThat(extractIds(page0Items)).doesNotContainAnyElementsOf(extractIds(page1Items));
     }
 
+    @Test
+    @DisplayName("커뮤니티 목록 API 시나리오: 카테고리/태그/제목본문검색")
+    void communityListFilterAndSearchScenario() throws Exception {
+        User author = userRepository.save(User.builder()
+                .firebaseUid("integration-uid-2")
+                .email("integration-user2@example.com")
+                .nickname("통합테스터2")
+                .authProvider("GOOGLE")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        savePost(author, "강아지 산책 팁", "산책 본문", CommunityPostStatus.ACTIVE, 10L, 1L, List.of(), List.of("dog", "walk"), "TIP");
+        savePost(author, "고양이 질문", "사료 추천 질문", CommunityPostStatus.ACTIVE, 8L, 0L, List.of(), List.of("cat", "food"), "QUESTION");
+        savePost(author, "강아지 일상", "귀여운 강아지 사진", CommunityPostStatus.ACTIVE, 7L, 0L, List.of(), List.of("dog", "daily"), "FREE");
+
+        HttpResponse<String> categoryResponse = get("/api/community/posts?type=LATEST&category=QUESTION&page=0&size=20");
+        assertThat(categoryResponse.statusCode()).isEqualTo(HttpStatus.OK.value());
+        JsonNode categoryItems = objectMapper.readTree(categoryResponse.body()).path("data").path("items");
+        assertThat(categoryItems).hasSize(1);
+        assertThat(categoryItems.get(0).path("category").asText()).isEqualTo("QUESTION");
+
+        HttpResponse<String> tagResponse = get("/api/community/posts?type=LATEST&tag=dog&page=0&size=20");
+        assertThat(tagResponse.statusCode()).isEqualTo(HttpStatus.OK.value());
+        JsonNode tagItems = objectMapper.readTree(tagResponse.body()).path("data").path("items");
+        assertThat(tagItems).hasSize(2);
+        assertThat(extractTitles(tagItems)).contains("강아지 산책 팁", "강아지 일상");
+
+        HttpResponse<String> searchResponse = get("/api/community/posts?type=LATEST&q=사료&page=0&size=20");
+        assertThat(searchResponse.statusCode()).isEqualTo(HttpStatus.OK.value());
+        JsonNode searchItems = objectMapper.readTree(searchResponse.body()).path("data").path("items");
+        assertThat(searchItems).hasSize(1);
+        assertThat(searchItems.get(0).path("title").asText()).isEqualTo("고양이 질문");
+    }
+
+    @Test
+    @DisplayName("커뮤니티 목록 API 시나리오: 잘못된 입력은 400")
+    void communityListRejectsInvalidInputs() throws Exception {
+        HttpResponse<String> invalidType = get("/api/community/posts?type=INVALID&page=0&size=20");
+        assertThat(invalidType.statusCode()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+
+        HttpResponse<String> invalidCategory = get("/api/community/posts?type=LATEST&category=UNKNOWN&page=0&size=20");
+        assertThat(invalidCategory.statusCode()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+
+        HttpResponse<String> invalidPage = get("/api/community/posts?type=LATEST&page=-1&size=20");
+        assertThat(invalidPage.statusCode()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+
+        HttpResponse<String> invalidSize = get("/api/community/posts?type=LATEST&page=0&size=0");
+        assertThat(invalidSize.statusCode()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    }
+
     private CommunityPost savePost(User author, String title, CommunityPostStatus status, long viewCount, long likeCount, List<String> imageUrls) {
+        return savePost(author, title, "테스트 본문 - " + title, status, viewCount, likeCount, imageUrls, List.of(), "FREE");
+    }
+
+    private CommunityPost savePost(User author, String title, String content, CommunityPostStatus status, long viewCount, long likeCount, List<String> imageUrls, List<String> tags, String category) {
         CommunityPost post = CommunityPost.builder()
                 .author(author)
                 .title(title)
-                .content("테스트 본문 - " + title)
-                .category("FREE")
+                .content(content)
+                .category(category)
                 .status(status)
                 .viewCount(viewCount)
                 .likeCount(likeCount)
                 .build();
+        post.getTags().addAll(tags);
         for (int i = 0; i < imageUrls.size(); i++) {
             post.getImages().add(CommunityPostImage.builder()
                     .post(post)
@@ -185,6 +242,7 @@ class CommunityListApiIntegrationTest {
     @Import({
             CommunityController.class,
             CommunityService.class,
+            GlobalExceptionHandler.class,
             TestBeans.class
     })
     static class TestApplication {
@@ -210,6 +268,10 @@ class CommunityListApiIntegrationTest {
         }
     }
 }
+
+
+
+
 
 
 

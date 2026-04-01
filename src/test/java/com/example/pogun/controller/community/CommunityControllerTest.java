@@ -64,7 +64,6 @@ class CommunityControllerTest {
 
     @BeforeEach
     void setUp() {
-
         mockMvc = MockMvcBuilders.standaloneSetup(communityController).build();
     }
 
@@ -136,17 +135,21 @@ class CommunityControllerTest {
                 .andExpect(jsonPath("$.data.id").value(postId.toString()))
                 .andDo(print());
     }
+
     @Test
     @DisplayName("커뮤니티 글 상세 조회 성공")
     void detailSuccess() throws Exception {
         UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440022");
+        UUID authorId = UUID.fromString("550e8400-e29b-41d4-a716-446655440088");
         given(communityService.getPostDetail("post-1")).willReturn(new CommunityPostDetailResponse(
                 postId,
                 "제목",
                 "본문",
                 "FREE",
                 List.of("dog"),
+                authorId,
                 "작성자",
+                "https://example.com/profile.png",
                 10L,
                 4L,
                 Instant.parse("2026-03-20T10:00:00Z"),
@@ -158,6 +161,8 @@ class CommunityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("커뮤니티 글 상세 조회 성공"))
                 .andExpect(jsonPath("$.data.id").value(postId.toString()))
+                .andExpect(jsonPath("$.data.authorId").value(authorId.toString()))
+                .andExpect(jsonPath("$.data.authorProfileImageUrl").value("https://example.com/profile.png"))
                 .andDo(print());
     }
 
@@ -191,6 +196,7 @@ class CommunityControllerTest {
                 .andExpect(jsonPath("$.data.id").value(postId.toString()))
                 .andDo(print());
     }
+
     @Test
     @DisplayName("커뮤니티 글 수정 성공")
     void updateSuccess() throws Exception {
@@ -303,20 +309,32 @@ class CommunityControllerTest {
                 .andExpect(jsonPath("$.data.reaction").value("LIKE"))
                 .andDo(print());
     }
+
+    @Test
+    @DisplayName("좋아요 추가 성공")
+    void likeSuccess() throws Exception {
+        UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440055");
+        given(communityService.react(eq("post-1"), any(CommunityReactionRequest.class)))
+                .willReturn(new CommunityReactionResponse(postId, "LIKE", "좋아요/반응 처리 성공"));
+
+        mockMvc.perform(post("/api/community/posts/{postId}/likes", "post-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("좋아요 추가 성공"))
+                .andExpect(jsonPath("$.data.reaction").value("LIKE"))
+                .andDo(print());
+    }
+
+    @Test
+    @DisplayName("좋아요 취소 성공")
+    void unlikeSuccess() throws Exception {
+        UUID postId = UUID.fromString("550e8400-e29b-41d4-a716-446655440056");
+        given(communityService.unlike("post-1"))
+                .willReturn(new CommunityReactionResponse(postId, "NONE", "좋아요 취소 처리 성공"));
+
+        mockMvc.perform(delete("/api/community/posts/{postId}/likes", "post-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("좋아요 취소 성공"))
+                .andExpect(jsonPath("$.data.reaction").value("NONE"))
+                .andDo(print());
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

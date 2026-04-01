@@ -1,14 +1,15 @@
 package com.example.pogun.service.community;
 
-import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
+import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
 import com.example.pogun.dto.community.CommunityPostRequest;
 import com.example.pogun.dto.community.CommunityPostUpdateRequest;
 import com.example.pogun.entity.community.CommunityComment;
-import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.community.CommunityPostImage;
+import com.example.pogun.entity.community.CommunityPostReaction;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
@@ -18,7 +19,6 @@ import com.example.pogun.repository.community.CommunityPostReactionRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.user.UserRepository;
-import com.example.pogun.service.community.CommunityImageStorageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,10 +29,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -112,6 +113,56 @@ class CommunityServiceTest {
     }
 
     @Test
+    void getPostList_defaultsToLatestSort() {
+        User author = user("작성자");
+        CommunityPost post = CommunityPost.builder()
+                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440042"))
+                .author(author)
+                .title("제목")
+                .content("본문")
+                .category("FREE")
+                .status(CommunityPostStatus.ACTIVE)
+                .build();
+        given(communityPostRepository.findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(post)));
+
+        communityService.getPostList("LATEST", "FREE", "dog", "검색", 0, 20);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(communityPostRepository).findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), pageableCaptor.capture());
+        Pageable pageable = pageableCaptor.getValue();
+        assertThat(pageable.getSort().getOrderFor("createdAt")).isNotNull();
+    }
+
+    @Test
+    void getPostList_rejectsInvalidSortType() {
+        assertThatThrownBy(() -> communityService.getPostList("RANDOM", null, null, null, 0, 20))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("정렬 타입은 LATEST 또는 POPULAR");
+    }
+
+    @Test
+    void getPostList_rejectsNegativePage() {
+        assertThatThrownBy(() -> communityService.getPostList("LATEST", null, null, null, -1, 20))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("page는 0 이상");
+    }
+
+    @Test
+    void getPostList_rejectsInvalidSize() {
+        assertThatThrownBy(() -> communityService.getPostList("LATEST", null, null, null, 0, 0))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("size는 1 이상 100 이하");
+    }
+
+    @Test
+    void getPostList_rejectsInvalidCategoryFilter() {
+        assertThatThrownBy(() -> communityService.getPostList("LATEST", "UNKNOWN", null, null, 0, 20))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("지원하지 않는 카테고리");
+    }
+
+    @Test
     void updatePost_allowsPartialUpdateWithoutClearingOtherFields() {
         User author = user("작성자");
         CommunityPost post = CommunityPost.builder()
@@ -143,6 +194,28 @@ class CommunityServiceTest {
     }
 
     @Test
+    void updatePost_rejectsHiddenPost() {
+        User author = user("작성자");
+        CommunityPost post = CommunityPost.builder()
+                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440045"))
+                .author(author)
+                .title("제목")
+                .content("본문")
+                .category("FREE")
+                .status(CommunityPostStatus.HIDDEN)
+                .build();
+
+        given(communityPostRepository.findById(post.getId())).willReturn(Optional.of(post));
+
+        CommunityPostUpdateRequest request = new CommunityPostUpdateRequest();
+        request.setTitle("새 제목");
+
+        assertThatThrownBy(() -> communityService.updatePost(post.getId().toString(), request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("게시글을 찾을 수 없습니다.");
+    }
+
+    @Test
     void createPost_rejectsInvalidPollConfiguration() {
         User author = user("작성자");
         given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
@@ -165,9 +238,13 @@ class CommunityServiceTest {
     void createPost_storesLocalImages() {
         User author = user("작성자");
         given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
-        given(communityImageStorageService.storeImages(eq(author.getId()), any())).willReturn(List.of("/uploads/community/posts/" + author.getId() + "/a.jpg", "/uploads/community/posts/" + author.getId() + "/b.jpg"));
-        given(communityPostRepository.save(any(CommunityPost.class))).willAnswer(invocation -> { CommunityPost post = invocation.getArgument(0); post.setId(UUID.randomUUID()); return post; });
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
+        given(communityImageStorageService.storeImages(eq(author.getId()), any())).willReturn(List.of("/uploads/community/posts/" + author.getId() + "/a.jpg", "/uploads/community/posts/" + author.getId() + "/b.jpg"));
+        given(communityPostRepository.save(any(CommunityPost.class))).willAnswer(invocation -> {
+            CommunityPost post = invocation.getArgument(0);
+            post.setId(UUID.randomUUID());
+            return post;
+        });
 
         CommunityPostRequest request = new CommunityPostRequest();
         request.setTitle("제목");
@@ -180,10 +257,10 @@ class CommunityServiceTest {
 
         assertThat(result.id()).isNotNull();
         assertThat(result.title()).isEqualTo("제목");
-        assertThat(communityImageStorageService).isNotNull();
         verify(communityImageStorageService).storeImages(eq(author.getId()), any());
         verify(communityPostRepository).save(any(CommunityPost.class));
     }
+
     @Test
     void deletePost_marksPostAndCommentsAsDeleted() {
         User author = user("작성자");
@@ -205,9 +282,9 @@ class CommunityServiceTest {
 
         given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
         given(communityPostRepository.findById(post.getId())).willReturn(Optional.of(post));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
         given(communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL)).willReturn(List.of(comment));
         given(communityPostRepository.save(post)).willReturn(post);
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
 
         var result = communityService.deletePost(post.getId().toString());
 
@@ -238,10 +315,10 @@ class CommunityServiceTest {
 
         given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
         given(communityPostRepository.findById(post.getId())).willReturn(Optional.of(post));
-        given(communityCommentRepository.findById(comment.getId())).willReturn(Optional.of(comment));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
+        given(communityCommentRepository.findById(comment.getId())).willReturn(Optional.of(comment));
 
-        var result = communityService.deleteComment(post.getId().toString(), comment.getId().toString());
+        CommunityCommentDeleteResponse result = communityService.deleteComment(post.getId().toString(), comment.getId().toString());
 
         assertThat(comment.getStatus()).isEqualTo(CommunityCommentStatus.DELETED);
         assertThat(result.deleted()).isTrue();
@@ -277,9 +354,9 @@ class CommunityServiceTest {
 
         given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
         given(communityPostRepository.findById(post.getId())).willReturn(Optional.of(post));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
         given(communityCommentRepository.findById(parent.getId())).willReturn(Optional.of(parent));
         given(communityCommentRepository.save(any(CommunityComment.class))).willReturn(saved);
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
 
         CommunityCommentRequest request = new CommunityCommentRequest();
         request.setContent("대댓글");
@@ -330,26 +407,36 @@ class CommunityServiceTest {
     }
 
     @Test
-    void getPostList_defaultsToLatestSort() {
+    void unlike_removesLikeReactionAndDecrementsLikeCount() {
         User author = user("작성자");
         CommunityPost post = CommunityPost.builder()
-                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440042"))
+                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440043"))
                 .author(author)
                 .title("제목")
                 .content("본문")
                 .category("FREE")
                 .status(CommunityPostStatus.ACTIVE)
+                .likeCount(5L)
                 .build();
-        given(communityPostRepository.findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), any(Pageable.class)))
-                .willReturn(new PageImpl<>(List.of(post)));
+        CommunityPostReaction reaction = CommunityPostReaction.builder()
+                .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440044"))
+                .post(post)
+                .user(author)
+                .reactionType("LIKE")
+                .build();
 
-        communityService.getPostList("LATEST", "FREE", "dog", "검색", 0, 20);
+        given(userRepository.findByFirebaseUid("firebase-uid")).willReturn(Optional.of(author));
+        given(communityPostRepository.findById(post.getId())).willReturn(Optional.of(post));
+        given(communityPostReactionRepository.findByPostAndUser(post, author)).willReturn(Optional.of(reaction));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("firebase-uid", "N/A"));
 
-        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(communityPostRepository).findPosts(eq(CommunityPostStatus.ACTIVE), eq("FREE"), eq("dog"), eq("검색"), pageableCaptor.capture());
-        Pageable pageable = pageableCaptor.getValue();
-        assertThat(pageable.getSort().getOrderFor("createdAt")).isNotNull();
+        var result = communityService.unlike(post.getId().toString());
+
+        assertThat(result.reaction()).isEqualTo("NONE");
+        assertThat(post.getLikeCount()).isEqualTo(4L);
+        verify(communityPostReactionRepository).delete(reaction);
     }
+
     private User user(String nickname) {
         return User.builder()
                 .id(UUID.fromString("550e8400-e29b-41d4-a716-446655440099"))
@@ -361,16 +448,4 @@ class CommunityServiceTest {
                 .build();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
