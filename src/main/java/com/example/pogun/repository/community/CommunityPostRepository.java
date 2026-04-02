@@ -5,6 +5,7 @@ import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -23,32 +24,32 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
             SELECT DISTINCT p
             FROM CommunityPost p
             LEFT JOIN p.tags tag
-            WHERE (:status IS NULL OR p.status = :status)
-              AND (:category IS NULL OR LOWER(p.category) = LOWER(:category))
-              AND (:tag IS NULL OR LOWER(tag) = LOWER(:tag))
+            WHERE p.status = :status
+              AND (:category = '' OR LOWER(p.category) = :category)
+              AND (:tag = '' OR LOWER(tag) = :tag)
               AND (
-                    :q IS NULL
-                    OR LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.content) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.category) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(tag) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.author.nickname) LIKE LOWER(CONCAT('%', :q, '%'))
+                    :q = ''
+                    OR LOWER(p.title) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.content) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.category) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(tag) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.author.nickname) LIKE CONCAT('%', :q, '%')
               )
             """,
             countQuery = """
             SELECT COUNT(DISTINCT p)
             FROM CommunityPost p
             LEFT JOIN p.tags tag
-            WHERE (:status IS NULL OR p.status = :status)
-              AND (:category IS NULL OR LOWER(p.category) = LOWER(:category))
-              AND (:tag IS NULL OR LOWER(tag) = LOWER(:tag))
+            WHERE p.status = :status
+              AND (:category = '' OR LOWER(p.category) = :category)
+              AND (:tag = '' OR LOWER(tag) = :tag)
               AND (
-                    :q IS NULL
-                    OR LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.content) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.category) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(tag) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.author.nickname) LIKE LOWER(CONCAT('%', :q, '%'))
+                    :q = ''
+                    OR LOWER(p.title) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.content) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.category) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(tag) LIKE CONCAT('%', :q, '%')
+                    OR LOWER(p.author.nickname) LIKE CONCAT('%', :q, '%')
               )
             """)
     Page<CommunityPost> findPosts(@Param("status") CommunityPostStatus status,
@@ -62,5 +63,16 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     List<CommunityPost> findByStatusAndUpdatedAtBefore(CommunityPostStatus status, Instant updatedAt);
 
     long countByStatus(CommunityPostStatus status);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE CommunityPost p
+            SET p.likeCount = CASE
+                    WHEN COALESCE(p.likeCount, 0) + :delta < 0 THEN 0
+                    ELSE COALESCE(p.likeCount, 0) + :delta
+                END
+            WHERE p.id = :postId
+            """)
+    int adjustLikeCount(@Param("postId") UUID postId, @Param("delta") long delta);
 }
 

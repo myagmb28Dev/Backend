@@ -75,8 +75,8 @@ public class CommunityService {
     public CommunityPostListResponse getPostList(String type, String category, String tag, String q, int page, int size) {
         String normalizedType = normalizeSortType(type);
         String normalizedCategory = normalizeCategoryFilter(category);
-        String normalizedTag = normalizeFilter(tag);
-        String normalizedQuery = normalizeFilter(q);
+        String normalizedTag = normalizeSearchFilter(tag);
+        String normalizedQuery = normalizeSearchFilter(q);
         validatePageAndSize(page, size);
 
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
@@ -257,7 +257,7 @@ public class CommunityService {
     public CommunityVoteResponse vote(String postId, CommunityVoteRequest request) {
         CommunityPost post = getActivePost(postId);
         User user = getCurrentUser();
-        String selection = normalizeSelection(request.getOption());
+        String selection = normalizeVoteSelection(request.getOption());
         validatePollVote(post, selection);
 
         CommunityPostVote vote = communityPostVoteRepository.findByPostAndUser(post, user)
@@ -275,7 +275,7 @@ public class CommunityService {
     public CommunityReactionResponse react(String postId, CommunityReactionRequest request) {
         CommunityPost post = getActivePost(postId);
         User user = getCurrentUser();
-        String reaction = normalizeSelection(request.getReaction());
+        String reaction = normalizeReaction(request.getReaction());
 
         CommunityPostReaction postReaction = communityPostReactionRepository.findByPostAndUser(post, user)
                 .orElseGet(() -> CommunityPostReaction.builder()
@@ -286,7 +286,10 @@ public class CommunityService {
         String previousReaction = postReaction.getReactionType();
         postReaction.setReactionType(reaction);
         communityPostReactionRepository.save(postReaction);
-        updateLikeCount(post, previousReaction, reaction);
+        long likeCountDelta = resolveLikeCountDelta(previousReaction, reaction);
+        if (likeCountDelta != 0L) {
+            communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+        }
 
         return new CommunityReactionResponse(post.getId(), reaction, "좋아요/반응 처리 성공");
     }
@@ -301,7 +304,10 @@ public class CommunityService {
             return new CommunityReactionResponse(post.getId(), "NONE", "좋아요 취소 처리 성공");
         }
 
-        updateLikeCount(post, postReaction.getReactionType(), "NONE");
+        long likeCountDelta = resolveLikeCountDelta(postReaction.getReactionType(), "NONE");
+        if (likeCountDelta != 0L) {
+            communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+        }
         communityPostReactionRepository.delete(postReaction);
         return new CommunityReactionResponse(post.getId(), "NONE", "좋아요 취소 처리 성공");
     }
@@ -335,6 +341,11 @@ public class CommunityService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private String normalizeSearchFilter(String value) {
+        String normalized = normalizeFilter(value);
+        return normalized == null ? "" : normalized.toLowerCase(Locale.ROOT);
+    }
+
     private String normalizeCategory(String category) {
         if (category == null) {
             return "FREE";
@@ -361,11 +372,16 @@ public class CommunityService {
                 .toList();
     }
 
-    private String normalizeSelection(String value) {
+    private String normalizeVoteSelection(String value) {
         String normalized = normalizeFilter(value);
         if (normalized == null) {
             throw ApiException.badRequest("INVALID_SELECTION", "선택 값은 필수입니다.");
         }
+        return normalized;
+    }
+
+    private String normalizeReaction(String value) {
+        String normalized = normalizeVoteSelection(value);
         String upper = normalized.toUpperCase(Locale.ROOT);
         if (!ALLOWED_REACTIONS.contains(upper)) {
             throw ApiException.badRequest("INVALID_REACTION", "지원하지 않는 반응 타입입니다.");
@@ -390,7 +406,7 @@ public class CommunityService {
 
     private String normalizeCategoryFilter(String category) {
         if (category == null) {
-            return null;
+            return "";
         }
         String normalized = normalizeFilter(category);
         if (normalized == null) {
@@ -400,7 +416,7 @@ public class CommunityService {
         if (!ALLOWED_CATEGORIES.contains(upper)) {
             throw ApiException.badRequest("INVALID_CATEGORY", "지원하지 않는 카테고리입니다.");
         }
-        return upper;
+        return upper.toLowerCase(Locale.ROOT);
     }
 
     private void validatePageAndSize(int page, int size) {
@@ -476,15 +492,13 @@ public class CommunityService {
         }
     }
 
-    private void updateLikeCount(CommunityPost post, String previousReaction, String currentReaction) {
+    private long resolveLikeCountDelta(String previousReaction, String currentReaction) {
         boolean wasLike = isLikeReaction(previousReaction);
         boolean isLike = isLikeReaction(currentReaction);
         if (wasLike == isLike) {
-            return;
+            return 0L;
         }
-        long nextLikeCount = post.getLikeCount() == null ? 0L : post.getLikeCount();
-        nextLikeCount += isLike ? 1L : -1L;
-        post.setLikeCount(Math.max(0L, nextLikeCount));
+        return isLike ? 1L : -1L;
     }
 
     private boolean isLikeReaction(String reactionType) {

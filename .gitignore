@@ -12,6 +12,10 @@ build/
 docs/
 .local/
 firebase-debug.log
+.playwright-cli/
+node_modules/
+playwright/test-results/
+playwright/playwright-report/
 
 
 ### resources secrets ###
