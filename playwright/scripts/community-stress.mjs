@@ -7,7 +7,6 @@ const AUTH_EMULATOR_HOST = process.env.AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
 const PASSWORD = process.env.STRESS_USER_PASSWORD ?? 'Test1234!';
 const USER_COUNT = Number(process.env.STRESS_USER_COUNT ?? '8');
 const REPORT_PATH = path.join(process.cwd(), '.local', 'community-stress-report.json');
-const FORCE_5XX_HEADER = 'X-Community-Test-Force-5xx';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -102,13 +101,13 @@ async function buildUsers() {
   return users;
 }
 
-async function api(token, pathname, init = {}, { force5xx = false } = {}) {
+async function api(token, pathname, init = {}) {
   return request(`${BASE_URL}${pathname}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...(force5xx ? { [FORCE_5XX_HEADER]: 'true' } : {}),
+
       ...(init.headers ?? {})
     }
   });
@@ -418,7 +417,7 @@ async function runErrorMixScenario(users) {
     } else if (index % 3 === 1) {
       tasks.push(() => api(user.token, '/api/community/posts?page=oops'));
     } else {
-      tasks.push(() => api(user.token, '/api/community/posts', {}, { force5xx: true }));
+      tasks.push(() => api(user.token, '/api/community/posts/not-a-uuid'));
     }
   }
 
