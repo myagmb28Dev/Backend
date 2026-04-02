@@ -69,9 +69,9 @@ public class CommunityService {
 
     @Transactional(readOnly = true)
     public CommunityPostListResponse getPostList(String type, String category, String tag, String q, int page, int size) {
-        String normalizedCategory = normalizeFilter(category);
-        String normalizedTag = normalizeFilter(tag);
-        String normalizedQuery = normalizeFilter(q);
+        String normalizedCategory = normalizeSearchFilter(category);
+        String normalizedTag = normalizeSearchFilter(tag);
+        String normalizedQuery = normalizeSearchFilter(q);
 
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
         if ("POPULAR".equalsIgnoreCase(type)) {
@@ -278,7 +278,10 @@ public class CommunityService {
         String previousReaction = postReaction.getReactionType();
         postReaction.setReactionType(reaction);
         communityPostReactionRepository.save(postReaction);
-        updateLikeCount(post, previousReaction, reaction);
+        long likeCountDelta = resolveLikeCountDelta(previousReaction, reaction);
+        if (likeCountDelta != 0L) {
+            communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+        }
 
         return new CommunityReactionResponse(post.getId(), reaction, "좋아요/반응 처리 성공");
     }
@@ -310,6 +313,11 @@ public class CommunityService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeSearchFilter(String value) {
+        String normalized = normalizeFilter(value);
+        return normalized == null ? "" : normalized.toLowerCase(Locale.ROOT);
     }
 
     private String normalizeCategory(String category) {
@@ -404,15 +412,13 @@ public class CommunityService {
         }
     }
 
-    private void updateLikeCount(CommunityPost post, String previousReaction, String currentReaction) {
+    private long resolveLikeCountDelta(String previousReaction, String currentReaction) {
         boolean wasLike = isLikeReaction(previousReaction);
         boolean isLike = isLikeReaction(currentReaction);
         if (wasLike == isLike) {
-            return;
+            return 0L;
         }
-        long nextLikeCount = post.getLikeCount() == null ? 0L : post.getLikeCount();
-        nextLikeCount += isLike ? 1L : -1L;
-        post.setLikeCount(Math.max(0L, nextLikeCount));
+        return isLike ? 1L : -1L;
     }
 
     private boolean isLikeReaction(String reactionType) {

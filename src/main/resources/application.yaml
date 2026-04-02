@@ -31,6 +31,8 @@ spring:
 app:
   upload:
     root: uploads
+  community:
+    test-force-5xx-enabled: ${COMMUNITY_TEST_FORCE_5XX_ENABLED:false}
 
 decorator:
   datasource:

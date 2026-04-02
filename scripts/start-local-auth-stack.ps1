@@ -196,6 +196,7 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
         "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
         "`$env:GCLOUD_PROJECT = '$ProjectId'",
         "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
+        "`$env:COMMUNITY_TEST_FORCE_5XX_ENABLED = 'true'",
         "& '.\\gradlew.bat' bootRun"
     ) -join "; "
 
