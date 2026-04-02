@@ -2,6 +2,7 @@ package com.example.pogun.dto.community;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 /**
@@ -13,6 +14,7 @@ import lombok.Setter;
 @Schema(description = "커뮤니티 반응 요청")
 public class CommunityReactionRequest {
     @NotBlank
+    @Pattern(regexp = "^(?i)(LIKE|LOVE|HAHA|WOW|SAD|ANGRY)$", message = "reaction은 LIKE, LOVE, HAHA, WOW, SAD, ANGRY 중 하나여야 합니다.")
     @Schema(description = "반응 타입", example = "LIKE")
     private String reaction;
 }
