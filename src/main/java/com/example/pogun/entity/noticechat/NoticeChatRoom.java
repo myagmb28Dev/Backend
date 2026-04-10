@@ -1,6 +1,7 @@
 package com.example.pogun.entity.noticechat;
 
 import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import jakarta.persistence.Column;
@@ -15,7 +16,6 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,9 +36,6 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "notice_chat_rooms",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "uk_notice_chat_rooms_notice_owner_guest", columnNames = {"notice_id", "owner_user_id", "guest_user_id"})
-        },
         indexes = {
                 @Index(name = "idx_notice_chat_rooms_notice", columnList = "notice_id"),
                 @Index(name = "idx_notice_chat_rooms_owner", columnList = "owner_user_id"),
@@ -82,6 +79,13 @@ public class NoticeChatRoom {
 
     @Column(name = "last_message_at")
     private Instant lastMessageAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "last_message_type", length = 20)
+    private NoticeChatMessageType lastMessageType;
+
+    @Column(name = "last_message_preview", length = 200)
+    private String lastMessagePreview;
 }
 
 

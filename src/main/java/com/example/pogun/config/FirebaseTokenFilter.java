@@ -2,8 +2,7 @@ package com.example.pogun.config;
 
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.repository.user.UserRepository;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseToken;
+import com.example.pogun.service.auth.FirebaseIdentityService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +25,7 @@ import java.util.List;
 public class
 FirebaseTokenFilter extends OncePerRequestFilter {
 
-    private final FirebaseAuth firebaseAuth;
+    private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final ApiErrorResponseWriter apiErrorResponseWriter;
 
@@ -41,8 +40,7 @@ FirebaseTokenFilter extends OncePerRequestFilter {
 
             try {
                 // revoke 여부까지 함께 검사해 로그아웃된 토큰이 보호 API를 다시 통과하지 못하게 한다.
-                FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken, true);
-                String uid = decodedToken.getUid();
+                String uid = firebaseIdentityService.verifyIdToken(idToken, true).uid();
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         uid, null, resolveAuthorities(uid));

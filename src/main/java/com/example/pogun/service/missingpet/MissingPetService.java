@@ -11,6 +11,7 @@ import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.service.notification.NotificationService;
+import com.example.pogun.service.storage.LocalImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.missingpet.enums.PetGender;
@@ -19,9 +20,12 @@ import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
@@ -43,16 +47,25 @@ public class MissingPetService {
     private final UserRepository userRepository;
     private final NoticeBookmarkRepository noticeBookmarkRepository;
     private final NotificationService notificationService;
-    private final MissingPetImageStorageService missingPetImageStorageService;
+    private final LocalImageStorageService localImageStorageService;
+    private final SimpMessagingTemplate simpMessagingTemplate;
 
+    @Transactional(readOnly = true)
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
-        List<PetNotice> filteredNotices = petNoticeRepository.findNotices(
-                blankToNull(region),
-                blankToNull(breed),
-                parseStatus(status),
-                parseInstant(from),
-                parseInstant(to)
-        );
+        String requestedRegion = blankToNull(region);
+        String requestedBreed = blankToNull(breed);
+        PetNoticeStatus requestedStatus = parseStatus(status);
+        Instant requestedFrom = parseInstant(from);
+        Instant requestedTo = parseInstant(to);
+
+        List<PetNotice> filteredNotices = petNoticeRepository.findAll().stream()
+                .filter(notice -> !Boolean.TRUE.equals(notice.getHidden()))
+                .filter(notice -> requestedRegion == null || requestedRegion.equals(notice.getMissingRegion()))
+                .filter(notice -> requestedBreed == null || requestedBreed.equals(notice.getBreed()))
+                .filter(notice -> requestedStatus == null || requestedStatus == notice.getStatus())
+                .filter(notice -> requestedFrom == null || !notice.getMissingDate().isBefore(requestedFrom))
+                .filter(notice -> requestedTo == null || !notice.getMissingDate().isAfter(requestedTo))
+                .toList();
 
         List<PetNotice> sortedNotices = sortNotices(filteredNotices, sort);
         int fromIndex = Math.min(page * size, sortedNotices.size());
@@ -97,7 +110,7 @@ public class MissingPetService {
 
         attachImages(author.getId(), notice, imageFiles, true);
 
-        PetNotice saved = petNoticeRepository.save(notice);
+        PetNotice saved = petNoticeRepository.saveAndFlush(notice);
         notificationService.createAndSendNotification(
                 author,
                 NotificationType.NEW_NOTICE,
@@ -107,9 +120,12 @@ public class MissingPetService {
                 saved.getTitle() + " 공고 등록이 완료되었습니다.",
                 Map.of("status", saved.getStatus().name())
         );
-        return toNoticeDetail(saved);
+        MissingPetDetailResponse response = toNoticeDetail(saved);
+        afterCommitOrNow(() -> simpMessagingTemplate.convertAndSend("/topic/missing-pets", response));
+        return response;
     }
 
+    @Transactional(readOnly = true)
     public MissingPetDetailResponse getMissingPetDetail(String missingPetId) {
         PetNotice notice = getVisibleNotice(missingPetId);
         return toNoticeDetail(notice);
@@ -258,7 +274,7 @@ public class MissingPetService {
         notice.getImages().clear();
         List<String> resolvedImageUrls = new ArrayList<>();
         if (imageFiles != null && !imageFiles.isEmpty()) {
-            resolvedImageUrls.addAll(missingPetImageStorageService.storeImages(ownerId, imageFiles));
+            resolvedImageUrls.addAll(localImageStorageService.storeImages("missing-pets", "notices", ownerId, imageFiles));
         }
 
         for (int i = 0; i < resolvedImageUrls.size(); i++) {
@@ -404,6 +420,19 @@ public class MissingPetService {
             case RESOLVED -> "해결됨";
             case CLOSED -> "종료됨";
         };
+    }
+
+    private void afterCommitOrNow(Runnable action) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }
 

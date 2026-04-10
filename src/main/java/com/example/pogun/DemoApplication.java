@@ -2,12 +2,14 @@ package com.example.pogun;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Pogun 백엔드 애플리케이션의 실행 진입점이다.
  */
 
 @SpringBootApplication
+@ConfigurationPropertiesScan
 @EnableScheduling
 public class DemoApplication {
 

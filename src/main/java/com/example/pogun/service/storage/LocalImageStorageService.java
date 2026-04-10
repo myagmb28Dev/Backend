@@ -7,6 +7,13 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.image.ColorModel;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,15 +63,13 @@ public class LocalImageStorageService {
     public String storeImage(String domain, String resourceType, UUID ownerId, MultipartFile file) {
         validateImage(file);
 
-        String originalFilename = file.getOriginalFilename();
-        String extension = extractExtension(originalFilename);
-        String storedFilename = UUID.randomUUID() + extension;
+        String storedFilename = UUID.randomUUID() + ".webp";
 
         try {
             Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
             Files.createDirectories(targetDirectory);
             Path target = targetDirectory.resolve(storedFilename);
-            file.transferTo(target);
+            writeWebp(file, target);
             return buildPublicPath(domain, resourceType, ownerId, storedFilename);
         } catch (IOException e) {
             throw ApiException.internal("IMAGE_UPLOAD_FAILED", "이미지를 저장하지 못했습니다.");
@@ -84,6 +89,43 @@ public class LocalImageStorageService {
                 + sanitizeSegment(resourceType) + "/"
                 + ownerId + "/"
                 + filename;
+    }
+
+    private void writeWebp(MultipartFile file, Path target) throws IOException {
+        BufferedImage image = ImageIO.read(file.getInputStream());
+        if (image == null) {
+            throw ApiException.badRequest("INVALID_IMAGE", "파일 내용이 유효한 이미지가 아닙니다.");
+        }
+        BufferedImage normalizedImage = normalizeForWebp(image);
+
+        ImageWriter writer = ImageIO.getImageWritersByMIMEType("image/webp").hasNext()
+                ? ImageIO.getImageWritersByMIMEType("image/webp").next()
+                : null;
+        if (writer == null) {
+            throw ApiException.internal("IMAGE_UPLOAD_FAILED", "WEBP 변환기를 찾을 수 없습니다.");
+        }
+
+        try (ImageOutputStream outputStream = ImageIO.createImageOutputStream(Files.newOutputStream(target))) {
+            writer.setOutput(outputStream);
+            writer.write(null, new IIOImage(normalizedImage, null, null), writer.getDefaultWriteParam());
+        } finally {
+            writer.dispose();
+        }
+    }
+
+    private BufferedImage normalizeForWebp(BufferedImage source) {
+        ColorModel colorModel = source.getColorModel();
+        int targetType = colorModel != null && colorModel.hasAlpha()
+                ? BufferedImage.TYPE_4BYTE_ABGR
+                : BufferedImage.TYPE_3BYTE_BGR;
+        BufferedImage normalized = new BufferedImage(source.getWidth(), source.getHeight(), targetType);
+        Graphics2D graphics = normalized.createGraphics();
+        try {
+            graphics.drawImage(source, 0, 0, null);
+        } finally {
+            graphics.dispose();
+        }
+        return normalized;
     }
 
     private void validateImage(MultipartFile file) {

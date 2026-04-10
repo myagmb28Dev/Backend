@@ -13,9 +13,6 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
-import com.google.firebase.auth.FirebaseToken;
-import com.google.firebase.auth.UserInfo;
-import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +33,7 @@ import java.util.Map;
 public class AuthService {
 
     private final FirebaseAuth firebaseAuth;
+    private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
 
@@ -43,15 +41,15 @@ public class AuthService {
     @Transactional
     public AuthResponse loginOrSignUp(String idToken) {
         try {
-            FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
-            String uid = decodedToken.getUid();
-            String email = decodedToken.getEmail();
-
-            UserRecord userRecord = firebaseAuth.getUser(uid);
-            String normalizedProvider = resolveSignInProvider(decodedToken, userRecord);
-            String name = userRecord.getDisplayName();
-            String picture = userRecord.getPhotoUrl();
-            String resolvedNickname = name != null ? name : "User_" + uid.substring(0, 5);
+            FirebaseIdentityService.FirebaseIdentity identity = firebaseIdentityService.verifyIdToken(idToken);
+            String uid = identity.uid();
+            String email = identity.email();
+            String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE");
+            String name = identity.displayName();
+            String picture = identity.photoUrl();
+            String resolvedNickname = name != null && !name.isBlank()
+                    ? name
+                    : "User_" + uid.substring(0, Math.min(5, uid.length()));
 
             User user = userRepository.findByFirebaseUid(uid)
                     .map(existingUser -> {
@@ -86,11 +84,14 @@ public class AuthService {
                         return userRepository.save(newUser);
                     }));
 
-            syncProviders(user, userRecord);
+            syncProviders(user, identity);
             return buildAuthResponse(user);
-        } catch (FirebaseAuthException e) {
+        } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
-            throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + e.getAuthErrorCode());
+            String detail = e instanceof FirebaseAuthException firebaseAuthException
+                    ? String.valueOf(firebaseAuthException.getAuthErrorCode())
+                    : e.getMessage();
+            throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + detail);
         }
     }
 
@@ -181,46 +182,17 @@ public class AuthService {
         );
     }
 
-    // 토큰 claim을 우선 신뢰하되, 누락된 경우 providerData까지 내려가서 대표 provider를 복구한다.
-    private String resolveSignInProvider(FirebaseToken decodedToken, UserRecord userRecord) {
-        Object firebaseClaim = decodedToken.getClaims().get("firebase");
-        if (firebaseClaim instanceof Map<?, ?> firebaseMap) {
-            Object signInProvider = firebaseMap.get("sign_in_provider");
-            if (signInProvider instanceof String provider && !provider.isBlank()) {
-                return normalizeProviderId(provider);
-            }
-        }
-        return resolvePrimaryProvider(userRecord);
-    }
-
-    private String resolvePrimaryProvider(UserRecord userRecord) {
-        UserInfo[] providerData = userRecord.getProviderData();
-        if (providerData == null || providerData.length == 0) {
-            return "FIREBASE";
-        }
-
-        for (UserInfo provider : providerData) {
-            String providerId = provider.getProviderId();
-            if (providerId == null || providerId.isBlank() || "firebase".equalsIgnoreCase(providerId)) {
-                continue;
-            }
-            return normalizeProviderId(providerId);
-        }
-
-        return "FIREBASE";
-    }
-
     // 단일 authProvider 필드와 별도로 다중 소셜 연동 테이블을 현재 Firebase 상태에 맞춰 갱신한다.
-    private void syncProviders(User user, UserRecord userRecord) {
-        UserInfo[] providerData = userRecord.getProviderData();
-        if (providerData == null || providerData.length == 0) {
-            syncSingleProvider(user, "FIREBASE", user.getFirebaseUid(), user.getEmail());
+    private void syncProviders(User user, FirebaseIdentityService.FirebaseIdentity identity) {
+        if (identity.providers() == null || identity.providers().isEmpty()) {
+            String provider = identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE";
+            syncSingleProvider(user, normalizeProviderId(provider), user.getFirebaseUid(), user.getEmail());
             return;
         }
 
         List<String> syncedProviders = new ArrayList<>();
-        for (UserInfo provider : providerData) {
-            String providerId = provider.getProviderId();
+        for (FirebaseIdentityService.ProviderIdentity provider : identity.providers()) {
+            String providerId = provider.providerId();
             if (providerId == null || providerId.isBlank() || "firebase".equalsIgnoreCase(providerId)) {
                 continue;
             }
@@ -230,8 +202,8 @@ public class AuthService {
             upsertSocialAccount(
                     user,
                     normalizedProvider,
-                    provider.getUid(),
-                    provider.getEmail() != null ? provider.getEmail() : user.getEmail()
+                    provider.uid(),
+                    provider.email() != null ? provider.email() : user.getEmail()
             );
         }
 
