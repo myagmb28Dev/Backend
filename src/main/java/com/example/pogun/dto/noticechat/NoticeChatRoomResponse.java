@@ -20,6 +20,14 @@ public record NoticeChatRoomResponse(
         @Schema(description = "생성 시각") Instant createdAt,
         @Schema(description = "상대방 사용자 ID") UUID opponentUserId,
         @Schema(description = "상대방 닉네임") String opponentNickname,
-        @Schema(description = "안 읽은 메시지 수") long unreadCount
+        @Schema(description = "안 읽은 메시지 수") long unreadCount,
+        @Schema(description = "알림 사용 여부") Boolean notificationEnabled,
+        @Schema(description = "즐겨찾기 여부") Boolean favorite,
+        @Schema(description = "상단 고정 여부") Boolean pinned,
+        @Schema(description = "채팅방 나간 시각") Instant leftAt,
+        @Schema(description = "상대방 온라인 여부") Boolean opponentOnline,
+        @Schema(description = "상대방 마지막 활동 시각") Instant opponentLastActiveAt,
+        @Schema(description = "마지막으로 읽은 메시지 ID") UUID lastReadMessageId,
+        @Schema(description = "마지막 읽음 시각") Instant lastReadAt
 ) {
 }

@@ -18,13 +18,20 @@ import java.util.UUID;
 
 @Repository
 public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMessage, UUID> {
-    List<NoticeChatMessage> findByRoomOrderByCreatedAtAsc(NoticeChatRoom room);
+    List<NoticeChatMessage> findByRoomOrderByRoomSequenceAscCreatedAtAsc(NoticeChatRoom room);
+
+    List<NoticeChatMessage> findByRoomAndMessageContainingIgnoreCaseOrderByRoomSequenceAscCreatedAtAsc(NoticeChatRoom room, String message);
 
     Optional<NoticeChatMessage> findTopByRoomOrderByCreatedAtDesc(NoticeChatRoom room);
 
+    Optional<NoticeChatMessage> findByRoomAndSenderUserAndClientMessageId(NoticeChatRoom room, User senderUser, String clientMessageId);
+
+    @Query("SELECT COALESCE(MAX(m.roomSequence), 0) FROM NoticeChatMessage m WHERE m.room = :room")
+    long findMaxRoomSequence(@Param("room") NoticeChatRoom room);
+
     long countByRoomAndSenderUserNotAndIsReadFalse(NoticeChatRoom room, User senderUser);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying(flushAutomatically = true)
     @Query("""
             UPDATE NoticeChatMessage m
             SET m.isRead = true

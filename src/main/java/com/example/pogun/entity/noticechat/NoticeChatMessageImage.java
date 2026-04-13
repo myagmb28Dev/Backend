@@ -48,6 +48,21 @@ public class NoticeChatMessageImage {
     @Column(name = "image_url", nullable = false, length = 500)
     private String imageUrl;
 
+    @Column(name = "original_url", length = 500)
+    private String originalUrl;
+
+    @Column(name = "webp_url", length = 500)
+    private String webpUrl;
+
+    @Column(name = "medium_url", length = 500)
+    private String mediumUrl;
+
+    @Column(name = "thumbnail_url", length = 500)
+    private String thumbnailUrl;
+
+    @Column(name = "preview_url", length = 500)
+    private String previewUrl;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 }

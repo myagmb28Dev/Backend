@@ -2,19 +2,24 @@ package com.example.pogun.service.noticechat;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
+import com.example.pogun.dto.storage.StoredImageVariant;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.enums.PetGender;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
+import com.example.pogun.entity.noticechat.NoticeChatRoomParticipantState;
 import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
 import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
+import com.example.pogun.repository.noticechat.NoticeChatMessageImageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
+import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
+import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import org.junit.jupiter.api.AfterEach;
@@ -40,6 +45,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,9 +58,15 @@ class NoticeChatServiceTest {
     @Mock
     private NoticeChatMessageRepository noticeChatMessageRepository;
     @Mock
+    private NoticeChatMessageImageRepository noticeChatMessageImageRepository;
+    @Mock
+    private NoticeChatRoomParticipantStateRepository participantStateRepository;
+    @Mock
     private PetNoticeRepository petNoticeRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private UserBlockRepository userBlockRepository;
     @Mock
     private SimpMessagingTemplate simpMessagingTemplate;
     @Mock
@@ -74,6 +87,8 @@ class NoticeChatServiceTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(currentUser.getFirebaseUid(), null, List.of())
         );
+        lenient().when(participantStateRepository.findByRoomAndUser(any(NoticeChatRoom.class), any(User.class)))
+                .thenAnswer(invocation -> Optional.of(participantState(invocation.getArgument(0), invocation.getArgument(1))));
     }
 
     @AfterEach
@@ -152,7 +167,61 @@ class NoticeChatServiceTest {
     }
 
     @Test
-    void sendImages_storesImageMessageAndUsesCommonStorageService() {
+    void sendMessage_returnsExistingMessageForDuplicateClientMessageId() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessageRequest request = new NoticeChatMessageRequest();
+        request.setRoomId(roomId);
+        request.setMessage("재전송 메시지");
+        request.setClientMessageId("client-message-1");
+        NoticeChatMessage existingMessage = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("재전송 메시지")
+                .clientMessageId("client-message-1")
+                .roomSequence(3L)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findByRoomAndSenderUserAndClientMessageId(room, currentUser, "client-message-1"))
+                .thenReturn(Optional.of(existingMessage));
+
+        var response = noticeChatService.sendMessage(principal(currentUser), request);
+
+        assertThat(response.id()).isEqualTo(existingMessage.getId());
+        assertThat(response.clientMessageId()).isEqualTo("client-message-1");
+        assertThat(response.roomSequence()).isEqualTo(3L);
+    }
+
+    @Test
+    void updateSettings_savesParticipantPreferences() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        var request = new com.example.pogun.dto.noticechat.NoticeChatRoomSettingsRequest();
+        request.setNotificationEnabled(false);
+        request.setFavorite(true);
+        request.setPinned(true);
+        NoticeChatRoomParticipantState currentState = participantState(room, currentUser);
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
+        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
+
+        var response = noticeChatService.updateSettings(roomId.toString(), request);
+
+        assertThat(response.notificationEnabled()).isFalse();
+        assertThat(response.favorite()).isTrue();
+        assertThat(response.pinned()).isTrue();
+        verify(participantStateRepository).save(any(NoticeChatRoomParticipantState.class));
+    }
+
+    @Test
+    void sendImages_storesImageMessageWithOptionalTextAndUsesCommonStorageService() {
         UUID roomId = UUID.randomUUID();
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
         MultipartFile first = org.mockito.Mockito.mock(MultipartFile.class);
@@ -164,21 +233,69 @@ class NoticeChatServiceTest {
                 .room(room)
                 .senderUser(currentUser)
                 .messageType(NoticeChatMessageType.IMAGE)
-                .message("")
+                .message("이미지와 함께 보낸 글")
                 .isRead(false)
                 .createdAt(Instant.now())
                 .build();
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(localImageStorageService.storeImages(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
-                .thenReturn(List.of("/uploads/notice-chat/messages/test/one.webp", "/uploads/notice-chat/messages/test/two.webp"));
+        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+                .thenReturn(List.of(
+                        variant("/uploads/notice-chat/messages/test/one.webp"),
+                        variant("/uploads/notice-chat/messages/test/two.webp")
+                ));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
-        var response = noticeChatService.sendImages(roomId.toString(), null, List.of(first, second));
+        var response = noticeChatService.sendImages(roomId.toString(), null, " 이미지와 함께 보낸 글 ", List.of(first, second));
 
         assertThat(response.messageType()).isEqualTo("IMAGE");
-        verify(localImageStorageService).storeImages(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class));
+        assertThat(response.message()).isEqualTo("이미지와 함께 보낸 글");
+        verify(localImageStorageService).storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class));
+    }
+
+    @Test
+    void sendImages_allowsEmptyOptionalText() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        NoticeChatMessage savedMessage = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.IMAGE)
+                .message(null)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+                .thenReturn(List.of(variant("/uploads/notice-chat/messages/test/one.webp")));
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+
+        var response = noticeChatService.sendImages(roomId.toString(), null, "   ", List.of(file));
+
+        assertThat(response.messageType()).isEqualTo("IMAGE");
+        assertThat(response.message()).isNull();
+    }
+
+    @Test
+    void sendImages_rejectsMessageOverLimit() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> noticeChatService.sendImages(roomId.toString(), null, "a".repeat(2001), List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("MESSAGE_TOO_LONG"));
+        verify(localImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
     }
 
     @Test
@@ -255,7 +372,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.markUnreadMessagesAsRead(room, currentUser)).thenReturn(1);
-        when(noticeChatMessageRepository.findByRoomOrderByCreatedAtAsc(room)).thenReturn(List.of(unread));
+        when(noticeChatMessageRepository.findByRoomOrderByRoomSequenceAscCreatedAtAsc(room)).thenReturn(List.of(unread));
 
         var response = noticeChatService.getMessages(roomId.toString());
 
@@ -327,5 +444,21 @@ class NoticeChatServiceTest {
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
+    }
+
+    private NoticeChatRoomParticipantState participantState(NoticeChatRoom room, User user) {
+        return NoticeChatRoomParticipantState.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .user(user)
+                .notificationEnabled(true)
+                .favorite(false)
+                .pinned(false)
+                .online(false)
+                .build();
+    }
+
+    private StoredImageVariant variant(String webpUrl) {
+        return new StoredImageVariant(webpUrl.replace(".webp", ".jpg"), webpUrl, webpUrl.replace(".webp", "-medium.webp"), webpUrl.replace(".webp", "-thumbnail.webp"), webpUrl.replace(".webp", "-preview.webp"));
     }
 }

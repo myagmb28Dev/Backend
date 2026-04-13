@@ -1,8 +1,131 @@
 ﻿const { test, expect } = require('@playwright/test');
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
 const baseURL = 'http://localhost:8080';
 const emulatorBaseURL = 'http://127.0.0.1:9099';
 const emulatorApiKey = 'fake-api-key';
+const repoRoot = path.resolve(__dirname, '..', '..');
+
+function parseDotEnv() {
+  const envPath = path.join(repoRoot, '.env');
+  if (!fs.existsSync(envPath)) {
+    return {};
+  }
+  return Object.fromEntries(
+    fs.readFileSync(envPath, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line && !line.trimStart().startsWith('#') && line.includes('='))
+      .map((line) => {
+        const separatorIndex = line.indexOf('=');
+        return [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()];
+      })
+  );
+}
+
+function findPostgresJar(directory) {
+  if (!fs.existsSync(directory)) {
+    return null;
+  }
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isFile() && /^postgresql-.*\.jar$/.test(entry.name)) {
+      return fullPath;
+    }
+    if (entry.isDirectory()) {
+      const found = findPostgresJar(fullPath);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
+function cleanupDmTestData() {
+  const env = parseDotEnv();
+  const gradleCache = path.join(os.homedir(), '.gradle', 'caches', 'modules-2', 'files-2.1', 'org.postgresql', 'postgresql');
+  const driverJar = findPostgresJar(gradleCache);
+  if (!env.DB_URL || !env.DB_USERNAME || !env.DB_PASSWORD || !driverJar) {
+    return;
+  }
+  const cleanupSource = path.join(os.tmpdir(), 'PogunDmPlaywrightCleanup.java');
+  fs.writeFileSync(cleanupSource, `
+import java.sql.*;
+import java.util.*;
+
+public class PogunDmPlaywrightCleanup {
+  public static void main(String[] args) throws Exception {
+    List<String> statements = List.of(
+      "DELETE FROM reports WHERE target_type = 'NOTICE_CHAT_ROOM' AND target_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_room_participant_states WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_message_images WHERE message_id IN (SELECT id FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')))",
+      "UPDATE notice_chat_messages SET reply_to_message_id = NULL WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
+      "DELETE FROM reports WHERE target_type = 'PET_NOTICE' AND target_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
+      "DELETE FROM notice_bookmarks WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
+      "DELETE FROM pet_notice_images WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
+      "DELETE FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'",
+      "DELETE FROM user_blocks WHERE blocker_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev') OR blocked_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
+      "DELETE FROM user_social_accounts WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
+      "DELETE FROM user_fcm_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
+      "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
+      "DELETE FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev'"
+    );
+    try (Connection conn = DriverManager.getConnection(System.getenv("DB_URL"), System.getenv("DB_USERNAME"), System.getenv("DB_PASSWORD"))) {
+      conn.setAutoCommit(false);
+      try (Statement stmt = conn.createStatement()) {
+        for (String sql : statements) {
+          stmt.executeUpdate(sql);
+        }
+        conn.commit();
+      } catch (Exception e) {
+        conn.rollback();
+        throw e;
+      }
+    }
+  }
+}
+`, 'ascii');
+  execFileSync('java', ['-cp', driverJar, cleanupSource], {
+    env: {
+      ...process.env,
+      DB_URL: env.DB_URL,
+      DB_USERNAME: env.DB_USERNAME,
+      DB_PASSWORD: env.DB_PASSWORD
+    },
+    stdio: 'ignore'
+  });
+  cleanupGeneratedNoticeChatUploads();
+}
+
+function cleanupGeneratedNoticeChatUploads() {
+  try {
+    const status = execFileSync('git', ['status', '--porcelain', '--', 'uploads/notice-chat/messages'], {
+      cwd: repoRoot,
+      encoding: 'utf8'
+    });
+    for (const line of status.split(/\r?\n/)) {
+      if (!line.startsWith('?? ')) {
+        continue;
+      }
+      const relativePath = line.slice(3).trim();
+      const absolutePath = path.resolve(repoRoot, relativePath);
+      const allowedRoot = path.resolve(repoRoot, 'uploads', 'notice-chat', 'messages');
+      if (absolutePath.startsWith(allowedRoot)) {
+        fs.rmSync(absolutePath, { recursive: true, force: true });
+      }
+    }
+  } catch {
+  }
+}
+
+test.beforeEach(() => cleanupDmTestData());
+test.afterEach(() => cleanupDmTestData());
 
 function createTestIdentity(prefix) {
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
@@ -474,7 +597,7 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   expect(noticeOneRoomForUserOne.unreadCount).toBe(1);
 
   const userOneMessagesAfterRead = await api(`/api/chat/rooms/${roomId}/messages`, userOneToken);
-  expect(userOneMessagesAfterRead.status).toBe(200);
+  expect(userOneMessagesAfterRead.status, JSON.stringify(userOneMessagesAfterRead.body)).toBe(200);
   expect(userOneMessagesAfterRead.body.data).toHaveLength(1);
   expect(userOneMessagesAfterRead.body.data[0].message).toBe(userTwoMessageText);
   expect(userOneMessagesAfterRead.body.data[0].isRead).toBe(true);
@@ -521,16 +644,24 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
     (payload) => payload.senderUserId === userOneUserId && payload.messageType === 'IMAGE'
   );
   const imageForm = new FormData();
+  const imageMessageText = '이미지와 같이 보내는 설명입니다';
   imageForm.append('images', createTinyPngBlob(), 'tiny.png');
   imageForm.append('images', createTinyPngBlob(), 'tiny-two.png');
+  imageForm.append('message', imageMessageText);
   imageForm.append('replyToMessageId', userTwoRealtimeReply.id);
   const imageUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, imageForm);
   expect(imageUpload.status).toBe(201);
   const imageRealtimeMessage = await imageRealtimePromise;
   expect(imageRealtimeMessage.messageType).toBe('IMAGE');
+  expect(imageRealtimeMessage.message).toBe(imageMessageText);
   expect(imageRealtimeMessage.images).toHaveLength(2);
   expect(imageRealtimeMessage.images[0].imageUrl.endsWith('.webp')).toBe(true);
   expect(imageRealtimeMessage.reply.messageId).toBe(userTwoRealtimeReply.id);
+  const authenticatedImageFetch = await fetch(`${baseURL}${imageRealtimeMessage.images[0].imageUrl}`, {
+    headers: { Authorization: `Bearer ${userTwoToken}` }
+  });
+  expect(authenticatedImageFetch.status).toBe(200);
+  expect(authenticatedImageFetch.headers.get('content-type')).toContain('image');
 
   const userTwoRoomsAfterImage = await api('/api/chat/rooms', userTwoToken);
   expect(userTwoRoomsAfterImage.status).toBe(200);
@@ -545,6 +676,7 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   const userTwoMessagesAfterImageRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
   expect(userTwoMessagesAfterImageRead.status).toBe(200);
   expect(userTwoMessagesAfterImageRead.body.data.at(-1).messageType).toBe('IMAGE');
+  expect(userTwoMessagesAfterImageRead.body.data.at(-1).message).toBe(imageMessageText);
   expect(userTwoMessagesAfterImageRead.body.data.at(-1).isRead).toBe(true);
 
   const userTwoRoomsAfterRead = await api('/api/chat/rooms', userTwoToken);

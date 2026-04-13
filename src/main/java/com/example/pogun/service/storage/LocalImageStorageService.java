@@ -1,6 +1,7 @@
 package com.example.pogun.service.storage;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.dto.storage.StoredImageVariant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -12,9 +13,11 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.ColorModel;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -43,6 +46,7 @@ public class LocalImageStorageService {
 
     public LocalImageStorageService(@Value("${app.upload.root:uploads}") String uploadRoot) {
         this.rootDirectory = Paths.get(uploadRoot).toAbsolutePath().normalize();
+        ImageIO.scanForPlugins();
     }
 
     public List<String> storeImages(String domain, String resourceType, UUID ownerId, List<MultipartFile> files) {
@@ -61,17 +65,72 @@ public class LocalImageStorageService {
     }
 
     public String storeImage(String domain, String resourceType, UUID ownerId, MultipartFile file) {
+        return storeImageVariant(domain, resourceType, ownerId, file).webpUrl();
+    }
+
+    public List<StoredImageVariant> storeImageVariants(String domain, String resourceType, UUID ownerId, List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        List<StoredImageVariant> storedImages = new ArrayList<>();
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            storedImages.add(storeImageVariant(domain, resourceType, ownerId, file));
+        }
+        return storedImages;
+    }
+
+    public StoredImageVariant storeImageVariant(String domain, String resourceType, UUID ownerId, MultipartFile file) {
         validateImage(file);
 
-        String storedFilename = UUID.randomUUID() + ".webp";
+        String baseName = UUID.randomUUID().toString();
+        String originalFilename = baseName + extractExtension(file.getOriginalFilename());
+        String webpFilename = baseName + ".webp";
+        String mediumFilename = baseName + "-medium.webp";
+        String thumbnailFilename = baseName + "-thumbnail.webp";
+        String previewFilename = baseName + "-preview.webp";
+        List<Path> writtenFiles = new ArrayList<>();
 
         try {
             Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
             Files.createDirectories(targetDirectory);
-            Path target = targetDirectory.resolve(storedFilename);
-            writeWebp(file, target);
-            return buildPublicPath(domain, resourceType, ownerId, storedFilename);
+            Path originalTarget = targetDirectory.resolve(originalFilename);
+            Path webpTarget = targetDirectory.resolve(webpFilename);
+            Path mediumTarget = targetDirectory.resolve(mediumFilename);
+            Path thumbnailTarget = targetDirectory.resolve(thumbnailFilename);
+            Path previewTarget = targetDirectory.resolve(previewFilename);
+
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, originalTarget);
+            }
+            writtenFiles.add(originalTarget);
+            writeWebp(file, webpTarget, null);
+            writtenFiles.add(webpTarget);
+            writeWebp(file, mediumTarget, 960);
+            writtenFiles.add(mediumTarget);
+            writeWebp(file, thumbnailTarget, 320);
+            writtenFiles.add(thumbnailTarget);
+            writeWebp(file, previewTarget, 80);
+            writtenFiles.add(previewTarget);
+
+            return new StoredImageVariant(
+                    buildPublicPath(domain, resourceType, ownerId, originalFilename),
+                    buildPublicPath(domain, resourceType, ownerId, webpFilename),
+                    buildPublicPath(domain, resourceType, ownerId, mediumFilename),
+                    buildPublicPath(domain, resourceType, ownerId, thumbnailFilename),
+                    buildPublicPath(domain, resourceType, ownerId, previewFilename)
+            );
         } catch (IOException e) {
+            for (Path writtenFile : writtenFiles) {
+                try {
+                    Files.deleteIfExists(writtenFile);
+                } catch (IOException deleteFailure) {
+                    log.warn("이미지 저장 실패 후 파일 정리에 실패했습니다. path={}", writtenFile, deleteFailure);
+                }
+            }
             throw ApiException.internal("IMAGE_UPLOAD_FAILED", "이미지를 저장하지 못했습니다.");
         }
     }
@@ -91,12 +150,12 @@ public class LocalImageStorageService {
                 + filename;
     }
 
-    private void writeWebp(MultipartFile file, Path target) throws IOException {
+    private void writeWebp(MultipartFile file, Path target, Integer maxWidth) throws IOException {
         BufferedImage image = ImageIO.read(file.getInputStream());
         if (image == null) {
             throw ApiException.badRequest("INVALID_IMAGE", "파일 내용이 유효한 이미지가 아닙니다.");
         }
-        BufferedImage normalizedImage = normalizeForWebp(image);
+        BufferedImage normalizedImage = normalizeForWebp(resizeIfNeeded(image, maxWidth));
 
         ImageWriter writer = ImageIO.getImageWritersByMIMEType("image/webp").hasNext()
                 ? ImageIO.getImageWritersByMIMEType("image/webp").next()
@@ -111,6 +170,26 @@ public class LocalImageStorageService {
         } finally {
             writer.dispose();
         }
+    }
+
+    private BufferedImage resizeIfNeeded(BufferedImage source, Integer maxWidth) {
+        if (maxWidth == null || source.getWidth() <= maxWidth) {
+            return source;
+        }
+        int targetWidth = maxWidth;
+        int targetHeight = Math.max(1, (int) Math.round((double) source.getHeight() * targetWidth / source.getWidth()));
+        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, source.getColorModel().hasAlpha()
+                ? BufferedImage.TYPE_4BYTE_ABGR
+                : BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D graphics = resized.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+        } finally {
+            graphics.dispose();
+        }
+        return resized;
     }
 
     private BufferedImage normalizeForWebp(BufferedImage source) {

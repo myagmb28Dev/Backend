@@ -3,6 +3,7 @@ package com.example.pogun.controller.noticechat;
 import com.example.pogun.config.StompAuthChannelInterceptor;
 import com.example.pogun.config.WebSocketPrincipal;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
+import com.example.pogun.dto.noticechat.NoticeChatRoomEventRequest;
 import com.example.pogun.dto.noticechat.NoticeChatTypingRequest;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import jakarta.validation.Valid;
@@ -48,6 +49,22 @@ public class NoticeChatMessageController {
                 request.getTyping());
         // 입력 중 이벤트는 영속화하지 않고 상대방 화면 동기화용으로만 중계한다.
         noticeChatService.sendTypingEvent(resolvedPrincipal, request);
+    }
+
+    @MessageMapping("/chat/enter")
+    public void enter(@Valid @Payload NoticeChatRoomEventRequest request,
+                      Principal principal,
+                      SimpMessageHeaderAccessor headerAccessor) {
+        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        noticeChatService.enterRoom(resolvedPrincipal, request);
+    }
+
+    @MessageMapping("/chat/leave")
+    public void leave(@Valid @Payload NoticeChatRoomEventRequest request,
+                      Principal principal,
+                      SimpMessageHeaderAccessor headerAccessor) {
+        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        noticeChatService.leaveSocketRoom(resolvedPrincipal, request);
     }
 
     private Principal resolvePrincipal(Principal principal, SimpMessageHeaderAccessor headerAccessor) {

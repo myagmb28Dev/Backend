@@ -61,6 +61,27 @@ class LocalImageStorageServiceTest {
     }
 
     @Test
+    void storeImageVariant_writesOriginalAndDerivedWebpFiles() throws IOException {
+        LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
+        UUID ownerId = UUID.randomUUID();
+
+        var variant = service.storeImageVariant(
+                "notice-chat",
+                "messages",
+                ownerId,
+                new MockMultipartFile("image", "sample.png", "image/png", createImageBytes("png"))
+        );
+
+        assertThat(variant.originalUrl()).endsWith(".png");
+        assertThat(variant.webpUrl()).endsWith(".webp");
+        assertThat(variant.mediumUrl()).endsWith("-medium.webp");
+        assertThat(variant.thumbnailUrl()).endsWith("-thumbnail.webp");
+        assertThat(variant.previewUrl()).endsWith("-preview.webp");
+        assertThat(Files.exists(tempDir.resolve(variant.originalUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
+        assertThat(Files.exists(tempDir.resolve(variant.previewUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
+    }
+
+    @Test
     void storeImage_rejectsFilesOverFiveMegabytes() {
         LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
         byte[] oversized = new byte[5 * 1024 * 1024 + 1];

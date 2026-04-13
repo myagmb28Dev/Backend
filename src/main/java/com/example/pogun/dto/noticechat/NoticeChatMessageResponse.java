@@ -21,6 +21,9 @@ public record NoticeChatMessageResponse(
         @Schema(description = "답장 메시지 요약") NoticeChatMessageReplyResponse reply,
         @Schema(description = "읽음 여부") Boolean isRead,
         @Schema(description = "내 메시지 여부") boolean mine,
-        @Schema(description = "생성 시각") Instant createdAt
+        @Schema(description = "생성 시각") Instant createdAt,
+        @Schema(description = "클라이언트 메시지 ID") String clientMessageId,
+        @Schema(description = "채팅방 내 서버 순번") Long roomSequence,
+        @Schema(description = "서버 수신 시각") Instant serverReceivedAt
 ) {
 }

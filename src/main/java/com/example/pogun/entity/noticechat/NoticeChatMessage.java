@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,8 +40,11 @@ import java.util.UUID;
 @Table(name = "notice_chat_messages", indexes = {
         @Index(name = "idx_notice_chat_messages_room", columnList = "room_id"),
         @Index(name = "idx_notice_chat_messages_room_created_at", columnList = "room_id,created_at"),
+        @Index(name = "idx_notice_chat_messages_room_sequence", columnList = "room_id,room_sequence"),
         @Index(name = "idx_notice_chat_messages_read", columnList = "room_id,is_read"),
         @Index(name = "idx_notice_chat_messages_reply_to", columnList = "reply_to_message_id")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uk_notice_chat_message_client_id", columnNames = {"room_id", "sender_user_id", "client_message_id"})
 })
 /**
  * 데이터베이스 테이블과 매핑되는 NoticeChatMessage 엔티티이다.
@@ -84,5 +88,11 @@ public class NoticeChatMessage {
     @Builder.Default
     @Column(name = "is_read", nullable = false)
     private Boolean isRead = false;
+
+    @Column(name = "client_message_id", length = 100)
+    private String clientMessageId;
+
+    @Column(name = "room_sequence")
+    private Long roomSequence;
 }
 

@@ -1,7 +1,9 @@
 package com.example.pogun.controller.noticechat;
 
 import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.dto.noticechat.NoticeChatImageOriginalResponse;
 import com.example.pogun.dto.noticechat.NoticeChatMessageResponse;
+import com.example.pogun.dto.noticechat.NoticeChatRoomSettingsRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomCreateResult;
 import com.example.pogun.dto.noticechat.NoticeChatRoomResponse;
 import com.example.pogun.service.noticechat.NoticeChatService;
@@ -13,7 +15,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -49,6 +53,13 @@ public class NoticeChatController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 목록 조회 성공", data));
     }
 
+    @GetMapping("/rooms/search")
+    @Operation(summary = "내 채팅방 검색", description = "공고 제목 또는 상대 닉네임으로 내 채팅방을 검색합니다.")
+    public ResponseEntity<ApiResponse<List<NoticeChatRoomResponse>>> searchRooms(@RequestParam(value = "keyword", required = false) String keyword) {
+        List<NoticeChatRoomResponse> data = noticeChatService.searchRooms(keyword);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 검색 성공", data));
+    }
+
     @GetMapping("/rooms/{roomId}")
     @Operation(summary = "채팅방 상세 조회", description = "특정 공고 기반 채팅방의 상세 정보를 조회합니다.")
     public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> getRoom(@PathVariable String roomId) {
@@ -64,14 +75,56 @@ public class NoticeChatController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 조회 성공", data));
     }
 
+    @PostMapping("/rooms/{roomId}/read")
+    @Operation(summary = "채팅방 읽음 처리", description = "특정 채팅방의 상대 메시지를 읽음 처리합니다.")
+    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> markRead(@PathVariable String roomId) {
+        NoticeChatRoomResponse data = noticeChatService.markRoomAsRead(roomId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 읽음 처리 성공", data));
+    }
+
+    @PatchMapping("/rooms/{roomId}/settings")
+    @Operation(summary = "채팅방 개인 설정 변경", description = "채팅방 알림, 즐겨찾기, 상단 고정 여부를 변경합니다.")
+    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> updateSettings(
+            @PathVariable String roomId,
+            @RequestBody NoticeChatRoomSettingsRequest request
+    ) {
+        NoticeChatRoomResponse data = noticeChatService.updateSettings(roomId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 설정 변경 성공", data));
+    }
+
+    @PostMapping("/rooms/{roomId}/leave")
+    @Operation(summary = "채팅방 나가기", description = "현재 사용자 기준으로 채팅방을 목록에서 제외합니다.")
+    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> leaveRoom(@PathVariable String roomId) {
+        NoticeChatRoomResponse data = noticeChatService.leaveRoom(roomId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 나가기 성공", data));
+    }
+
+    @GetMapping("/rooms/{roomId}/messages/search")
+    @Operation(summary = "채팅 메시지 검색", description = "특정 채팅방의 텍스트 메시지를 검색합니다.")
+    public ResponseEntity<ApiResponse<List<NoticeChatMessageResponse>>> searchMessages(
+            @PathVariable String roomId,
+            @RequestParam(value = "keyword", required = false) String keyword
+    ) {
+        List<NoticeChatMessageResponse> data = noticeChatService.searchMessages(roomId, keyword);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 검색 성공", data));
+    }
+
+    @GetMapping("/messages/images/{imageId}/original")
+    @Operation(summary = "채팅 이미지 원본 다운로드 URL 조회", description = "해당 채팅방 참여자에게만 원본 이미지 URL을 반환합니다.")
+    public ResponseEntity<ApiResponse<NoticeChatImageOriginalResponse>> getOriginalImage(@PathVariable String imageId) {
+        NoticeChatImageOriginalResponse data = noticeChatService.getOriginalImage(imageId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 이미지 원본 조회 성공", data));
+    }
+
     @PostMapping(value = "/rooms/{roomId}/messages/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "이미지 메시지 전송", description = "특정 채팅방에 여러 장의 이미지를 WEBP로 변환해 전송합니다.")
     public ResponseEntity<ApiResponse<NoticeChatMessageResponse>> sendImages(
             @PathVariable String roomId,
             @RequestPart("images") List<MultipartFile> images,
-            @RequestParam(value = "replyToMessageId", required = false) String replyToMessageId
+            @RequestParam(value = "replyToMessageId", required = false) String replyToMessageId,
+            @RequestParam(value = "message", required = false) String message
     ) {
-        NoticeChatMessageResponse data = noticeChatService.sendImages(roomId, replyToMessageId, images);
+        NoticeChatMessageResponse data = noticeChatService.sendImages(roomId, replyToMessageId, message, images);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "이미지 메시지 전송 성공", data));
     }

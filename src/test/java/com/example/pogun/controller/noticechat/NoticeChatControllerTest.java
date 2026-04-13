@@ -95,11 +95,12 @@ class NoticeChatControllerTest {
     void sendImages_returnsCreatedResponse() throws Exception {
         UUID roomId = UUID.randomUUID();
         MockMultipartFile file = new MockMultipartFile("images", "sample.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{1, 2, 3});
-        when(noticeChatService.sendImages(eq(roomId.toString()), eq("reply-id"), any(List.class))).thenReturn(messageResponse(roomId));
+        when(noticeChatService.sendImages(eq(roomId.toString()), eq("reply-id"), eq("이미지와 함께 보낸 글"), any(List.class))).thenReturn(messageResponse(roomId));
 
         mockMvc.perform(multipart("/api/chat/rooms/{roomId}/messages/images", roomId)
                         .file(file)
-                        .param("replyToMessageId", "reply-id"))
+                        .param("replyToMessageId", "reply-id")
+                        .param("message", "이미지와 함께 보낸 글"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.roomId").value(roomId.toString()));
     }
@@ -127,7 +128,15 @@ class NoticeChatControllerTest {
                 Instant.now(),
                 UUID.randomUUID(),
                 "상대",
-                1L
+                1L,
+                true,
+                false,
+                false,
+                null,
+                false,
+                null,
+                null,
+                null
         );
     }
 
@@ -143,6 +152,9 @@ class NoticeChatControllerTest {
                 null,
                 false,
                 true,
+                Instant.now(),
+                null,
+                1L,
                 Instant.now()
         );
     }

@@ -27,4 +27,7 @@ public class NoticeChatMessageRequest {
 
     @Schema(description = "답장 대상 메시지 ID")
     private UUID replyToMessageId;
+
+    @Schema(description = "클라이언트 재전송/중복 방지용 메시지 ID")
+    private String clientMessageId;
 }
