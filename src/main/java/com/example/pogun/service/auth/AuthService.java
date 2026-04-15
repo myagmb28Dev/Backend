@@ -2,27 +2,33 @@ package com.example.pogun.service.auth;
 
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
+import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.auth.SocialUnlinkResponse;
 import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
+import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 /**
  * 도메인 비즈니스 로직을 담당하는 AuthService이다.
  */
@@ -32,10 +38,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final Pattern DM_TEST_EMAIL_PATTERN = Pattern.compile("^dm-user(\\d+)@local\\.dev$", Pattern.CASE_INSENSITIVE);
+    private static final String REGISTRATION_COMPLETED = "COMPLETED";
+    private static final String REGISTRATION_PENDING_ONBOARDING = "PENDING_ONBOARDING";
+    private static final long PENDING_SIGNUP_TTL_SECONDS = 60L * 60L * 24L;
+
     private final FirebaseAuth firebaseAuth;
     private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
+    private final PendingSocialSignupRepository pendingSocialSignupRepository;
 
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
@@ -47,9 +59,7 @@ public class AuthService {
             String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE");
             String name = identity.displayName();
             String picture = identity.photoUrl();
-            String resolvedNickname = name != null && !name.isBlank()
-                    ? name
-                    : "User_" + uid.substring(0, Math.min(5, uid.length()));
+            String resolvedNickname = resolveNickname(name, email, uid);
 
             User user = userRepository.findByFirebaseUid(uid)
                     .map(existingUser -> {
@@ -70,21 +80,16 @@ public class AuthService {
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
                                 return userRepository.save(existingByEmail);
                             })
-                    .orElseGet(() -> {
-                        log.info("신규 사용자 가입 진행: firebaseUid={}", uid);
-                        User newUser = User.builder()
-                                .firebaseUid(uid)
-                                .email(email)
-                                .nickname(resolvedNickname)
-                                .profileImageUrl(picture)
-                                .authProvider(normalizedProvider)
-                                .role(UserRole.USER)
-                                .status(UserStatus.ACTIVE)
-                                .build();
-                        return userRepository.save(newUser);
-                    }));
+                    .orElse(null));
+
+            if (user == null) {
+                PendingSocialSignup pending = upsertPendingSignup(identity, normalizedProvider, resolvedNickname, picture);
+                log.info("소셜 인증 완료, 온보딩 대기 상태로 저장: firebaseUid={}, pendingSignupId={}", uid, pending.getId());
+                return buildPendingAuthResponse(pending);
+            }
 
             syncProviders(user, identity);
+            pendingSocialSignupRepository.deleteByFirebaseUid(uid);
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
@@ -95,6 +100,61 @@ public class AuthService {
         }
     }
 
+    @Transactional
+    public AuthResponse completeOnboarding(OnboardingCompleteRequest request) {
+        String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String region = request.getRegion().trim();
+
+        if (userRepository.findByFirebaseUid(firebaseUid).isPresent()) {
+            throw ApiException.conflict("ALREADY_REGISTERED", "이미 회원가입이 완료된 사용자입니다.");
+        }
+
+        PendingSocialSignup pending = pendingSocialSignupRepository.findByFirebaseUid(firebaseUid)
+                .orElseThrow(() -> ApiException.forbidden("ONBOARDING_REQUIRED", "소셜 인증 후 온보딩을 먼저 시작해주세요."));
+
+        if (pending.getExpiresAt() != null && pending.getExpiresAt().isBefore(Instant.now())) {
+            pendingSocialSignupRepository.delete(pending);
+            throw ApiException.unauthorized("PENDING_SIGNUP_EXPIRED", "온보딩 세션이 만료되었습니다. 다시 로그인해주세요.");
+        }
+
+        if (userRepository.findByEmail(pending.getEmail()).isPresent()) {
+            throw ApiException.conflict("EMAIL_ALREADY_REGISTERED", "이미 가입된 이메일입니다. 다시 로그인해주세요.");
+        }
+
+        User user = User.builder()
+                .firebaseUid(pending.getFirebaseUid())
+                .email(pending.getEmail())
+                .nickname(pending.getNickname())
+                .profileImageUrl(pending.getProfileImageUrl())
+                .region(region)
+                .authProvider(pending.getProvider())
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        User saved = userRepository.save(user);
+
+        for (String provider : parseLinkedProviders(pending.getLinkedProviders())) {
+            upsertSocialAccount(saved, provider, saved.getFirebaseUid(), saved.getEmail());
+        }
+
+        pendingSocialSignupRepository.delete(pending);
+        log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
+        return buildAuthResponse(saved);
+    }
+
+    private String resolveNickname(String displayName, String email, String uid) {
+        if (displayName != null && !displayName.isBlank()) {
+            return displayName.trim();
+        }
+        if (email != null) {
+            Matcher matcher = DM_TEST_EMAIL_PATTERN.matcher(email.trim());
+            if (matcher.matches()) {
+                return "유저" + matcher.group(1);
+            }
+        }
+        return "User_" + uid.substring(0, Math.min(5, uid.length()));
+    }
+
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return userRepository.findByFirebaseUid(firebaseUid)
@@ -103,10 +163,12 @@ public class AuthService {
 
     public LogoutResponse logout() {
         User user = getCurrentUser();
+        String currentIdToken = resolveCurrentIdToken();
         log.info("사용자 로그아웃 처리 (RefreshToken 만료): userId={}", user.getId());
 
         try {
             firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
+            firebaseIdentityService.revokeTokenLocally(currentIdToken);
             return new LogoutResponse(true, "로그아웃 성공. 모든 세션이 만료되었습니다.");
         } catch (FirebaseAuthException e) {
             log.error("Firebase 로그아웃 처리 중 오류 발생: {}", e.getMessage());
@@ -117,6 +179,7 @@ public class AuthService {
     @Transactional
     public WithdrawResponse withdraw() {
         User user = getCurrentUser();
+        String currentIdToken = resolveCurrentIdToken();
         log.info("사용자 탈퇴 처리 시작 (Firebase 계정 삭제 포함): userId={}", user.getId());
 
         try {
@@ -124,6 +187,7 @@ public class AuthService {
 
             user.setStatus(UserStatus.WITHDRAWN);
             userRepository.save(user);
+            firebaseIdentityService.revokeTokenLocally(currentIdToken);
 
             log.info("사용자 탈퇴 완료: userId={}", user.getId());
             return new WithdrawResponse("WITHDRAWN", "회원 탈퇴 및 Firebase 계정 삭제가 완료되었습니다.");
@@ -140,6 +204,7 @@ public class AuthService {
     @Transactional
     public SocialUnlinkResponse unlinkSocial(String provider) {
         User user = getCurrentUser();
+        String currentIdToken = resolveCurrentIdToken();
         String normalizedProvider = normalizeProviderId(provider);
         log.info("소셜 계정 연결 해제 요청: userId={}, provider={}", user.getId(), normalizedProvider);
 
@@ -169,6 +234,7 @@ public class AuthService {
 
         try {
             firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
+            firebaseIdentityService.revokeTokenLocally(currentIdToken);
         } catch (FirebaseAuthException e) {
             log.error("Firebase 소셜 연결 해제 중 오류 발생: {}", e.getMessage());
             throw ApiException.internal("UNLINK_FAILED", "연결 해제 중 오류가 발생했습니다.");
@@ -180,6 +246,15 @@ public class AuthService {
                 remainingProviders,
                 normalizedProvider + " 계정 연결이 해제되었습니다."
         );
+    }
+
+    private String resolveCurrentIdToken() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            return null;
+        }
+        Object credentials = authentication.getCredentials();
+        return credentials instanceof String token && !token.isBlank() ? token : null;
     }
 
     // 단일 authProvider 필드와 별도로 다중 소셜 연동 테이블을 현재 Firebase 상태에 맞춰 갱신한다.
@@ -212,6 +287,54 @@ public class AuthService {
         }
     }
 
+    private PendingSocialSignup upsertPendingSignup(
+            FirebaseIdentityService.FirebaseIdentity identity,
+            String normalizedProvider,
+            String resolvedNickname,
+            String picture
+    ) {
+        List<String> linkedProviders = resolveLinkedProviders(identity, normalizedProvider);
+        PendingSocialSignup pending = pendingSocialSignupRepository.findByFirebaseUid(identity.uid())
+                .orElseGet(() -> PendingSocialSignup.builder()
+                        .firebaseUid(identity.uid())
+                        .build());
+
+        pending.setEmail(identity.email());
+        pending.setNickname(resolvedNickname);
+        pending.setProfileImageUrl(picture);
+        pending.setProvider(normalizedProvider);
+        pending.setLinkedProviders(String.join(",", linkedProviders));
+        pending.setExpiresAt(Instant.now().plusSeconds(PENDING_SIGNUP_TTL_SECONDS));
+        return pendingSocialSignupRepository.save(pending);
+    }
+
+    private List<String> resolveLinkedProviders(FirebaseIdentityService.FirebaseIdentity identity, String fallbackProvider) {
+        if (identity.providers() == null || identity.providers().isEmpty()) {
+            return List.of(fallbackProvider);
+        }
+
+        List<String> providers = identity.providers().stream()
+                .map(FirebaseIdentityService.ProviderIdentity::providerId)
+                .filter(providerId -> providerId != null && !providerId.isBlank())
+                .filter(providerId -> !"firebase".equalsIgnoreCase(providerId))
+                .map(this::normalizeProviderId)
+                .distinct()
+                .toList();
+
+        return providers.isEmpty() ? List.of(fallbackProvider) : providers;
+    }
+
+    private List<String> parseLinkedProviders(String linkedProviders) {
+        if (linkedProviders == null || linkedProviders.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(linkedProviders.split(","))
+                .map(String::trim)
+                .filter(provider -> !provider.isBlank())
+                .distinct()
+                .toList();
+    }
+
     private void syncSingleProvider(User user, String provider, String providerUserId, String providerEmail) {
         upsertSocialAccount(user, provider, providerUserId, providerEmail);
     }
@@ -233,13 +356,32 @@ public class AuthService {
     private AuthResponse buildAuthResponse(User user) {
         return new AuthResponse(
                 user.getId(),
+                null,
                 user.getFirebaseUid(),
                 user.getEmail(),
                 user.getNickname(),
                 user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "",
                 user.getAuthProvider(),
                 getLinkedProviders(user),
-                user.getRole().name()
+                user.getRole().name(),
+                REGISTRATION_COMPLETED,
+                user.getRegion() != null ? user.getRegion() : ""
+        );
+    }
+
+    private AuthResponse buildPendingAuthResponse(PendingSocialSignup pending) {
+        return new AuthResponse(
+                null,
+                pending.getId(),
+                pending.getFirebaseUid(),
+                pending.getEmail(),
+                pending.getNickname(),
+                pending.getProfileImageUrl() != null ? pending.getProfileImageUrl() : "",
+                pending.getProvider(),
+                parseLinkedProviders(pending.getLinkedProviders()),
+                null,
+                REGISTRATION_PENDING_ONBOARDING,
+                ""
         );
     }
 

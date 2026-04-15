@@ -16,6 +16,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,7 +41,11 @@ import java.util.UUID;
                 @Index(name = "idx_notice_chat_rooms_notice", columnList = "notice_id"),
                 @Index(name = "idx_notice_chat_rooms_owner", columnList = "owner_user_id"),
                 @Index(name = "idx_notice_chat_rooms_guest", columnList = "guest_user_id"),
-                @Index(name = "idx_notice_chat_rooms_last_message_at", columnList = "last_message_at")
+                @Index(name = "idx_notice_chat_rooms_last_message_at", columnList = "last_message_at"),
+                @Index(name = "idx_notice_chat_rooms_last_message_sequence", columnList = "last_message_sequence")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_notice_chat_rooms_notice_owner_guest", columnNames = {"notice_id", "owner_user_id", "guest_user_id"})
         })
 /**
  * 데이터베이스 테이블과 매핑되는 NoticeChatRoom 엔티티이다.
@@ -81,11 +86,14 @@ public class NoticeChatRoom {
     private Instant lastMessageAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "last_message_type", length = 20)
+    @Column(name = "last_message_type", length = 20, columnDefinition = "varchar(20)")
     private NoticeChatMessageType lastMessageType;
 
     @Column(name = "last_message_preview", length = 200)
     private String lastMessagePreview;
+
+    @Column(name = "last_message_sequence")
+    private Long lastMessageSequence;
 }
 
 

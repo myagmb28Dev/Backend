@@ -71,6 +71,9 @@ public class NoticeChatRoomParticipantState {
     @Column(name = "last_read_at")
     private Instant lastReadAt;
 
+    @Column(name = "last_read_room_sequence")
+    private Long lastReadRoomSequence;
+
     @Builder.Default
     @Column(name = "notification_enabled", nullable = false)
     private Boolean notificationEnabled = true;

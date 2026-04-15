@@ -231,6 +231,7 @@ public class MissingPetService {
                 notice.getViewCount(),
                 noticeBookmarkRepository.countByNotice(notice),
                 isUrgent(notice),
+                notice.getAuthor().getId(),
                 notice.getAuthor().getNickname(),
                 notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
         );

@@ -3,6 +3,7 @@ package com.example.pogun.controller.noticechat;
 import com.example.pogun.config.StompAuthChannelInterceptor;
 import com.example.pogun.config.WebSocketPrincipal;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
+import com.example.pogun.dto.noticechat.NoticeChatReadRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomEventRequest;
 import com.example.pogun.dto.noticechat.NoticeChatTypingRequest;
 import com.example.pogun.service.noticechat.NoticeChatService;
@@ -65,6 +66,14 @@ public class NoticeChatMessageController {
                       SimpMessageHeaderAccessor headerAccessor) {
         Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
         noticeChatService.leaveSocketRoom(resolvedPrincipal, request);
+    }
+
+    @MessageMapping("/chat/read")
+    public void read(@Valid @Payload NoticeChatReadRequest request,
+                     Principal principal,
+                     SimpMessageHeaderAccessor headerAccessor) {
+        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        noticeChatService.markRoomAsRead(resolvedPrincipal, request);
     }
 
     private Principal resolvePrincipal(Principal principal, SimpMessageHeaderAccessor headerAccessor) {

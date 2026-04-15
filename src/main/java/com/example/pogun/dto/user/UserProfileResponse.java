@@ -15,6 +15,7 @@ public record UserProfileResponse(
         @Schema(description = "닉네임") String nickname,
         @Schema(description = "프로필 이미지 URL") String profileImageUrl,
         @Schema(description = "전화번호") String phoneNumber,
+        @Schema(description = "지역") String region,
         @Schema(description = "대표 로그인 제공자") String provider,
         @Schema(description = "연결된 제공자 목록") List<String> linkedProviders,
         @Schema(description = "역할") String role,

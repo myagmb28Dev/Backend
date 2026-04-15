@@ -2,6 +2,7 @@ package com.example.pogun.controller.noticechat;
 
 import com.example.pogun.controller.common.GlobalExceptionHandler;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.dto.noticechat.NoticeChatMessagePageResponse;
 import com.example.pogun.dto.noticechat.NoticeChatMessageResponse;
 import com.example.pogun.dto.noticechat.NoticeChatRoomCreateResult;
 import com.example.pogun.dto.noticechat.NoticeChatRoomResponse;
@@ -83,12 +84,14 @@ class NoticeChatControllerTest {
     @Test
     void getMessages_returnsMessageList() throws Exception {
         UUID roomId = UUID.randomUUID();
-        when(noticeChatService.getMessages(roomId.toString())).thenReturn(List.of(messageResponse(roomId)));
+        when(noticeChatService.getMessages(roomId.toString(), null, null))
+                .thenReturn(new NoticeChatMessagePageResponse(List.of(messageResponse(roomId)), false, null, 50));
 
         mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].roomId").value(roomId.toString()))
-                .andExpect(jsonPath("$.data[0].messageType").value("TEXT"));
+                .andExpect(jsonPath("$.data.messages[0].roomId").value(roomId.toString()))
+                .andExpect(jsonPath("$.data.messages[0].messageType").value("TEXT"))
+                .andExpect(jsonPath("$.data.hasMore").value(false));
     }
 
     @Test
@@ -121,6 +124,10 @@ class NoticeChatControllerTest {
                 roomId,
                 noticeId,
                 "실종 공고",
+                "https://cdn.example.com/notice.jpg",
+                "OPEN",
+                "공개중",
+                "서울 강남구",
                 "OPEN",
                 "TEXT",
                 Instant.now(),
@@ -134,6 +141,7 @@ class NoticeChatControllerTest {
                 false,
                 null,
                 false,
+                null,
                 null,
                 null,
                 null
@@ -155,7 +163,10 @@ class NoticeChatControllerTest {
                 Instant.now(),
                 null,
                 1L,
-                Instant.now()
+                Instant.now(),
+                null,
+                null,
+                false
         );
     }
 }

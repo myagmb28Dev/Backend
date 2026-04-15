@@ -82,6 +82,46 @@ class LocalImageStorageServiceTest {
     }
 
     @Test
+    void storeImageVariant_keepsGifOriginalWithoutWebpDerivatives() throws IOException {
+        LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
+        UUID ownerId = UUID.randomUUID();
+
+        var variant = service.storeImageVariant(
+                "notice-chat",
+                "messages",
+                ownerId,
+                new MockMultipartFile("image", "sample.gif", "image/gif", createImageBytes("gif"))
+        );
+
+        assertThat(variant.originalUrl()).endsWith(".gif");
+        assertThat(variant.webpUrl()).endsWith(".gif");
+        assertThat(variant.mediumUrl()).isNull();
+        assertThat(variant.thumbnailUrl()).isNull();
+        assertThat(variant.previewUrl()).isNull();
+        assertThat(Files.exists(tempDir.resolve(variant.originalUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
+    }
+
+    @Test
+    void storeImageVariant_keepsMp4OriginalWithoutWebpDerivatives() {
+        LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
+        UUID ownerId = UUID.randomUUID();
+
+        var variant = service.storeImageVariant(
+                "notice-chat",
+                "messages",
+                ownerId,
+                new MockMultipartFile("image", "sample.mp4", "video/mp4", createMp4Bytes())
+        );
+
+        assertThat(variant.originalUrl()).endsWith(".mp4");
+        assertThat(variant.webpUrl()).endsWith(".mp4");
+        assertThat(variant.mediumUrl()).isNull();
+        assertThat(variant.thumbnailUrl()).isNull();
+        assertThat(variant.previewUrl()).isNull();
+        assertThat(Files.exists(tempDir.resolve(variant.originalUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
+    }
+
+    @Test
     void storeImage_rejectsFilesOverFiveMegabytes() {
         LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
         byte[] oversized = new byte[5 * 1024 * 1024 + 1];
@@ -117,5 +157,14 @@ class LocalImageStorageServiceTest {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ImageIO.write(image, format, outputStream);
         return outputStream.toByteArray();
+    }
+
+    private byte[] createMp4Bytes() {
+        return new byte[]{
+                0x00, 0x00, 0x00, 0x18,
+                0x66, 0x74, 0x79, 0x70,
+                0x69, 0x73, 0x6F, 0x6D,
+                0x00, 0x00, 0x00, 0x00
+        };
     }
 }

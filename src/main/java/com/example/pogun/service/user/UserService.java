@@ -60,6 +60,9 @@ public class UserService {
         if (request.getPhoneNumber() != null) {
             user.setPhoneNumber(request.getPhoneNumber().trim());
         }
+        if (request.getRegion() != null) {
+            user.setRegion(request.getRegion().trim());
+        }
         if (profileImage != null && !profileImage.isEmpty()) {
             user.setProfileImageUrl(localImageStorageService.storeImage("profile", "users", user.getId(), profileImage));
         } else if (request.getProfileImageUrl() != null) {
@@ -92,6 +95,7 @@ public class UserService {
                 user.getNickname(),
                 user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "https://cdn.ex.com/profile/default.png",
                 user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
+                user.getRegion() != null ? user.getRegion() : "",
                 user.getAuthProvider() != null ? user.getAuthProvider() : "GOOGLE",
                 getLinkedProviders(user),
                 user.getRole().name(),

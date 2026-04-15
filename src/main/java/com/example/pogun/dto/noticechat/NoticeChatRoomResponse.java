@@ -13,6 +13,10 @@ public record NoticeChatRoomResponse(
         @Schema(description = "채팅방 ID") UUID roomId,
         @Schema(description = "공고 ID") UUID noticeId,
         @Schema(description = "공고 제목") String noticeTitle,
+        @Schema(description = "공고 대표 이미지 URL") String noticeImageUrl,
+        @Schema(description = "공고 상태") String noticeStatus,
+        @Schema(description = "공고 상태 라벨") String noticeStatusLabel,
+        @Schema(description = "공고 실종 지역") String noticeMissingRegion,
         @Schema(description = "채팅방 상태") String roomStatus,
         @Schema(description = "최근 메시지 유형") String lastMessageType,
         @Schema(description = "최근 메시지 시각") Instant lastMessageAt,
@@ -28,6 +32,7 @@ public record NoticeChatRoomResponse(
         @Schema(description = "상대방 온라인 여부") Boolean opponentOnline,
         @Schema(description = "상대방 마지막 활동 시각") Instant opponentLastActiveAt,
         @Schema(description = "마지막으로 읽은 메시지 ID") UUID lastReadMessageId,
-        @Schema(description = "마지막 읽음 시각") Instant lastReadAt
+        @Schema(description = "마지막 읽음 시각") Instant lastReadAt,
+        @Schema(description = "마지막으로 읽은 채팅방 순번") Long lastReadRoomSequence
 ) {
 }

@@ -63,6 +63,9 @@ public class User {
     @Column(name = "phone_number", length = 30)
     private String phoneNumber;
 
+    @Column(name = "region", length = 100)
+    private String region;
+
     @Column(name = "auth_provider", length = 30)
     private String authProvider;
 
