@@ -6,6 +6,7 @@ import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.auth.SocialUnlinkResponse;
 import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
@@ -14,6 +15,7 @@ import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.location.KakaoLocalService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
     private final PendingSocialSignupRepository pendingSocialSignupRepository;
+    private final KakaoLocalService kakaoLocalService;
 
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
@@ -103,7 +106,7 @@ public class AuthService {
     @Transactional
     public AuthResponse completeOnboarding(OnboardingCompleteRequest request) {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String region = request.getRegion().trim();
+        RegionResponse region = kakaoLocalService.resolveRegion(request.getX(), request.getY());
 
         if (userRepository.findByFirebaseUid(firebaseUid).isPresent()) {
             throw ApiException.conflict("ALREADY_REGISTERED", "이미 회원가입이 완료된 사용자입니다.");
@@ -126,7 +129,12 @@ public class AuthService {
                 .email(pending.getEmail())
                 .nickname(pending.getNickname())
                 .profileImageUrl(pending.getProfileImageUrl())
-                .region(region)
+                .region(region.addressName())
+                .regionType(region.regionType())
+                .regionAddressName(region.addressName())
+                .region1DepthName(region.region1DepthName())
+                .region2DepthName(region.region2DepthName())
+                .region3DepthName(region.region3DepthName())
                 .authProvider(pending.getProvider())
                 .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
@@ -365,7 +373,8 @@ public class AuthService {
                 getLinkedProviders(user),
                 user.getRole().name(),
                 REGISTRATION_COMPLETED,
-                user.getRegion() != null ? user.getRegion() : ""
+                user.getRegion() != null ? user.getRegion() : "",
+                buildRegionResponse(user)
         );
     }
 
@@ -381,7 +390,21 @@ public class AuthService {
                 parseLinkedProviders(pending.getLinkedProviders()),
                 null,
                 REGISTRATION_PENDING_ONBOARDING,
-                ""
+                "",
+                null
+        );
+    }
+
+    private RegionResponse buildRegionResponse(User user) {
+        if (user.getRegionAddressName() == null || user.getRegionAddressName().isBlank()) {
+            return null;
+        }
+        return new RegionResponse(
+                user.getRegionType(),
+                user.getRegionAddressName(),
+                user.getRegion1DepthName(),
+                user.getRegion2DepthName(),
+                user.getRegion3DepthName()
         );
     }
 

@@ -66,6 +66,21 @@ public class User {
     @Column(name = "region", length = 100)
     private String region;
 
+    @Column(name = "region_type", length = 1)
+    private String regionType;
+
+    @Column(name = "region_address_name", length = 100)
+    private String regionAddressName;
+
+    @Column(name = "region_1depth_name", length = 100)
+    private String region1DepthName;
+
+    @Column(name = "region_2depth_name", length = 100)
+    private String region2DepthName;
+
+    @Column(name = "region_3depth_name", length = 100)
+    private String region3DepthName;
+
     @Column(name = "auth_provider", length = 30)
     private String authProvider;
 

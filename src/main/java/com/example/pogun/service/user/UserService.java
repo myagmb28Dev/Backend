@@ -2,6 +2,7 @@ package com.example.pogun.service.user;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 
+import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.dto.user.UpdateProfileRequest;
 import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
@@ -96,10 +97,24 @@ public class UserService {
                 user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "https://cdn.ex.com/profile/default.png",
                 user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
                 user.getRegion() != null ? user.getRegion() : "",
+                buildRegionResponse(user),
                 user.getAuthProvider() != null ? user.getAuthProvider() : "GOOGLE",
                 getLinkedProviders(user),
                 user.getRole().name(),
                 user.getStatus().name()
+        );
+    }
+
+    private RegionResponse buildRegionResponse(User user) {
+        if (user.getRegionAddressName() == null || user.getRegionAddressName().isBlank()) {
+            return null;
+        }
+        return new RegionResponse(
+                user.getRegionType(),
+                user.getRegionAddressName(),
+                user.getRegion1DepthName(),
+                user.getRegion2DepthName(),
+                user.getRegion3DepthName()
         );
     }
 

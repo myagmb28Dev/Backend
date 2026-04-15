@@ -2,12 +2,14 @@ package com.example.pogun.service.auth;
 
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
+import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.location.KakaoLocalService;
 import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +49,9 @@ class AuthServiceTest {
 
     @Mock
     private PendingSocialSignupRepository pendingSocialSignupRepository;
+
+    @Mock
+    private KakaoLocalService kakaoLocalService;
 
     @InjectMocks
     private AuthService authService;
@@ -93,7 +98,8 @@ class AuthServiceTest {
                 new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")
         );
         OnboardingCompleteRequest request = new OnboardingCompleteRequest();
-        request.setRegion("서울특별시 강남구");
+        request.setX(127.1086228);
+        request.setY(37.4012191);
 
         PendingSocialSignup pending = PendingSocialSignup.builder()
                 .id(UUID.fromString("11111111-1111-1111-1111-111111111111"))
@@ -109,6 +115,13 @@ class AuthServiceTest {
         when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.empty());
         when(pendingSocialSignupRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(pending));
         when(userRepository.findByEmail("new-user@example.com")).thenReturn(Optional.empty());
+        when(kakaoLocalService.resolveRegion(127.1086228, 37.4012191)).thenReturn(new RegionResponse(
+                "H",
+                "경기도 성남시 분당구 삼평동",
+                "경기도",
+                "성남시 분당구",
+                "삼평동"
+        ));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             user.setId(UUID.fromString("22222222-2222-2222-2222-222222222222"));
@@ -121,12 +134,14 @@ class AuthServiceTest {
         assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
         assertThat(response.id()).isEqualTo(UUID.fromString("22222222-2222-2222-2222-222222222222"));
         assertThat(response.pendingSignupId()).isNull();
-        assertThat(response.region()).isEqualTo("서울특별시 강남구");
+        assertThat(response.region()).isEqualTo("경기도 성남시 분당구 삼평동");
+        assertThat(response.regionInfo().regionType()).isEqualTo("H");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
-        assertThat(userCaptor.getValue().getRegion()).isEqualTo("서울특별시 강남구");
+        assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
+        assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
         verify(pendingSocialSignupRepository).delete(pending);
     }
 }

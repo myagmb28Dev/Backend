@@ -1,6 +1,7 @@
 package com.example.pogun.dto.auth;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.example.pogun.dto.location.RegionResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +21,7 @@ public record AuthResponse(
         @Schema(description = "연결된 제공자 목록") List<String> linkedProviders,
         @Schema(description = "역할") String role,
         @Schema(description = "회원가입 상태", allowableValues = {"COMPLETED", "PENDING_ONBOARDING"}) String registrationStatus,
-        @Schema(description = "지역") String region
+        @Schema(description = "지역") String region,
+        @Schema(description = "행정구역 정보") RegionResponse regionInfo
 ) {
 }
