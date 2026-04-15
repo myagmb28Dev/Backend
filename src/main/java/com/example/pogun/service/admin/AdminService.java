@@ -16,6 +16,7 @@ import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
+import com.example.pogun.repository.noticechat.NoticeChatMessageImageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
@@ -48,6 +49,7 @@ public class AdminService {
     private final NoticeBookmarkRepository noticeBookmarkRepository;
     private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final NoticeChatMessageRepository noticeChatMessageRepository;
+    private final NoticeChatMessageImageRepository noticeChatMessageImageRepository;
 
     // 대시보드는 여러 도메인 저장소에서 바로 집계해 관리자 첫 화면이 별도 후처리 없이 그릴 수 있게 반환한다.
     public AdminDashboardResponse getDashboard() {
@@ -99,6 +101,7 @@ public class AdminService {
         PetNotice notice = getPetNotice(postId);
         List<NoticeChatRoom> chatRooms = noticeChatRoomRepository.findByNotice(notice);
         if (!chatRooms.isEmpty()) {
+            noticeChatMessageImageRepository.deleteByMessageRoomIn(chatRooms);
             noticeChatMessageRepository.deleteByRoomIn(chatRooms);
             noticeChatRoomRepository.deleteAll(chatRooms);
         }

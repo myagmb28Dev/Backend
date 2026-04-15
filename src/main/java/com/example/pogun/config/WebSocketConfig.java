@@ -16,19 +16,30 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final StompAuthChannelInterceptor stompAuthChannelInterceptor;
+    private final WebSocketApiErrorHandler webSocketApiErrorHandler;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        // 단일 서버 MVP 단계라 외부 브로커 없이 simple broker 로 room topic fan-out 을 처리한다.
-        registry.enableSimpleBroker("/topic");
+        // 단일 서버 MVP 단계라 외부 브로커 없이 simple broker 로 사용자별 queue 와 topic fan-out 을 처리한다.
+        registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
+        registry.setUserDestinationPrefix("/user");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // 프론트는 이 endpoint로 STOMP CONNECT 하고, 실제 인증은 inbound interceptor 에서 검증한다.
+        registry.setErrorHandler(webSocketApiErrorHandler);
         registry.addEndpoint("/ws/chat")
-                .setAllowedOrigins("http://localhost:3000", "http://127.0.0.1:3000");
+                .setAllowedOriginPatterns(
+                        "http://localhost:3000",
+                        "http://127.0.0.1:3000",
+                        "http://localhost:8080",
+                        "http://127.0.0.1:8080",
+                        "http://192.168.*.*:8080",
+                        "http://172.*.*.*:8080",
+                        "http://10.*.*.*:8080"
+                );
     }
 
     @Override

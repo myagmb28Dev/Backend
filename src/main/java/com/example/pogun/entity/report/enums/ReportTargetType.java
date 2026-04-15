@@ -7,6 +7,7 @@ public enum ReportTargetType {
     COMMUNITY_POST,
     COMMUNITY_COMMENT,
     PET_NOTICE,
+    NOTICE_CHAT_ROOM,
     USER
 }
 

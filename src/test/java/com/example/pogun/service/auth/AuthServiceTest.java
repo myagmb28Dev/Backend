@@ -1,0 +1,147 @@
+package com.example.pogun.service.auth;
+
+import com.example.pogun.dto.auth.AuthResponse;
+import com.example.pogun.dto.auth.OnboardingCompleteRequest;
+import com.example.pogun.dto.location.RegionResponse;
+import com.example.pogun.entity.user.PendingSocialSignup;
+import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserStatus;
+import com.example.pogun.repository.user.PendingSocialSignupRepository;
+import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.location.KakaoLocalService;
+import com.google.firebase.auth.FirebaseAuth;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class AuthServiceTest {
+
+    @Mock
+    private FirebaseAuth firebaseAuth;
+
+    @Mock
+    private FirebaseIdentityService firebaseIdentityService;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private UserSocialAccountRepository userSocialAccountRepository;
+
+    @Mock
+    private PendingSocialSignupRepository pendingSocialSignupRepository;
+
+    @Mock
+    private KakaoLocalService kakaoLocalService;
+
+    @InjectMocks
+    private AuthService authService;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void loginOrSignUp_createsPendingSignupInsteadOfUserForNewSocialIdentity() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "firebase-uid",
+                "new-user@example.com",
+                "New User",
+                "https://cdn.example.com/profile.png",
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "new-user@example.com")),
+                java.util.Map.of()
+        );
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("new-user@example.com")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.save(any(PendingSocialSignup.class))).thenAnswer(invocation -> {
+            PendingSocialSignup pending = invocation.getArgument(0);
+            pending.setId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+            return pending;
+        });
+
+        AuthResponse response = authService.loginOrSignUp("id-token");
+
+        assertThat(response.registrationStatus()).isEqualTo("PENDING_ONBOARDING");
+        assertThat(response.id()).isNull();
+        assertThat(response.pendingSignupId()).isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        assertThat(response.provider()).isEqualTo("GOOGLE");
+        assertThat(response.linkedProviders()).containsExactly("GOOGLE");
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void completeOnboarding_createsActiveUserFromPendingSignup() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")
+        );
+        OnboardingCompleteRequest request = new OnboardingCompleteRequest();
+        request.setX(127.1086228);
+        request.setY(37.4012191);
+
+        PendingSocialSignup pending = PendingSocialSignup.builder()
+                .id(UUID.fromString("11111111-1111-1111-1111-111111111111"))
+                .firebaseUid("firebase-uid")
+                .email("new-user@example.com")
+                .nickname("New User")
+                .profileImageUrl("https://cdn.example.com/profile.png")
+                .provider("GOOGLE")
+                .linkedProviders("GOOGLE")
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(pending));
+        when(userRepository.findByEmail("new-user@example.com")).thenReturn(Optional.empty());
+        when(kakaoLocalService.resolveRegion(127.1086228, 37.4012191)).thenReturn(new RegionResponse(
+                "H",
+                "경기도 성남시 분당구 삼평동",
+                "경기도",
+                "성남시 분당구",
+                "삼평동"
+        ));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            user.setId(UUID.fromString("22222222-2222-2222-2222-222222222222"));
+            return user;
+        });
+        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
+
+        AuthResponse response = authService.completeOnboarding(request);
+
+        assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
+        assertThat(response.id()).isEqualTo(UUID.fromString("22222222-2222-2222-2222-222222222222"));
+        assertThat(response.pendingSignupId()).isNull();
+        assertThat(response.region()).isEqualTo("경기도 성남시 분당구 삼평동");
+        assertThat(response.regionInfo().regionType()).isEqualTo("H");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
+        assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
+        verify(pendingSocialSignupRepository).delete(pending);
+    }
+}

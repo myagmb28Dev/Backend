@@ -9,6 +9,7 @@ import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
+import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class ReportService {
     private final PetNoticeRepository petNoticeRepository;
     private final CommunityPostRepository communityPostRepository;
     private final CommunityCommentRepository communityCommentRepository;
+    private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final UserRepository userRepository;
 
     // 신고는 단일 테이블로 관리하되, 저장 전에 대상 존재 여부와 활성 중복 신고를 함께 차단한다.
@@ -111,6 +113,7 @@ public class ReportService {
             case PET_NOTICE -> petNoticeRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 실종 공고를 찾을 수 없습니다."));
             case COMMUNITY_POST -> communityPostRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 커뮤니티 게시글을 찾을 수 없습니다."));
             case COMMUNITY_COMMENT -> communityCommentRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 댓글을 찾을 수 없습니다."));
+            case NOTICE_CHAT_ROOM -> noticeChatRoomRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 채팅방을 찾을 수 없습니다."));
             case USER -> userRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 사용자를 찾을 수 없습니다."));
         }
     }
