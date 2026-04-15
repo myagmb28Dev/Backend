@@ -24,4 +24,10 @@ public class NoticeChatMessageRequest {
     @Size(max = 2000, message = "message는 2000자를 초과할 수 없습니다.")
     @Schema(description = "메시지 내용", example = "근처에서 강아지를 본 것 같아요.")
     private String message;
+
+    @Schema(description = "답장 대상 메시지 ID")
+    private UUID replyToMessageId;
+
+    @Schema(description = "클라이언트 재전송/중복 방지용 메시지 ID")
+    private String clientMessageId;
 }

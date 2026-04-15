@@ -82,6 +82,16 @@ public class NoticeChatRoom {
 
     @Column(name = "last_message_at")
     private Instant lastMessageAt;
+
+    @Column(name = "last_message_preview", length = 200)
+    private String lastMessagePreview;
+
+    @Column(name = "last_message_type", length = 20)
+    private String lastMessageType;
+
+    @Builder.Default
+    @Column(name = "last_message_sequence", nullable = false)
+    private Long lastMessageSequence = 0L;
 }
 
 

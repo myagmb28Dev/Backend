@@ -1,6 +1,8 @@
 package com.example.pogun.controller.noticechat;
 
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
+import com.example.pogun.dto.noticechat.NoticeChatReadRequest;
+import com.example.pogun.dto.noticechat.NoticeChatRoomEventRequest;
 import com.example.pogun.dto.noticechat.NoticeChatTypingRequest;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import jakarta.validation.Valid;
@@ -38,5 +40,20 @@ public class NoticeChatMessageController {
                 request.getTyping());
         // 입력 중 이벤트는 영속화하지 않고 상대방 화면 동기화용으로만 중계한다.
         noticeChatService.sendTypingEvent(principal, request);
+    }
+
+    @MessageMapping("/chat/enter")
+    public void enter(@Valid @Payload NoticeChatRoomEventRequest request, Principal principal) {
+        noticeChatService.enterRoom(principal, request);
+    }
+
+    @MessageMapping("/chat/leave")
+    public void leave(@Valid @Payload NoticeChatRoomEventRequest request, Principal principal) {
+        noticeChatService.leaveSocketRoom(principal, request);
+    }
+
+    @MessageMapping("/chat/read")
+    public void read(@Valid @Payload NoticeChatReadRequest request, Principal principal) {
+        noticeChatService.markRoomAsRead(principal, request);
     }
 }
