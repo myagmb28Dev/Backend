@@ -47,7 +47,7 @@ public class ReportService {
         String reason = String.valueOf(request.getOrDefault("reason", "ETC")).trim();
         String description = request.get("description") == null ? null : String.valueOf(request.get("description")).trim();
 
-        validateTargetExists(targetType, targetId);
+        validateTargetExists(reporter, targetType, targetId);
         validateDuplicateReport(reporter, targetType, targetId);
 
         Report report = reportRepository.save(Report.builder()
@@ -108,12 +108,19 @@ public class ReportService {
     }
 
     // 컨트롤러 종류와 무관하게 같은 검증을 재사용하려고 대상별 존재 확인을 서비스에서 묶어 관리한다.
-    private void validateTargetExists(ReportTargetType targetType, UUID targetId) {
+    private void validateTargetExists(User reporter, ReportTargetType targetType, UUID targetId) {
         switch (targetType) {
             case PET_NOTICE -> petNoticeRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 실종 공고를 찾을 수 없습니다."));
             case COMMUNITY_POST -> communityPostRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 커뮤니티 게시글을 찾을 수 없습니다."));
             case COMMUNITY_COMMENT -> communityCommentRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 댓글을 찾을 수 없습니다."));
-            case NOTICE_CHAT_ROOM -> noticeChatRoomRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 채팅방을 찾을 수 없습니다."));
+            case NOTICE_CHAT_ROOM -> {
+                var room = noticeChatRoomRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 채팅방을 찾을 수 없습니다."));
+                boolean participant = room.getOwnerUser().getId().equals(reporter.getId())
+                        || room.getGuestUser().getId().equals(reporter.getId());
+                if (!participant) {
+                    throw ApiException.forbidden("REPORT_CHAT_ROOM_FORBIDDEN", "참여 중인 채팅방만 신고할 수 있습니다.");
+                }
+            }
             case USER -> userRepository.findById(targetId).orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 사용자를 찾을 수 없습니다."));
         }
     }

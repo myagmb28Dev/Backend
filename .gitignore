@@ -14,8 +14,7 @@ docs/
 firebase-debug.log
 .playwright-cli/
 node_modules/
-playwright/test-results/
-playwright/playwright-report/
+playwright/artifacts/
 
 
 ### resources secrets ###
@@ -61,6 +60,7 @@ node_modules/
 /test-results/
 /playwright-report/
 /blob-report/
+/playwright/artifacts/
 /playwright/.cache/
 /playwright/.auth/
 /.playwright-cli/

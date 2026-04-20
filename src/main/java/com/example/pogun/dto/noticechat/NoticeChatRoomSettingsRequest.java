@@ -16,4 +16,13 @@ public class NoticeChatRoomSettingsRequest {
 
     @Schema(description = "상단 고정 여부")
     private Boolean pinned;
+
+    @Schema(description = "사용자별 채팅방 표시 이름")
+    private String customRoomName;
+
+    @Schema(description = "사용자별 채팅방 표시 이름 초기화 여부")
+    private Boolean clearCustomRoomName;
+
+    @Schema(description = "사용자별 채팅방 썸네일 초기화 여부")
+    private Boolean clearCustomThumbnailUrl;
 }

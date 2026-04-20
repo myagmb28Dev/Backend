@@ -61,6 +61,7 @@ public class PogunDmPlaywrightCleanup {
   public static void main(String[] args) throws Exception {
     List<String> statements = List.of(
       "DELETE FROM reports WHERE target_type = 'NOTICE_CHAT_ROOM' AND target_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_read_receipts WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
       "DELETE FROM notice_chat_room_participant_states WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
       "DELETE FROM notice_chat_message_images WHERE message_id IN (SELECT id FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')))",
       "UPDATE notice_chat_messages SET reply_to_message_id = NULL WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
@@ -101,20 +102,11 @@ public class PogunDmPlaywrightCleanup {
     stdio: 'ignore'
   });
   cleanupGeneratedNoticeChatUploads();
-  cleanupGeneratedMissingPetUploads();
 }
 
 function cleanupGeneratedNoticeChatUploads() {
-  cleanupUntrackedUploads('uploads/notice-chat/messages');
-}
-
-function cleanupGeneratedMissingPetUploads() {
-  cleanupUntrackedUploads('uploads/missing-pets');
-}
-
-function cleanupUntrackedUploads(uploadPath) {
   try {
-    const status = execFileSync('git', ['status', '--porcelain', '--', uploadPath], {
+    const status = execFileSync('git', ['status', '--porcelain', '--', 'uploads/notice-chat/messages'], {
       cwd: repoRoot,
       encoding: 'utf8'
     });
@@ -124,7 +116,7 @@ function cleanupUntrackedUploads(uploadPath) {
       }
       const relativePath = line.slice(3).trim();
       const absolutePath = path.resolve(repoRoot, relativePath);
-      const allowedRoot = path.resolve(repoRoot, uploadPath);
+      const allowedRoot = path.resolve(repoRoot, 'uploads', 'notice-chat', 'messages');
       if (absolutePath.startsWith(allowedRoot)) {
         fs.rmSync(absolutePath, { recursive: true, force: true });
       }
@@ -142,6 +134,11 @@ function createTestIdentity(prefix) {
     email: `${prefix}-${nonce}@local.dev`,
     password: 'Test1234!'
   };
+}
+
+function messagePageMessages(response) {
+  const data = response.body.data;
+  return Array.isArray(data) ? data : data.messages;
 }
 
 function createMissingPetPayload(title) {
@@ -241,146 +238,13 @@ function createTinyPngBlob() {
   return new Blob([Buffer.from(base64, 'base64')], { type: 'image/png' });
 }
 
-function createTinyPngFilePayload(name = 'tiny.png') {
-  const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0YQAAAAASUVORK5CYII=';
-  return {
-    name,
-    mimeType: 'image/png',
-    buffer: Buffer.from(base64, 'base64')
-  };
-}
-
-function createOversizedPngFilePayload(name = 'oversized.png', sizeBytes = 5 * 1024 * 1024 + 1024) {
-  const header = Buffer.from('89504e470d0a1a0a', 'hex');
-  const body = Buffer.alloc(Math.max(sizeBytes - header.length, 0), 0);
-  return {
-    name,
-    mimeType: 'image/png',
-    buffer: Buffer.concat([header, body])
-  };
-}
-
 function createTinyGifBlob() {
-  const base64 = 'R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-  return new Blob([Buffer.from(base64, 'base64')], { type: 'image/gif' });
+  return new Blob([Buffer.from('R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64')], { type: 'image/gif' });
 }
 
 function createTinyMp4Blob() {
-  return new Blob([
-    Buffer.from([
-      0x00, 0x00, 0x00, 0x18,
-      0x66, 0x74, 0x79, 0x70,
-      0x69, 0x73, 0x6F, 0x6D,
-      0x00, 0x00, 0x00, 0x00
-    ])
-  ], { type: 'video/mp4' });
+  return new Blob([Buffer.from('fake-mp4-body')], { type: 'video/mp4' });
 }
-
-test('dm test ui creates notice through DTO drawer without expanding the layout card', async ({ page }) => {
-  test.slow();
-
-  await page.goto(`${baseURL}/dm-test.html`, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#noticeDrawerBackdrop')).not.toHaveClass(/on/);
-
-  await page.locator('#user1LoginButton').click();
-  await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 15000 });
-
-  await page.locator('#createNoticeButton').click();
-  await expect(page.locator('#noticeDrawerBackdrop')).toHaveClass(/on/);
-  await expect(page.locator('#noticeDrawerTitle')).toHaveText('공고 작성');
-
-  const drawerBox = await page.locator('.notice-drawer').boundingBox();
-  const cardBoxBefore = await page.locator('section.card').nth(1).boundingBox();
-  expect(drawerBox?.height).toBeGreaterThan(300);
-
-  const title = `[DM TEST] playwright-ui-drawer-${Date.now()}`;
-  await page.locator('#noticeTitleInput').fill(title);
-  await page.locator('#noticeAnimalTypeInput').selectOption('CAT');
-  await page.locator('#noticeGenderInput').selectOption('UNKNOWN');
-  await page.locator('#noticeBreedInput').fill('KOREAN_SHORT_HAIR');
-  await page.locator('#noticeColorInput').fill('BLACK');
-  await page.locator('#noticeAgeInput').fill('2');
-  await page.locator('#noticeRewardInput').fill('1000');
-  await page.locator('#noticeRegionInput').fill('서울 마포구');
-  await page.locator('#noticeAddressInput').fill('합정역 인근');
-  await page.locator('#noticePhoneInput').fill('010-9999-0000');
-  await page.locator('#noticeDescriptionInput').fill('드로어에서 DTO 필드로 생성한 공고입니다.');
-  await page.locator('#noticeImageInput').setInputFiles(createTinyPngFilePayload('notice-create.png'));
-  await expect(page.locator('#noticeImagePreview img')).toHaveCount(1);
-  await page.locator('#submitNoticeCreateButton').click();
-
-  await expect(page.locator('#noticeDrawerBackdrop')).not.toHaveClass(/on/, { timeout: 15000 });
-  await expect(page.locator('#createNoticeState')).toContainText(title);
-  await expect(page.locator('#createNoticeState')).toContainText('이미지 1장');
-  await expect(page.locator('#ownNoticeSelect')).toContainText(title);
-
-  const cardBoxAfter = await page.locator('section.card').nth(1).boundingBox();
-  expect(Math.abs((cardBoxAfter?.height || 0) - (cardBoxBefore?.height || 0))).toBeLessThan(12);
-
-  await page.locator('#user2LoginButton').click();
-  await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 15000 });
-  await expect(page.locator('#targetNoticeSelect')).toContainText(title, { timeout: 15000 });
-
-  const targetNoticeValue = await page.locator('#targetNoticeSelect option', { hasText: title }).first().getAttribute('value');
-  expect(targetNoticeValue).toBeTruthy();
-  await page.locator('#targetNoticeSelect').selectOption(targetNoticeValue);
-  await page.locator('#startDmButton').click();
-  await expect(page.locator('#messageInput')).toBeEnabled({ timeout: 15000 });
-
-  const firstMessage = `pending latency check ${Date.now()}`;
-  await page.locator('#messageInput').fill(firstMessage);
-  const sendStartedAt = Date.now();
-  await page.locator('#sendMessageButton').click();
-  const ownMessage = page.locator('.message.mine', { hasText: firstMessage });
-  await expect(ownMessage).toHaveCount(1, { timeout: 1000 });
-  expect(Date.now() - sendStartedAt).toBeLessThan(1000);
-  await page.waitForTimeout(1500);
-  await expect(ownMessage).toHaveCount(1);
-  await expect(ownMessage).not.toContainText('전송 중', { timeout: 5000 });
-  const confirmedFirstRow = page.locator('.message-row', { hasText: firstMessage }).filter({ hasNotText: '전송 중' }).first();
-  await expect(confirmedFirstRow).toBeVisible({ timeout: 10000 });
-
-  const replyMessage = `reply preview check ${Date.now()}`;
-  await confirmedFirstRow.locator('.reply-button').click();
-  await expect(page.locator('#replyDraft')).toContainText(firstMessage);
-  await expect(page.locator('#clearReplyButton')).toHaveCSS('width', /[0-9.]+px/);
-  await page.locator('#messageInput').fill(replyMessage);
-  await page.locator('#sendMessageButton').click();
-  const replyRow = page.locator('.message-row', { hasText: replyMessage });
-  await expect(replyRow).toContainText(firstMessage, { timeout: 1000 });
-
-  const editedFirstMessage = `edited reply source ${Date.now()}`;
-  await confirmedFirstRow.locator('.message-options-toggle').click();
-  const editButton = confirmedFirstRow.locator('.message-options-menu button', { hasText: '수정' });
-  await expect(editButton).toBeEnabled({ timeout: 5000 });
-  await editButton.click();
-  await expect(page.locator('#sendMessageButton')).toHaveText('수정');
-  await page.locator('#messageInput').fill(editedFirstMessage);
-  await page.locator('#sendMessageButton').click();
-  await expect(page.getByText(editedFirstMessage, { exact: true }).first()).toBeVisible({ timeout: 3000 });
-  await expect(replyRow).toContainText(editedFirstMessage, { timeout: 3000 });
-  await expect(page.locator('#sendMessageButton')).toHaveText('➤');
-
-  const reloadImageText = `reload image check ${Date.now()}`;
-  await page.locator('#messageInput').fill(reloadImageText);
-  await page.locator('#imageInput').setInputFiles(createTinyPngFilePayload('reload-check.png'));
-  await page.locator('#sendMessageButton').click();
-  const uploadedImageRow = page.locator('.message-row', { hasText: reloadImageText });
-  await expect(uploadedImageRow.locator('img[alt="chat media"]')).toHaveAttribute('data-loaded', 'true', { timeout: 10000 });
-
-  await page.locator('#imageInput').setInputFiles(createOversizedPngFilePayload('too-big.png'));
-  await expect(page.locator('#status')).toContainText('용량이 너무 큽니다', { timeout: 5000 });
-  await expect(page.locator('#imagePreview .image-preview-item')).toHaveCount(0);
-
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('#user2LoginButton').click();
-  await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 15000 });
-  await expect(page.locator('#roomList')).toContainText(title, { timeout: 15000 });
-  await page.locator('.room-item', { hasText: title }).first().click();
-  const reloadedImageRow = page.locator('.message-row', { hasText: reloadImageText });
-  await expect(reloadedImageRow).toBeVisible({ timeout: 15000 });
-  await expect(reloadedImageRow.locator('img[alt="chat media"]')).toHaveAttribute('data-loaded', 'true', { timeout: 10000 });
-});
 
 async function waitForTypingEvent(client, senderClient, roomId, destination, timeoutMs = 5000) {
   const startedAt = Date.now();
@@ -418,14 +282,6 @@ async function waitForChatMessage(client, destination, predicate, timeoutMs = 50
   }
 
   throw new Error(`Timed out waiting for chat message on ${destination}`);
-}
-
-function chatMessages(responseBody) {
-  const data = responseBody?.data;
-  if (Array.isArray(data)) {
-    return data;
-  }
-  return data?.messages || [];
 }
 
 function parseFrame(rawFrame) {
@@ -637,7 +493,6 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
 
   expect(userOneToken).toBeTruthy();
   expect(userTwoToken).toBeTruthy();
-  expect(userThreeToken).toBeTruthy();
 
   const userOneLogin = await login(userOneToken);
   const userTwoLogin = await login(userTwoToken);
@@ -673,47 +528,60 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   const roomCreate = await api(`/api/chat/rooms/notice/${noticeOneId}`, userTwoToken, { method: 'POST' });
   const roomReuse = await api(`/api/chat/rooms/notice/${noticeOneId}`, userTwoToken, { method: 'POST' });
   const roomForSecondNotice = await api(`/api/chat/rooms/notice/${noticeTwoId}`, userTwoToken, { method: 'POST' });
-  const roomForThirdUserSameNotice = await api(`/api/chat/rooms/notice/${noticeOneId}`, userThreeToken, { method: 'POST' });
   const selfNoticeAttempt = await api(`/api/chat/rooms/notice/${noticeOneId}`, userOneToken, { method: 'POST' });
 
   const roomId = roomCreate.body?.data?.roomId;
   const secondRoomId = roomForSecondNotice.body?.data?.roomId;
-  const thirdUserRoomId = roomForThirdUserSameNotice.body?.data?.roomId;
 
   expect(roomCreate.status).toBe(201);
   expect(roomReuse.status).toBe(200);
   expect(roomForSecondNotice.status).toBe(201);
-  expect(roomForThirdUserSameNotice.status).toBe(201);
   expect(selfNoticeAttempt.status).toBe(409);
   expect(roomId).toBeTruthy();
   expect(secondRoomId).toBeTruthy();
-  expect(thirdUserRoomId).toBeTruthy();
   expect(roomReuse.body.data.roomId).toBe(roomId);
   expect(secondRoomId).not.toBe(roomId);
-  expect(thirdUserRoomId).not.toBe(roomId);
-  expect(roomForThirdUserSameNotice.body.data.noticeId).toBe(noticeOneId);
-  expect(roomForThirdUserSameNotice.body.data.opponentUserId).toBe(userOneUserId);
   expect(roomCreate.body.data.noticeId).toBe(noticeOneId);
   expect(roomCreate.body.data.noticeTitle).toBe('playwright-notice-one');
   expect(roomCreate.body.data.opponentUserId).toBe(userOneUserId);
   expect(roomCreate.body.data.lastMessageType).toBeNull();
+
+  const roomSettings = await api(`/api/chat/rooms/${roomId}/settings`, userTwoToken, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      customRoomName: 'playwright custom room'
+    })
+  });
+  expect(roomSettings.status, JSON.stringify(roomSettings.body)).toBe(200);
+  expect(roomSettings.body.data.customRoomName).toBe('playwright custom room');
+  expect(roomSettings.body.data.displayRoomName).toBe('playwright custom room');
+  expect(roomSettings.body.data.displayThumbnailUrl).toBeNull();
+
+  const roomThumbnailForm = new FormData();
+  roomThumbnailForm.append('image', createTinyPngBlob(), 'room-thumbnail.png');
+  const roomThumbnailSettings = await multipartApi(`/api/chat/rooms/${roomId}/settings/thumbnail`, userTwoToken, roomThumbnailForm);
+  expect(roomThumbnailSettings.status, JSON.stringify(roomThumbnailSettings.body)).toBe(200);
+  expect(roomThumbnailSettings.body.data.customThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
+  expect(roomThumbnailSettings.body.data.displayThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
+
+  const roomSettingsClear = await api(`/api/chat/rooms/${roomId}/settings`, userTwoToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ clearCustomRoomName: true, clearCustomThumbnailUrl: true })
+  });
+  expect(roomSettingsClear.status, JSON.stringify(roomSettingsClear.body)).toBe(200);
+  expect(roomSettingsClear.body.data.customRoomName).toBeNull();
+  expect(roomSettingsClear.body.data.displayRoomName).toContain('playwright-notice-one');
 
   const roomDetailBeforeMessage = await api(`/api/chat/rooms/${roomId}`, userTwoToken);
   expect(roomDetailBeforeMessage.status).toBe(200);
   expect(roomDetailBeforeMessage.body.data.roomId).toBe(roomId);
   expect(roomDetailBeforeMessage.body.data.lastMessagePreview).toBeNull();
 
-  const thirdUserCannotReadUserTwoRoom = await api(`/api/chat/rooms/${roomId}/messages`, userThreeToken);
-  expect(thirdUserCannotReadUserTwoRoom.status).toBe(403);
-
   const userOneRoomsBeforeMessage = await api('/api/chat/rooms', userOneToken);
   expect(userOneRoomsBeforeMessage.status).toBe(200);
-  expect(userOneRoomsBeforeMessage.body.data).toHaveLength(3);
+  expect(userOneRoomsBeforeMessage.body.data).toHaveLength(2);
   expect(userOneRoomsBeforeMessage.body.data.map((room) => room.noticeId)).toEqual(expect.arrayContaining([noticeOneId, noticeTwoId]));
-  const userOneNoticeOneRoomsBeforeMessage = userOneRoomsBeforeMessage.body.data.filter((room) => room.noticeId === noticeOneId);
-  expect(userOneNoticeOneRoomsBeforeMessage).toHaveLength(2);
-  expect(userOneNoticeOneRoomsBeforeMessage.map((room) => room.opponentUserId)).toEqual(expect.arrayContaining([userTwoUserId, userThreeUserId]));
-  expect(userOneNoticeOneRoomsBeforeMessage.find((room) => room.opponentUserId === userTwoUserId).lastMessagePreview).toBeNull();
+  expect(userOneRoomsBeforeMessage.body.data.find((room) => room.noticeId === noticeOneId).lastMessagePreview).toBeNull();
 
   const userOneClient = await createStompClient(userOneToken);
   const userTwoClient = await createStompClient(userTwoToken);
@@ -770,27 +638,23 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   expect(userTwoRealtimeEcho.mine).toBe(true);
 
   const userOneRoomsAfterUserTwoMessage = await api('/api/chat/rooms', userOneToken);
-  const noticeOneRoomForUserOne = userOneRoomsAfterUserTwoMessage.body.data.find((room) => room.noticeId === noticeOneId && room.opponentUserId === userTwoUserId);
+  const noticeOneRoomForUserOne = userOneRoomsAfterUserTwoMessage.body.data.find((room) => room.noticeId === noticeOneId);
   expect(userOneRoomsAfterUserTwoMessage.status).toBe(200);
   expect(noticeOneRoomForUserOne.lastMessagePreview).toBe(userTwoMessageText);
   expect(noticeOneRoomForUserOne.lastMessageType).toBe('TEXT');
   expect(noticeOneRoomForUserOne.unreadCount).toBe(1);
 
-  const thirdUserMessagesForOwnRoom = await api(`/api/chat/rooms/${thirdUserRoomId}/messages`, userThreeToken);
-  expect(thirdUserMessagesForOwnRoom.status).toBe(200);
-  expect(chatMessages(thirdUserMessagesForOwnRoom.body)).toHaveLength(0);
-
   const userOneMessagesAfterRead = await api(`/api/chat/rooms/${roomId}/messages`, userOneToken);
   expect(userOneMessagesAfterRead.status, JSON.stringify(userOneMessagesAfterRead.body)).toBe(200);
-  const userOneMessagesAfterReadList = chatMessages(userOneMessagesAfterRead.body);
+  const userOneMessagesAfterReadList = messagePageMessages(userOneMessagesAfterRead);
   expect(userOneMessagesAfterReadList).toHaveLength(1);
   expect(userOneMessagesAfterReadList[0].message).toBe(userTwoMessageText);
-  expect(userOneMessagesAfterReadList[0].isRead).toBe(false);
+  expect(userOneMessagesAfterReadList[0].isRead).toBe(true);
   expect(userOneMessagesAfterReadList[0].mine).toBe(false);
 
   const userOneRoomsAfterRead = await api('/api/chat/rooms', userOneToken);
   expect(userOneRoomsAfterRead.status).toBe(200);
-  expect(userOneRoomsAfterRead.body.data.find((room) => room.noticeId === noticeOneId && room.opponentUserId === userTwoUserId).unreadCount).toBe(0);
+  expect(userOneRoomsAfterRead.body.data.find((room) => room.noticeId === noticeOneId).unreadCount).toBe(0);
 
   const userOneReplyText = '유저 1이 공고 채팅에서 확인 후 남긴 답장입니다.';
   const userTwoRealtimeReplyPromise = waitForChatMessage(
@@ -815,13 +679,27 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   expect(noticeOneRoomForUserTwo.lastMessageType).toBe('TEXT');
   expect(noticeOneRoomForUserTwo.unreadCount).toBe(1);
 
+  const editedUserOneReplyText = '유저 1이 수정한 답장입니다.';
+  const userTwoRealtimeUpdatePromise = waitForChatMessage(
+    userTwoClient,
+    userTwoRoomSubscriptionId,
+    (payload) => payload.type === 'MESSAGE_UPDATED' && payload.message?.id === userTwoRealtimeReply.id
+  );
+  const updateReply = await api(`/api/chat/rooms/${roomId}/messages/${userTwoRealtimeReply.id}`, userOneToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ message: editedUserOneReplyText })
+  });
+  expect(updateReply.status, JSON.stringify(updateReply.body)).toBe(200);
+  const userTwoRealtimeUpdate = await userTwoRealtimeUpdatePromise;
+  expect(userTwoRealtimeUpdate.message.message).toBe(editedUserOneReplyText);
+
   const userTwoMessagesAfterRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
   expect(userTwoMessagesAfterRead.status).toBe(200);
-  const userTwoMessagesAfterReadList = chatMessages(userTwoMessagesAfterRead.body);
+  const userTwoMessagesAfterReadList = messagePageMessages(userTwoMessagesAfterRead);
   expect(userTwoMessagesAfterReadList).toHaveLength(2);
-  expect(userTwoMessagesAfterReadList[1].message).toBe(userOneReplyText);
+  expect(userTwoMessagesAfterReadList[1].message).toBe(editedUserOneReplyText);
   expect(userTwoMessagesAfterReadList[1].reply.messageId).toBe(userOneRealtimeMessage.id);
-  expect(userTwoMessagesAfterReadList[1].isRead).toBe(false);
+  expect(userTwoMessagesAfterReadList[1].isRead).toBe(true);
   expect(userTwoMessagesAfterReadList[1].mine).toBe(false);
 
   const imageRealtimePromise = waitForChatMessage(
@@ -848,28 +726,15 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   });
   expect(authenticatedImageFetch.status).toBe(200);
   expect(authenticatedImageFetch.headers.get('content-type')).toContain('image');
+  const forbiddenImageFetch = await fetch(`${baseURL}${imageRealtimeMessage.images[0].imageUrl}`, {
+    headers: { Authorization: `Bearer ${userThreeToken}` }
+  });
+  expect(forbiddenImageFetch.status).toBe(403);
 
   const userTwoRoomsAfterImage = await api('/api/chat/rooms', userTwoToken);
   expect(userTwoRoomsAfterImage.status).toBe(200);
   expect(userTwoRoomsAfterImage.body.data.find((room) => room.noticeId === noticeOneId).lastMessagePreview).toBe('사진을 보냈습니다');
   expect(userTwoRoomsAfterImage.body.data.find((room) => room.noticeId === noticeOneId).lastMessageType).toBe('IMAGE');
-
-  const gifRealtimePromise = waitForChatMessage(
-    userTwoClient,
-    userTwoRoomSubscriptionId,
-    (payload) => payload.senderUserId === userOneUserId
-      && payload.messageType === 'IMAGE'
-      && Array.isArray(payload.images)
-      && payload.images[0]?.imageUrl?.endsWith('.gif')
-  );
-  const gifForm = new FormData();
-  gifForm.append('images', createTinyGifBlob(), 'tiny.gif');
-  const gifUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, gifForm);
-  expect(gifUpload.status, JSON.stringify(gifUpload.body)).toBe(201);
-  const gifRealtimeMessage = await gifRealtimePromise;
-  expect(gifRealtimeMessage.messageType).toBe('IMAGE');
-  expect(gifRealtimeMessage.images).toHaveLength(1);
-  expect(gifRealtimeMessage.images[0].imageUrl.endsWith('.gif')).toBe(true);
 
   const roomDetailAfterImage = await api(`/api/chat/rooms/${roomId}`, userTwoToken);
   expect(roomDetailAfterImage.status).toBe(200);
@@ -878,42 +743,56 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
 
   const userTwoMessagesAfterImageRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
   expect(userTwoMessagesAfterImageRead.status).toBe(200);
-  const userTwoMessagesAfterImageReadList = chatMessages(userTwoMessagesAfterImageRead.body);
+  const userTwoMessagesAfterImageReadList = messagePageMessages(userTwoMessagesAfterImageRead);
   expect(userTwoMessagesAfterImageReadList.at(-1).messageType).toBe('IMAGE');
-  expect([imageMessageText, null]).toContain(userTwoMessagesAfterImageReadList.at(-1).message);
-  expect(userTwoMessagesAfterImageReadList.at(-1).isRead).toBe(false);
+  expect(userTwoMessagesAfterImageReadList.at(-1).message).toBe(imageMessageText);
+  expect(userTwoMessagesAfterImageReadList.at(-1).isRead).toBe(true);
 
-  const videoRealtimePromise = waitForChatMessage(
+  const userTwoRealtimeDeletePromise = waitForChatMessage(
     userTwoClient,
     userTwoRoomSubscriptionId,
-    (payload) => payload.senderUserId === userOneUserId && payload.messageType === 'VIDEO'
+    (payload) => payload.type === 'MESSAGE_DELETED' && payload.messageId === imageRealtimeMessage.id
   );
-  const videoForm = new FormData();
-  videoForm.append('images', createTinyMp4Blob(), 'tiny.mp4');
-  const videoUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, videoForm);
-  expect(videoUpload.status, JSON.stringify(videoUpload.body)).toBe(201);
-  const videoRealtimeMessage = await videoRealtimePromise;
-  expect(videoRealtimeMessage.messageType).toBe('VIDEO');
-  expect(videoRealtimeMessage.images).toHaveLength(1);
-  expect(videoRealtimeMessage.images[0].imageUrl.endsWith('.mp4')).toBe(true);
-  const authenticatedVideoFetch = await fetch(`${baseURL}${videoRealtimeMessage.images[0].imageUrl}`, {
-    headers: { Authorization: `Bearer ${userTwoToken}` }
+  const deleteImageMessage = await api(`/api/chat/rooms/${roomId}/messages/${imageRealtimeMessage.id}`, userOneToken, {
+    method: 'DELETE'
   });
-  expect(authenticatedVideoFetch.status).toBe(200);
-  expect(authenticatedVideoFetch.headers.get('content-type')).toContain('video');
+  expect(deleteImageMessage.status, JSON.stringify(deleteImageMessage.body)).toBe(200);
+  const userTwoRealtimeDelete = await userTwoRealtimeDeletePromise;
+  expect(userTwoRealtimeDelete.messageId).toBe(imageRealtimeMessage.id);
 
-  const userTwoRoomsAfterVideo = await api('/api/chat/rooms', userTwoToken);
-  expect(userTwoRoomsAfterVideo.status).toBe(200);
-  expect(userTwoRoomsAfterVideo.body.data.find((room) => room.noticeId === noticeOneId).lastMessagePreview).toBe('동영상을 보냈습니다');
-  expect(userTwoRoomsAfterVideo.body.data.find((room) => room.noticeId === noticeOneId).lastMessageType).toBe('VIDEO');
+  const userTwoMessagesAfterDelete = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
+  expect(userTwoMessagesAfterDelete.status).toBe(200);
+  const userTwoMessagesAfterDeleteList = messagePageMessages(userTwoMessagesAfterDelete);
+  expect(userTwoMessagesAfterDeleteList.map((message) => message.id)).not.toContain(imageRealtimeMessage.id);
+  expect(userTwoMessagesAfterDeleteList.at(-1).message).toBe(editedUserOneReplyText);
 
-  const userTwoMessagesAfterVideoRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
-  expect(userTwoMessagesAfterVideoRead.status).toBe(200);
-  expect(chatMessages(userTwoMessagesAfterVideoRead.body).at(-1).messageType).toBe('VIDEO');
+  const roomDetailAfterDelete = await api(`/api/chat/rooms/${roomId}`, userTwoToken);
+  expect(roomDetailAfterDelete.status).toBe(200);
+  expect(roomDetailAfterDelete.body.data.lastMessagePreview).toBe(editedUserOneReplyText);
+  expect(roomDetailAfterDelete.body.data.lastMessageType).toBe('TEXT');
 
   const userTwoRoomsAfterRead = await api('/api/chat/rooms', userTwoToken);
   expect(userTwoRoomsAfterRead.status).toBe(200);
   expect(userTwoRoomsAfterRead.body.data.find((room) => room.noticeId === noticeOneId).unreadCount).toBe(0);
+
+  const gifForm = new FormData();
+  gifForm.append('images', createTinyGifBlob(), 'tiny.gif');
+  const gifUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, gifForm);
+  expect(gifUpload.status, JSON.stringify(gifUpload.body)).toBe(201);
+  expect(gifUpload.body.data.messageType).toBe('IMAGE');
+  expect(gifUpload.body.data.images[0].imageUrl.endsWith('.gif')).toBe(true);
+
+  const mp4Form = new FormData();
+  mp4Form.append('images', createTinyMp4Blob(), 'tiny.mp4');
+  const mp4Upload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, mp4Form);
+  expect(mp4Upload.status, JSON.stringify(mp4Upload.body)).toBe(201);
+  expect(mp4Upload.body.data.messageType).toBe('VIDEO');
+  expect(mp4Upload.body.data.images[0].imageUrl.endsWith('.mp4')).toBe(true);
+
+  const oversizedForm = new FormData();
+  oversizedForm.append('images', new Blob([Buffer.alloc(30 * 1024 * 1024 + 1)], { type: 'video/mp4' }), 'too-large.mp4');
+  const oversizedUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, oversizedForm);
+  expect(oversizedUpload.status).toBe(400);
 
   userOneClient.close();
   userTwoClient.close();

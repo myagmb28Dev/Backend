@@ -4,8 +4,8 @@ spring:
     time-zone: UTC
   servlet:
     multipart:
-      max-file-size: 30MB
-      max-request-size: 40MB
+      max-file-size: 31MB
+      max-request-size: 31MB
   config:
     import:
       - optional:file:.env[.properties]

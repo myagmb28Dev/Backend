@@ -232,7 +232,7 @@ public class MissingPetService {
                 noticeBookmarkRepository.countByNotice(notice),
                 isUrgent(notice),
                 notice.getAuthor().getId(),
-                notice.getAuthor().getNickname(),
+                displayAuthorName(notice.getAuthor()),
                 notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
         );
     }
@@ -260,11 +260,33 @@ public class MissingPetService {
                 isUrgent(notice),
                 notice.getHidden(),
                 notice.getAuthor().getId(),
-                notice.getAuthor().getNickname(),
+                displayAuthorName(notice.getAuthor()),
                 notice.getCreatedAt(),
                 notice.getUpdatedAt(),
                 notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
         );
+    }
+
+    private String displayAuthorName(User author) {
+        if (author == null) {
+            return "알 수 없는 사용자";
+        }
+        String testLabel = testUserLabel(author);
+        return testLabel != null ? testLabel : author.getNickname();
+    }
+
+    private String testUserLabel(User user) {
+        if (user.getEmail() == null) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("^dm-user(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(user.getEmail());
+        if (!matcher.matches()) {
+            return null;
+        }
+        int number = Integer.parseInt(matcher.group(1));
+        return number >= 1 && number <= 10 ? "유저 " + number : null;
     }
 
     private void attachImages(UUID ownerId, PetNotice notice, List<MultipartFile> imageFiles, boolean shouldReplaceImages) {

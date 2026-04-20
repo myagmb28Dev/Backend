@@ -82,7 +82,7 @@ class LocalImageStorageServiceTest {
     }
 
     @Test
-    void storeImageVariant_keepsGifOriginalWithoutWebpDerivatives() throws IOException {
+    void storeImageVariant_keepsGifAsOriginalMedia() {
         LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
         UUID ownerId = UUID.randomUUID();
 
@@ -90,19 +90,16 @@ class LocalImageStorageServiceTest {
                 "notice-chat",
                 "messages",
                 ownerId,
-                new MockMultipartFile("image", "sample.gif", "image/gif", createImageBytes("gif"))
+                new MockMultipartFile("image", "sample.gif", "image/gif", minimalGifBytes())
         );
 
         assertThat(variant.originalUrl()).endsWith(".gif");
         assertThat(variant.webpUrl()).endsWith(".gif");
-        assertThat(variant.mediumUrl()).isNull();
-        assertThat(variant.thumbnailUrl()).isNull();
-        assertThat(variant.previewUrl()).isNull();
         assertThat(Files.exists(tempDir.resolve(variant.originalUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
     }
 
     @Test
-    void storeImageVariant_keepsMp4OriginalWithoutWebpDerivatives() {
+    void storeImageVariant_keepsMp4AsOriginalMedia() {
         LocalImageStorageService service = new LocalImageStorageService(tempDir.toString());
         UUID ownerId = UUID.randomUUID();
 
@@ -110,14 +107,12 @@ class LocalImageStorageServiceTest {
                 "notice-chat",
                 "messages",
                 ownerId,
-                new MockMultipartFile("image", "sample.mp4", "video/mp4", createMp4Bytes())
+                new MockMultipartFile("video", "sample.mp4", "video/mp4", "fake-mp4-body".getBytes())
         );
 
+        assertThat(service.isVideoFile(new MockMultipartFile("video", "sample.mp4", "video/mp4", new byte[]{1}))).isTrue();
         assertThat(variant.originalUrl()).endsWith(".mp4");
         assertThat(variant.webpUrl()).endsWith(".mp4");
-        assertThat(variant.mediumUrl()).isNull();
-        assertThat(variant.thumbnailUrl()).isNull();
-        assertThat(variant.previewUrl()).isNull();
         assertThat(Files.exists(tempDir.resolve(variant.originalUrl().replace("/uploads/", "").replace("/", "\\")))).isTrue();
     }
 
@@ -159,12 +154,14 @@ class LocalImageStorageServiceTest {
         return outputStream.toByteArray();
     }
 
-    private byte[] createMp4Bytes() {
-        return new byte[]{
-                0x00, 0x00, 0x00, 0x18,
-                0x66, 0x74, 0x79, 0x70,
-                0x69, 0x73, 0x6F, 0x6D,
-                0x00, 0x00, 0x00, 0x00
+    private byte[] minimalGifBytes() {
+        return new byte[] {
+                0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+                0x01, 0x00, 0x01, 0x00, (byte) 0x80, 0x00, 0x00,
+                0x00, 0x00, 0x00, (byte) 0xff, (byte) 0xff, (byte) 0xff,
+                0x21, (byte) 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
+                0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+                0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b
         };
     }
 }

@@ -13,7 +13,7 @@ public record NoticeChatMessageReplyResponse(
         @Schema(description = "원본 발신자 사용자 ID") UUID senderUserId,
         @Schema(description = "원본 발신자 닉네임") String senderNickname,
         @Schema(description = "원본 메시지 미리보기") String preview,
-        @Schema(description = "원본 메시지 타입") String messageType,
-        @Schema(description = "원본 첨부 썸네일 URL") String thumbnailUrl
+        @Schema(description = "원본 메시지 유형") String messageType,
+        @Schema(description = "답장 썸네일 URL") String thumbnailUrl
 ) {
 }

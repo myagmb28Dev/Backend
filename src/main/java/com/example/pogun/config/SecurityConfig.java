@@ -42,6 +42,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/dm-test.html")
                         .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
+                        .requestMatchers("/notice-flow.html")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
+                        .requestMatchers("/login-flow.html")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
                         .requestMatchers(
                                 "/",
                                 "/health",

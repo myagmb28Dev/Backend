@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pogun Login Flow</title>
+  <style>
+    :root { --bg:#f6f1e8; --card:#fffaf0; --ink:#1f2933; --muted:#6b7280; --line:#dac9b2; --accent:#c05f2c; --good:#1f8a4c; --bad:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); }
+    main { width:min(920px,calc(100% - 28px)); margin:20px auto; display:grid; gap:14px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 10px 26px rgba(31,41,51,.06); }
+    h1,h2,p { margin:0; }
+    .status { min-height:40px; padding:10px 12px; border-radius:12px; background:rgba(31,41,51,.06); color:var(--muted); font-size:13px; font-weight:700; }
+    .status.good { background:rgba(31,138,76,.12); color:var(--good); }
+    .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
+    .account-strip { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .account-toggle { width:auto; min-width:72px; padding:8px 12px; border:1px solid rgba(31,41,51,.12); border-radius:999px; background:rgba(31,41,51,.07); color:var(--ink); font-size:12px; font-weight:900; cursor:pointer; }
+    .account-toggle.active { border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px rgba(192,95,44,.12); }
+    .muted { color:var(--muted); font-size:12px; margin-top:8px; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    button { border:0; border-radius:12px; padding:11px 14px; font-weight:800; cursor:pointer; color:#fff; background:var(--accent); }
+    button.secondary { background:rgba(31,41,51,.11); color:var(--ink); }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>Login Flow</h1>
+    <p class="muted">이 페이지에서 로그인한 세션을 notice-flow와 dm-test가 공유합니다.</p>
+    <div id="status" class="status" style="margin-top:10px">준비 중</div>
+  </section>
+
+  <section class="card">
+    <h2>테스트 계정 선택</h2>
+    <div id="accountGrid" class="account-strip"></div>
+    <div id="accountHint" class="muted">로그인할 유저를 선택하세요.</div>
+    <div class="actions">
+      <button id="goNoticeButton" class="secondary">Notice Flow 열기</button>
+      <button id="goDmButton" class="secondary">DM Test 열기</button>
+      <button id="goRedirectButton">요청된 경로로 이동</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const BACKEND_BASE = window.location.origin;
+const EMULATOR_BASE = `${window.location.protocol}//${window.location.hostname}:9099`;
+const API_KEY = "fake-api-key";
+const PASSWORD = "Test1234!";
+const ACCOUNT_COUNT = 10;
+const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
+const query = new URLSearchParams(window.location.search);
+const redirectPath = (query.get("redirect") || "").trim() || "/notice-flow.html";
+const requestedRole = (query.get("role") || "").trim();
+let activeRole = null;
+
+const users = Object.fromEntries(Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
+  const n = index + 1;
+  return [`user${n}`, { label: `유저 ${n}`, email: `dm-user${n}@local.dev`, token: null, userId: null }];
+}));
+
+const el = (id) => document.getElementById(id);
+function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
+
+async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
+async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
+
+function renderAccounts() {
+  const grid = el("accountGrid");
+  grid.innerHTML = "";
+  for (const [role, user] of Object.entries(users)) {
+    const button = document.createElement("button");
+    button.id = `${role}LoginButton`;
+    button.type = "button";
+    button.className = `account-toggle${activeRole === role ? " active" : ""}`;
+    button.textContent = user.label;
+    button.addEventListener("click", run(() => login(role)));
+    grid.appendChild(button);
+  }
+  const user = activeRole ? users[activeRole] : null;
+  el("accountHint").textContent = user
+    ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
+    : "로그인할 유저를 선택하세요.";
+}
+
+async function ensureEmulatorUser(role) {
+  const user = users[role];
+  const body = { email: user.email, password: PASSWORD, returnSecureToken: true };
+  const signIn = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  if (signIn.status === 200) { user.token = signIn.body.idToken; return; }
+  const signUp = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  if (signUp.status !== 200) throw new Error(`${user.label} 에뮬레이터 로그인 실패: ${JSON.stringify(signUp.body)}`);
+  user.token = signUp.body.idToken;
+}
+
+async function login(role) {
+  setStatus(`${users[role].label} 로그인 중...`);
+  await ensureEmulatorUser(role);
+  const response = await request(`${BACKEND_BASE}/api/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
+  });
+  if (response.status !== 200) throw new Error(`백엔드 로그인 실패: ${JSON.stringify(response.body)}`);
+  users[role].userId = response.body?.data?.id;
+  activeRole = role;
+  try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
+  renderAccounts();
+  setStatus(`${users[role].label} 로그인 완료`, "good");
+}
+
+function targetUrl(pathname) {
+  const isAbsolute = /^https?:\/\//i.test(pathname);
+  if (isAbsolute) return pathname;
+  const prefix = pathname.startsWith("/") ? "" : "/";
+  const hasQuery = pathname.includes("?");
+  const roleParam = activeRole ? `role=${encodeURIComponent(activeRole)}` : "";
+  const tail = roleParam ? (hasQuery ? `&${roleParam}` : `?${roleParam}`) : "";
+  return `${window.location.origin}${prefix}${pathname}${tail}`;
+}
+
+function goNotice() { window.location.href = targetUrl("/notice-flow.html"); }
+function goDm() { window.location.href = targetUrl("/dm-test.html"); }
+function goRedirect() { window.location.href = targetUrl(redirectPath); }
+
+function run(handler) {
+  return async () => {
+    try { await handler(); }
+    catch (error) { console.error(error); setStatus(error.message || String(error), "bad"); }
+  };
+}
+
+el("goNoticeButton").addEventListener("click", goNotice);
+el("goDmButton").addEventListener("click", goDm);
+el("goRedirectButton").addEventListener("click", goRedirect);
+
+renderAccounts();
+setStatus("먼저 로그인하세요.");
+
+const savedRole = (() => { try { return window.localStorage.getItem(ACTIVE_ROLE_KEY) || ""; } catch { return ""; } })();
+const initialRole = (requestedRole && Object.prototype.hasOwnProperty.call(users, requestedRole))
+  ? requestedRole
+  : (savedRole && Object.prototype.hasOwnProperty.call(users, savedRole) ? savedRole : "");
+if (initialRole) {
+  run(() => login(initialRole))();
+}
+</script>
+</body>
+</html>

@@ -32,7 +32,7 @@ public class NoticeChatMessageController {
                      Principal principal,
                      SimpMessageHeaderAccessor headerAccessor) {
         Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
-        log.info("웹소켓 SEND 수신 destination=/app/chat/send principal={} roomId={}",
+        log.debug("웹소켓 SEND 수신 destination=/app/chat/send principal={} roomId={}",
                 resolvedPrincipal != null ? resolvedPrincipal.getName() : "anonymous",
                 request.getRoomId());
         // STOMP payload는 컨트롤러에서 최소 검증만 하고, 저장과 fan-out은 서비스가 담당한다.
@@ -44,7 +44,7 @@ public class NoticeChatMessageController {
                        Principal principal,
                        SimpMessageHeaderAccessor headerAccessor) {
         Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
-        log.info("웹소켓 SEND 수신 destination=/app/chat/typing principal={} roomId={} isTyping={}",
+        log.debug("웹소켓 SEND 수신 destination=/app/chat/typing principal={} roomId={} isTyping={}",
                 resolvedPrincipal != null ? resolvedPrincipal.getName() : "anonymous",
                 request.getRoomId(),
                 request.getTyping());
@@ -69,7 +69,7 @@ public class NoticeChatMessageController {
     }
 
     @MessageMapping("/chat/read")
-    public void read(@Valid @Payload NoticeChatReadRequest request,
+    public void read(@Payload NoticeChatReadRequest request,
                      Principal principal,
                      SimpMessageHeaderAccessor headerAccessor) {
         Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);

@@ -22,8 +22,17 @@ public interface NoticeChatRoomRepository extends JpaRepository<NoticeChatRoom, 
     Optional<NoticeChatRoom> findByNoticeAndOwnerUserAndGuestUser(PetNotice notice, User ownerUser, User guestUser);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM NoticeChatRoom r WHERE r.id = :roomId")
-    Optional<NoticeChatRoom> findByIdForUpdate(@Param("roomId") UUID roomId);
+    @Query("SELECT r FROM NoticeChatRoom r WHERE r.id = :id")
+    Optional<NoticeChatRoom> findByIdForUpdate(@Param("id") UUID id);
+
+    @Query("""
+            SELECT r
+            FROM NoticeChatRoom r
+            WHERE r.notice IS NOT NULL
+              AND (r.ownerUser.id = :userId OR r.guestUser.id = :userId)
+            ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC, r.createdAt DESC
+            """)
+    List<NoticeChatRoom> findVisibleRoomsForUser(@org.springframework.data.repository.query.Param("userId") UUID userId);
 
     List<NoticeChatRoom> findByNotice(PetNotice notice);
 }

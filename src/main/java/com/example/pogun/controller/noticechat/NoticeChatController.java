@@ -2,9 +2,10 @@ package com.example.pogun.controller.noticechat;
 
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.noticechat.NoticeChatImageOriginalResponse;
-import com.example.pogun.dto.noticechat.NoticeChatMessageEditRequest;
 import com.example.pogun.dto.noticechat.NoticeChatMessagePageResponse;
+import com.example.pogun.dto.noticechat.NoticeChatReadRequest;
 import com.example.pogun.dto.noticechat.NoticeChatMessageResponse;
+import com.example.pogun.dto.noticechat.NoticeChatMessageUpdateRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomSettingsRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomCreateResult;
 import com.example.pogun.dto.noticechat.NoticeChatRoomResponse;
@@ -26,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
-import jakarta.validation.Valid;
 
 import java.util.List;
 /**
@@ -78,15 +78,17 @@ public class NoticeChatController {
             @RequestParam(value = "beforeSequence", required = false) Long beforeSequence,
             @RequestParam(value = "limit", required = false) Integer limit
     ) {
-        // 메시지 조회 시 서비스에서 접근 권한 검증과 읽음 처리까지 함께 수행한다.
         NoticeChatMessagePageResponse data = noticeChatService.getMessages(roomId, beforeSequence, limit);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 조회 성공", data));
     }
 
     @PostMapping("/rooms/{roomId}/read")
     @Operation(summary = "채팅방 읽음 처리", description = "특정 채팅방의 상대 메시지를 읽음 처리합니다.")
-    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> markRead(@PathVariable String roomId) {
-        NoticeChatRoomResponse data = noticeChatService.markRoomAsRead(roomId);
+    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> markRead(
+            @PathVariable String roomId,
+            @RequestBody(required = false) NoticeChatReadRequest request
+    ) {
+        NoticeChatRoomResponse data = noticeChatService.markRoomAsRead(roomId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 읽음 처리 성공", data));
     }
 
@@ -98,6 +100,16 @@ public class NoticeChatController {
     ) {
         NoticeChatRoomResponse data = noticeChatService.updateSettings(roomId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 설정 변경 성공", data));
+    }
+
+    @PostMapping(value = "/rooms/{roomId}/settings/thumbnail", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "채팅방 개인 썸네일 이미지 변경", description = "사용자별 채팅방 썸네일 이미지를 파일 업로드로 변경합니다.")
+    public ResponseEntity<ApiResponse<NoticeChatRoomResponse>> updateRoomThumbnail(
+            @PathVariable String roomId,
+            @RequestPart("image") MultipartFile image
+    ) {
+        NoticeChatRoomResponse data = noticeChatService.updateRoomThumbnail(roomId, image);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅방 썸네일 변경 성공", data));
     }
 
     @PostMapping("/rooms/{roomId}/leave")
@@ -118,24 +130,24 @@ public class NoticeChatController {
     }
 
     @PatchMapping("/rooms/{roomId}/messages/{messageId}")
-    @Operation(summary = "채팅 메시지 수정", description = "현재 사용자가 보낸 메시지의 텍스트를 수정합니다.")
+    @Operation(summary = "채팅 메시지 수정", description = "본인이 보낸 텍스트 메시지를 수정합니다.")
     public ResponseEntity<ApiResponse<NoticeChatMessageResponse>> updateMessage(
             @PathVariable String roomId,
             @PathVariable String messageId,
-            @Valid @RequestBody NoticeChatMessageEditRequest request
+            @RequestBody NoticeChatMessageUpdateRequest request
     ) {
         NoticeChatMessageResponse data = noticeChatService.updateMessage(roomId, messageId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 수정 성공", data));
     }
 
     @DeleteMapping("/rooms/{roomId}/messages/{messageId}")
-    @Operation(summary = "채팅 메시지 삭제", description = "현재 사용자가 보낸 메시지를 삭제 상태로 변경합니다.")
-    public ResponseEntity<ApiResponse<NoticeChatMessageResponse>> deleteMessage(
+    @Operation(summary = "채팅 메시지 삭제", description = "본인이 보낸 메시지를 화면과 API에서 숨김 처리합니다.")
+    public ResponseEntity<ApiResponse<Void>> deleteMessage(
             @PathVariable String roomId,
             @PathVariable String messageId
     ) {
-        NoticeChatMessageResponse data = noticeChatService.deleteMessage(roomId, messageId);
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 삭제 성공", data));
+        noticeChatService.deleteMessage(roomId, messageId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "채팅 메시지 삭제 성공", null));
     }
 
     @GetMapping("/messages/images/{imageId}/original")
@@ -146,7 +158,7 @@ public class NoticeChatController {
     }
 
     @PostMapping(value = "/rooms/{roomId}/messages/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "이미지 메시지 전송", description = "특정 채팅방에 여러 장의 이미지를 WEBP로 변환해 전송합니다.")
+    @Operation(summary = "미디어 메시지 전송", description = "특정 채팅방에 이미지/GIF/MP4 첨부를 전송합니다. PNG/JPEG는 WEBP 파생본으로 저장합니다.")
     public ResponseEntity<ApiResponse<NoticeChatMessageResponse>> sendImages(
             @PathVariable String roomId,
             @RequestPart("images") List<MultipartFile> images,
