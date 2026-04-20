@@ -23,6 +23,7 @@ public record MissingPetSummaryResponse(
         Long viewCount,
         long bookmarkCount,
         boolean isUrgent,
+        UUID authorId,
         String authorNickname,
         List<String> imageUrls
 ) {

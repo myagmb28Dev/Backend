@@ -206,7 +206,10 @@ class NoticeChatControllerTest {
                 Instant.now(),
                 null,
                 1L,
-                Instant.now()
+                Instant.now(),
+                null,
+                null,
+                false
         );
     }
 }

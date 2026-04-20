@@ -5,7 +5,8 @@ param(
     [int]$AuthPort = 9099,
     [int]$BackendPort = 8080,
     [int]$UiPort = 4000,
-    [int]$TimeoutSeconds = 90
+    [int]$TimeoutSeconds = 90,
+    [switch]$Watch
 )
 
 $ErrorActionPreference = "Stop"
@@ -278,6 +279,14 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
     Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand
 }
 
+if ($Watch) {
+    $watchCommand = @(
+        "& '.\\gradlew.bat' -t classes"
+    ) -join "; "
+
+    Start-DetachedPowerShell -Title "Pogun Backend Watch" -CommandText $watchCommand
+}
+
 Wait-TcpPort -Port $BackendPort -Name "Spring Boot backend" -TimeoutSec $TimeoutSeconds
 
 $idToken = Ensure-EmulatorUserAndGetToken
@@ -308,6 +317,9 @@ Write-Host "Project       : $ProjectId"
 Write-Host "Auth Emulator : http://127.0.0.1:$AuthPort"
 Write-Host "Emulator UI   : http://127.0.0.1:$UiPort"
 Write-Host "Backend       : http://localhost:$BackendPort"
+if ($Watch) {
+    Write-Host "Watch         : Gradle continuous classes build enabled"
+}
 Write-Host ""
 Write-Host "Email         : $Email"
 Write-Host "Token file    : $tokenPath"

@@ -31,6 +31,10 @@ spring:
 app:
   upload:
     root: uploads
+  kakao:
+    local:
+      rest-api-key: ${KAKAO_REST_API_KEY:}
+      base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
   firebase:
     auth:
       mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}

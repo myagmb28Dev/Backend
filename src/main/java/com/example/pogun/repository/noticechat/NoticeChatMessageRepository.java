@@ -3,6 +3,7 @@ package com.example.pogun.repository.noticechat;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.user.User;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,6 +64,16 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
             @Param("reader") User reader,
             @Param("lastReadRoomSequence") long lastReadRoomSequence
     );
+
+    List<NoticeChatMessage> findByDeletedAtBefore(Instant cutoff);
+
+    @Modifying
+    @Query("""
+            UPDATE NoticeChatMessage message
+            SET message.replyToMessage = NULL
+            WHERE message.replyToMessage IN :messages
+            """)
+    void clearReplyTargets(@Param("messages") List<NoticeChatMessage> messages);
 
     void deleteByRoomIn(List<NoticeChatRoom> rooms);
 }

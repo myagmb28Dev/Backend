@@ -337,6 +337,7 @@ public class NoticeChatService {
             throw ApiException.badRequest("EMPTY_MESSAGE", "메시지 내용은 비어 있을 수 없습니다.");
         }
         message.setMessage(content);
+        message.setEditedAt(Instant.now());
         NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
         refreshLastMessageSummary(room);
         NoticeChatMessageResponse currentPayload = toMessageResponse(saved, currentUser);
@@ -632,7 +633,10 @@ public class NoticeChatService {
                 message.getCreatedAt(),
                 message.getClientMessageId(),
                 message.getRoomSequence(),
-                message.getCreatedAt()
+                message.getCreatedAt(),
+                message.getEditedAt(),
+                message.getDeletedAt(),
+                message.getDeletedAt() != null
         );
     }
 

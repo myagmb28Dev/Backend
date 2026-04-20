@@ -96,6 +96,9 @@ public class NoticeChatMessage {
     @Column(name = "room_sequence")
     private Long roomSequence;
 
+    @Column(name = "edited_at")
+    private Instant editedAt;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 }
