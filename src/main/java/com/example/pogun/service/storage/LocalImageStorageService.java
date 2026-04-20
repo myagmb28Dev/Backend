@@ -1,14 +1,23 @@
 package com.example.pogun.service.storage;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
-import com.example.pogun.dto.storage.StoredMediaVariant;
+import com.example.pogun.dto.storage.StoredImageVariant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.ColorModel;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,12 +34,13 @@ import java.util.UUID;
 @Service
 public class LocalImageStorageService {
 
-    private static final long MAX_FILE_SIZE = 5L * 1024L * 1024L;
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg");
-    private static final Set<String> ALLOWED_MEDIA_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".gif", ".mp4");
+    private static final long MAX_FILE_SIZE = 30L * 1024L * 1024L;
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".gif", ".mp4");
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             MediaType.IMAGE_PNG_VALUE,
             MediaType.IMAGE_JPEG_VALUE,
+            MediaType.IMAGE_GIF_VALUE,
+            "video/mp4",
             MediaType.APPLICATION_OCTET_STREAM_VALUE
     );
 
@@ -38,6 +48,7 @@ public class LocalImageStorageService {
 
     public LocalImageStorageService(@Value("${app.upload.root:uploads}") String uploadRoot) {
         this.rootDirectory = Paths.get(uploadRoot).toAbsolutePath().normalize();
+        ImageIO.scanForPlugins();
     }
 
     public List<String> storeImages(String domain, String resourceType, UUID ownerId, List<MultipartFile> files) {
@@ -56,63 +67,95 @@ public class LocalImageStorageService {
     }
 
     public String storeImage(String domain, String resourceType, UUID ownerId, MultipartFile file) {
-        validateImage(file);
-
-        String originalFilename = file.getOriginalFilename();
-        String extension = extractExtension(originalFilename);
-        String storedFilename = UUID.randomUUID() + extension;
-
-        try {
-            Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
-            Files.createDirectories(targetDirectory);
-            Path target = targetDirectory.resolve(storedFilename);
-            file.transferTo(target);
-            return buildPublicPath(domain, resourceType, ownerId, storedFilename);
-        } catch (IOException e) {
-            throw ApiException.internal("IMAGE_UPLOAD_FAILED", "이미지를 저장하지 못했습니다.");
-        }
+        return storeImageVariant(domain, resourceType, ownerId, file).webpUrl();
     }
 
-    public List<StoredMediaVariant> storeChatMedia(String domain, String resourceType, UUID ownerId, List<MultipartFile> files) {
+    public List<StoredImageVariant> storeImageVariants(String domain, String resourceType, UUID ownerId, List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             return List.of();
         }
-        List<StoredMediaVariant> stored = new ArrayList<>();
+
+        List<StoredImageVariant> storedImages = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
                 continue;
             }
-            stored.add(storeChatMedia(domain, resourceType, ownerId, file));
+            storedImages.add(storeImageVariant(domain, resourceType, ownerId, file));
         }
-        return stored;
+        return storedImages;
     }
 
-    public StoredMediaVariant storeChatMedia(String domain, String resourceType, UUID ownerId, MultipartFile file) {
-        validateMedia(file);
+    public StoredImageVariant storeImageVariant(String domain, String resourceType, UUID ownerId, MultipartFile file) {
+        validateImage(file);
 
-        String extension = extractExtension(file.getOriginalFilename());
-        boolean video = ".mp4".equals(extension);
-        boolean gif = ".gif".equals(extension);
         String baseName = UUID.randomUUID().toString();
+        String extension = extractExtension(file.getOriginalFilename());
         String originalFilename = baseName + extension;
-        String contentType = normalizeContentType(file.getContentType());
+        if (".gif".equals(extension) || ".mp4".equals(extension)) {
+            return storeOriginalMedia(domain, resourceType, ownerId, file, originalFilename);
+        }
+        String webpFilename = baseName + ".webp";
+        String mediumFilename = baseName + "-medium.webp";
+        String thumbnailFilename = baseName + "-thumbnail.webp";
+        String previewFilename = baseName + "-preview.webp";
+        List<Path> writtenFiles = new ArrayList<>();
 
         try {
             Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
             Files.createDirectories(targetDirectory);
             Path originalTarget = targetDirectory.resolve(originalFilename);
-            file.transferTo(originalTarget);
-            String originalUrl = buildPublicPath(domain, resourceType, ownerId, originalFilename);
-
-            if (video || gif) {
-                return new StoredMediaVariant(originalUrl, null, null, null, null, contentType, video);
-            }
-
-            String webpFilename = baseName + ".webp";
             Path webpTarget = targetDirectory.resolve(webpFilename);
-            Files.copy(originalTarget, webpTarget);
-            String webpUrl = buildPublicPath(domain, resourceType, ownerId, webpFilename);
-            return new StoredMediaVariant(originalUrl, webpUrl, webpUrl, webpUrl, webpUrl, contentType, false);
+            Path mediumTarget = targetDirectory.resolve(mediumFilename);
+            Path thumbnailTarget = targetDirectory.resolve(thumbnailFilename);
+            Path previewTarget = targetDirectory.resolve(previewFilename);
+
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, originalTarget);
+            }
+            writtenFiles.add(originalTarget);
+            writeWebp(file, webpTarget, null);
+            writtenFiles.add(webpTarget);
+            writeWebp(file, mediumTarget, 960);
+            writtenFiles.add(mediumTarget);
+            writeWebp(file, thumbnailTarget, 320);
+            writtenFiles.add(thumbnailTarget);
+            writeWebp(file, previewTarget, 80);
+            writtenFiles.add(previewTarget);
+
+            return new StoredImageVariant(
+                    buildPublicPath(domain, resourceType, ownerId, originalFilename),
+                    buildPublicPath(domain, resourceType, ownerId, webpFilename),
+                    buildPublicPath(domain, resourceType, ownerId, mediumFilename),
+                    buildPublicPath(domain, resourceType, ownerId, thumbnailFilename),
+                    buildPublicPath(domain, resourceType, ownerId, previewFilename)
+            );
+        } catch (IOException e) {
+            for (Path writtenFile : writtenFiles) {
+                try {
+                    Files.deleteIfExists(writtenFile);
+                } catch (IOException deleteFailure) {
+                    log.warn("이미지 저장 실패 후 파일 정리에 실패했습니다. path={}", writtenFile, deleteFailure);
+                }
+            }
+            throw ApiException.internal("IMAGE_UPLOAD_FAILED", "이미지를 저장하지 못했습니다.");
+        }
+    }
+
+    public boolean isVideoFile(MultipartFile file) {
+        return ".mp4".equals(extractExtension(file != null ? file.getOriginalFilename() : null))
+                || "video/mp4".equals(normalizeContentType(file != null ? file.getContentType() : null));
+    }
+
+    private StoredImageVariant storeOriginalMedia(String domain, String resourceType, UUID ownerId, MultipartFile file, String filename) {
+        try {
+            Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
+            Files.createDirectories(targetDirectory);
+            Path originalTarget = targetDirectory.resolve(filename);
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, originalTarget);
+            }
+            String publicPath = buildPublicPath(domain, resourceType, ownerId, filename);
+            return new StoredImageVariant(publicPath, publicPath, publicPath, publicPath, publicPath);
         } catch (IOException e) {
             throw ApiException.internal("IMAGE_UPLOAD_FAILED", "첨부 파일을 저장하지 못했습니다.");
         }
@@ -133,12 +176,69 @@ public class LocalImageStorageService {
                 + filename;
     }
 
+    private void writeWebp(MultipartFile file, Path target, Integer maxWidth) throws IOException {
+        BufferedImage image = ImageIO.read(file.getInputStream());
+        if (image == null) {
+            throw ApiException.badRequest("INVALID_IMAGE", "파일 내용이 유효한 이미지가 아닙니다.");
+        }
+        BufferedImage normalizedImage = normalizeForWebp(resizeIfNeeded(image, maxWidth));
+
+        ImageWriter writer = ImageIO.getImageWritersByMIMEType("image/webp").hasNext()
+                ? ImageIO.getImageWritersByMIMEType("image/webp").next()
+                : null;
+        if (writer == null) {
+            throw ApiException.internal("IMAGE_UPLOAD_FAILED", "WEBP 변환기를 찾을 수 없습니다.");
+        }
+
+        try (ImageOutputStream outputStream = ImageIO.createImageOutputStream(Files.newOutputStream(target))) {
+            writer.setOutput(outputStream);
+            writer.write(null, new IIOImage(normalizedImage, null, null), writer.getDefaultWriteParam());
+        } finally {
+            writer.dispose();
+        }
+    }
+
+    private BufferedImage resizeIfNeeded(BufferedImage source, Integer maxWidth) {
+        if (maxWidth == null || source.getWidth() <= maxWidth) {
+            return source;
+        }
+        int targetWidth = maxWidth;
+        int targetHeight = Math.max(1, (int) Math.round((double) source.getHeight() * targetWidth / source.getWidth()));
+        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, source.getColorModel().hasAlpha()
+                ? BufferedImage.TYPE_4BYTE_ABGR
+                : BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D graphics = resized.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+        } finally {
+            graphics.dispose();
+        }
+        return resized;
+    }
+
+    private BufferedImage normalizeForWebp(BufferedImage source) {
+        ColorModel colorModel = source.getColorModel();
+        int targetType = colorModel != null && colorModel.hasAlpha()
+                ? BufferedImage.TYPE_4BYTE_ABGR
+                : BufferedImage.TYPE_3BYTE_BGR;
+        BufferedImage normalized = new BufferedImage(source.getWidth(), source.getHeight(), targetType);
+        Graphics2D graphics = normalized.createGraphics();
+        try {
+            graphics.drawImage(source, 0, 0, null);
+        } finally {
+            graphics.dispose();
+        }
+        return normalized;
+    }
+
     private void validateImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("INVALID_IMAGE", "이미지가 비어 있습니다.");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw ApiException.badRequest("INVALID_IMAGE", "이미지 크기는 5MB 이하여야 합니다.");
+            throw ApiException.badRequest("INVALID_IMAGE", "파일 크기는 30MB 이하여야 합니다.");
         }
 
         String filename = file.getOriginalFilename();
@@ -149,6 +249,12 @@ public class LocalImageStorageService {
 
         try {
             String contentType = normalizeContentType(file.getContentType());
+            if (".mp4".equals(extension)) {
+                if (!MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType) && !"video/mp4".equals(contentType)) {
+                    throw ApiException.badRequest("INVALID_IMAGE", "허용되지 않는 영상 형식입니다.");
+                }
+                return;
+            }
             ImageFormat imageFormat = detectImageFormat(file);
             if (imageFormat == ImageFormat.UNKNOWN) {
                 throw ApiException.badRequest("INVALID_IMAGE", "파일 내용이 유효한 이미지가 아닙니다.");
@@ -159,31 +265,6 @@ public class LocalImageStorageService {
         } catch (IOException e) {
             throw ApiException.badRequest("INVALID_IMAGE", "이미지 파일을 읽을 수 없습니다.");
         }
-    }
-
-    private void validateMedia(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw ApiException.badRequest("INVALID_MEDIA", "첨부 파일이 비어 있습니다.");
-        }
-        if (file.getSize() > MAX_FILE_SIZE) {
-            throw ApiException.badRequest("INVALID_MEDIA", "첨부 파일 크기는 5MB 이하여야 합니다.");
-        }
-        String extension = extractExtension(file.getOriginalFilename());
-        if (!ALLOWED_MEDIA_EXTENSIONS.contains(extension)) {
-            throw ApiException.badRequest("INVALID_MEDIA", "허용되지 않는 첨부 파일 확장자입니다.");
-        }
-        if (Set.of(".png", ".jpg", ".jpeg").contains(extension)) {
-            validateImage(file);
-            return;
-        }
-        String contentType = normalizeContentType(file.getContentType());
-        if (".gif".equals(extension) && (contentType.isBlank() || MediaType.IMAGE_GIF_VALUE.equals(contentType) || MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType))) {
-            return;
-        }
-        if (".mp4".equals(extension) && (contentType.isBlank() || "video/mp4".equals(contentType) || MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType))) {
-            return;
-        }
-        throw ApiException.badRequest("INVALID_MEDIA", "허용되지 않는 첨부 파일 형식입니다.");
     }
 
     private String extractExtension(String filename) {
@@ -223,6 +304,12 @@ public class LocalImageStorageService {
                     && (header[2] & 0xFF) == 0xFF) {
             return ImageFormat.JPEG;
         }
+        if (header.length >= 6
+                    && header[0] == 0x47
+                    && header[1] == 0x49
+                    && header[2] == 0x46) {
+            return ImageFormat.GIF;
+        }
         return ImageFormat.UNKNOWN;
     }
 
@@ -235,7 +322,8 @@ public class LocalImageStorageService {
         }
         if (contentType.startsWith("image/")) {
             return (imageFormat == ImageFormat.PNG && MediaType.IMAGE_PNG_VALUE.equals(contentType))
-                    || (imageFormat == ImageFormat.JPEG && MediaType.IMAGE_JPEG_VALUE.equals(contentType));
+                    || (imageFormat == ImageFormat.JPEG && MediaType.IMAGE_JPEG_VALUE.equals(contentType))
+                    || (imageFormat == ImageFormat.GIF && MediaType.IMAGE_GIF_VALUE.equals(contentType));
         }
         return false;
     }
@@ -243,6 +331,7 @@ public class LocalImageStorageService {
     private enum ImageFormat {
         PNG,
         JPEG,
+        GIF,
         UNKNOWN
     }
 }

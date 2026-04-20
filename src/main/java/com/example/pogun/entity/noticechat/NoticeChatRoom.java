@@ -1,6 +1,7 @@
 package com.example.pogun.entity.noticechat;
 
 import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import jakarta.persistence.Column;
@@ -83,14 +84,15 @@ public class NoticeChatRoom {
     @Column(name = "last_message_at")
     private Instant lastMessageAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "last_message_type", length = 20)
+    private NoticeChatMessageType lastMessageType;
+
     @Column(name = "last_message_preview", length = 200)
     private String lastMessagePreview;
 
-    @Column(name = "last_message_type", length = 20)
-    private String lastMessageType;
-
     @Builder.Default
-    @Column(name = "last_message_sequence", nullable = false)
+    @Column(name = "last_message_sequence")
     private Long lastMessageSequence = 0L;
 }
 

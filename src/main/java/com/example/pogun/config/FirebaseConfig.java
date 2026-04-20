@@ -1,23 +1,34 @@
 package com.example.pogun.config;
 
+import com.example.pogun.service.auth.FirebaseAdminIdentityProvider;
+import com.example.pogun.service.auth.FirebaseEmulatorIdentityProvider;
+import com.example.pogun.service.auth.FirebaseIdentityProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.messaging.FirebaseMessaging;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.util.Date;
 /**
  * 애플리케이션 설정을 담당하는 FirebaseConfig이다.
  */
 
 @Configuration
+@RequiredArgsConstructor
+@EnableConfigurationProperties(FirebaseAuthProperties.class)
 public class FirebaseConfig {
+
+    private final FirebaseAuthProperties firebaseAuthProperties;
 
     @Value("${FIREBASE_KEY_BASE64:}")
     private String base64Key;
@@ -25,26 +36,26 @@ public class FirebaseConfig {
     @Value("${FIREBASE_CONFIG_JSON:}")
     private String firebaseConfigJson;
 
-    @Value("${FIREBASE_AUTH_EMULATOR_HOST:}")
-    private String authEmulatorHost;
-
-    @Value("${FIREBASE_ALLOW_AUTH_EMULATOR:false}")
-    private boolean allowAuthEmulator;
-
-    @Value("${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}")
-    private String firebaseProjectId;
-
     @Bean
     public FirebaseApp firebaseApp() throws IOException {
         FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder();
-        boolean emulatorMode = authEmulatorHost != null && !authEmulatorHost.isBlank();
+        boolean emulatorMode = firebaseAuthProperties.isEmulatorMode();
 
-        // 실수로 운영/개발 서버가 로컬 Auth Emulator를 물지 않도록 명시적 opt-in을 강제한다.
-        if (emulatorMode && !allowAuthEmulator) {
+        // 운영용 토큰 검증과 테스트용 에뮬레이터 검증을 설정 레벨에서 분리한다.
+        if (emulatorMode && !firebaseAuthProperties.isAllowEmulator()) {
             throw new IOException("Auth Emulator는 명시적으로 허용한 환경에서만 사용할 수 있습니다. 'FIREBASE_ALLOW_AUTH_EMULATOR=true'를 설정하세요.");
         }
 
-        if (base64Key != null && !base64Key.isBlank()) {
+        // Auth Emulator를 사용할 때는 실제 서비스 계정 자격증명을 주입하지 않는다.
+        // 대신 FirebaseApp 초기화 요구사항만 만족하는 더미 자격증명을 넣고,
+        // 실제 토큰 해석은 에뮬레이터 전용 검증 경로가 담당한다.
+        if (emulatorMode) {
+            optionsBuilder.setCredentials(GoogleCredentials.create(
+                    new com.google.auth.oauth2.AccessToken(
+                            "emulator-access-token",
+                            Date.from(Instant.now().plusSeconds(3600))
+                    )));
+        } else if (base64Key != null && !base64Key.isBlank()) {
             byte[] decodedBytes = java.util.Base64.getDecoder().decode(base64Key);
             try (InputStream serviceAccount = new java.io.ByteArrayInputStream(decodedBytes)) {
                 optionsBuilder.setCredentials(GoogleCredentials.fromStream(serviceAccount));
@@ -57,10 +68,10 @@ public class FirebaseConfig {
             throw new IOException("Firebase 인증 정보를 찾을 수 없습니다. 운영 환경에서는 'FIREBASE_KEY_BASE64' 또는 'FIREBASE_CONFIG_JSON'이 필요합니다.");
         }
 
-        if (firebaseProjectId != null && !firebaseProjectId.isBlank()) {
-            optionsBuilder.setProjectId(firebaseProjectId.trim());
+        if (firebaseAuthProperties.getProjectId() != null && !firebaseAuthProperties.getProjectId().isBlank()) {
+            optionsBuilder.setProjectId(firebaseAuthProperties.getProjectId().trim());
         } else if (emulatorMode) {
-            throw new IOException("Auth Emulator 사용 시 'FIREBASE_PROJECT_ID' 또는 'GCLOUD_PROJECT' 환경변수가 필요합니다.");
+            throw new IOException("Auth Emulator 사용 시 'app.firebase.auth.project-id' 또는 'FIREBASE_PROJECT_ID'가 필요합니다.");
         }
 
         FirebaseOptions options = optionsBuilder.build();
@@ -76,6 +87,17 @@ public class FirebaseConfig {
     @Bean
     public FirebaseAuth firebaseAuth(FirebaseApp firebaseApp) {
         return FirebaseAuth.getInstance(firebaseApp);
+    }
+
+    @Bean
+    public FirebaseIdentityProvider firebaseIdentityProvider(
+            ObjectMapper objectMapper,
+            FirebaseAuth firebaseAuth
+    ) {
+        if (firebaseAuthProperties.isEmulatorMode()) {
+            return new FirebaseEmulatorIdentityProvider(objectMapper, firebaseAuthProperties, firebaseAuth);
+        }
+        return new FirebaseAdminIdentityProvider(firebaseAuth);
     }
 
     @Bean

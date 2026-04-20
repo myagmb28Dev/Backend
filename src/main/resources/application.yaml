@@ -4,8 +4,8 @@ spring:
     time-zone: UTC
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 5MB
+      max-file-size: 31MB
+      max-request-size: 31MB
   config:
     import:
       - optional:file:.env[.properties]
@@ -31,6 +31,16 @@ spring:
 app:
   upload:
     root: uploads
+  kakao:
+    local:
+      rest-api-key: ${KAKAO_REST_API_KEY:}
+      base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+  firebase:
+    auth:
+      mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}
+      project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
+      emulator-host: ${FIREBASE_AUTH_EMULATOR_HOST:}
+      allow-emulator: ${FIREBASE_ALLOW_AUTH_EMULATOR:false}
 
 decorator:
   datasource:
@@ -43,15 +53,6 @@ springdoc:
   swagger-ui:
     url: /v3/api-docs
     custom-css-path: /swagger-ui/dark.css
-
-  jackson:
-    date-format: yyyy-MM-dd'T'HH:mm:ss'Z'
-    time-zone: UTC
-
-  servlet:
-    multipart:
-      max-file-size: 5MB
-      max-request-size: 5MB
 
 server:
   port: ${PORT:8080}

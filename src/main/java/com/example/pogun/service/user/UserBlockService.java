@@ -25,16 +25,21 @@ public class UserBlockService {
         if (blocker.getId().equals(blocked.getId())) {
             throw ApiException.badRequest("SELF_BLOCK_NOT_ALLOWED", "본인은 차단할 수 없습니다.");
         }
-        if (!userBlockRepository.existsByBlockerAndBlocked(blocker, blocked)) {
-            userBlockRepository.save(UserBlock.builder().blocker(blocker).blocked(blocked).build());
+        if (userBlockRepository.existsByBlockerAndBlocked(blocker, blocked)) {
+            return;
         }
+        userBlockRepository.save(UserBlock.builder()
+                .blocker(blocker)
+                .blocked(blocked)
+                .build());
     }
 
     @Transactional
     public void unblock(String userId) {
         User blocker = getCurrentUser();
         User blocked = getUser(userId);
-        userBlockRepository.findByBlockerAndBlocked(blocker, blocked).ifPresent(userBlockRepository::delete);
+        userBlockRepository.findByBlockerAndBlocked(blocker, blocked)
+                .ifPresent(userBlockRepository::delete);
     }
 
     private User getCurrentUser() {

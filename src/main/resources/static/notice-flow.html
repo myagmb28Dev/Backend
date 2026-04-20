@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pogun Notice Flow</title>
+  <style>
+    :root { --bg:#f6f1e8; --card:#fffaf0; --ink:#1f2933; --muted:#6b7280; --line:#dac9b2; --accent:#c05f2c; --good:#1f8a4c; --bad:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); }
+    main { width:min(980px,calc(100% - 28px)); margin:20px auto 32px; display:grid; gap:14px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 10px 26px rgba(31,41,51,.06); }
+    h1,h2,h3,p { margin:0; }
+    .status { min-height:40px; padding:10px 12px; border-radius:12px; background:rgba(31,41,51,.06); color:var(--muted); font-size:13px; font-weight:700; }
+    .status.good { background:rgba(31,138,76,.12); color:var(--good); }
+    .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
+    .account-strip { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+    .account-toggle { width:auto; min-width:72px; padding:8px 12px; border:1px solid rgba(31,41,51,.12); border-radius:999px; background:rgba(31,41,51,.07); color:var(--ink); font-size:12px; font-weight:900; cursor:pointer; }
+    .account-toggle.active { border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px rgba(192,95,44,.12); }
+    .muted { color:var(--muted); font-size:12px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .grid .full { grid-column:1 / -1; }
+    label { display:grid; gap:6px; font-size:12px; font-weight:700; color:var(--muted); }
+    input,select,textarea { width:100%; border:1px solid var(--line); border-radius:12px; background:#fffdf7; color:var(--ink); padding:10px; font:inherit; }
+    textarea { min-height:84px; resize:vertical; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    button { border:0; border-radius:12px; padding:11px 14px; font-weight:800; cursor:pointer; color:#fff; background:var(--accent); }
+    button.secondary { background:rgba(31,41,51,.11); color:var(--ink); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .detail { display:grid; gap:8px; }
+    .detail-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:8px; }
+    .detail-images img { width:100%; border-radius:10px; border:1px solid rgba(31,41,51,.1); display:block; background:#f5efe4; }
+    @media (max-width:760px){ .grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>Notice Flow</h1>
+    <p class="muted" style="margin-top:6px">실종동물 공고를 필드 입력 + 이미지 첨부로 생성하고, 생성 후 DM 테스트로 이동합니다.</p>
+    <div id="status" class="status" style="margin-top:10px">준비 중</div>
+  </section>
+
+  <section class="card">
+    <h2>로그인 세션</h2>
+    <div id="accountHint" class="muted">login-flow.html에서 로그인 후 진입해 주세요.</div>
+    <div class="actions" style="margin-top:10px">
+      <button id="goLoginFlowButton" class="secondary">Login Flow로 이동</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>실종 공고 생성</h2>
+    <div class="grid" style="margin-top:10px">
+      <label>제목*<input id="title" placeholder="말티즈를 찾습니다"></label>
+      <label>동물 종류*<input id="animalType" value="DOG" placeholder="DOG"></label>
+      <label>품종<input id="breed" placeholder="말티즈"></label>
+      <label>성별
+        <select id="gender">
+          <option value="">선택 안 함</option>
+          <option value="MALE">MALE</option>
+          <option value="FEMALE">FEMALE</option>
+          <option value="UNKNOWN">UNKNOWN</option>
+        </select>
+      </label>
+      <label>나이<input id="age" type="number" min="0" placeholder="3"></label>
+      <label>색상<input id="color" placeholder="WHITE"></label>
+      <label class="full">설명<textarea id="description" placeholder="특징, 목줄 여부 등"></textarea></label>
+      <label>실종 시각(UTC ISO)*<input id="missingDate" placeholder="2026-03-18T10:00:00Z"></label>
+      <label>실종 지역*<input id="missingRegion" placeholder="서울 강남구"></label>
+      <label class="full">실종 상세 주소<input id="missingAddress" placeholder="역삼역 인근"></label>
+      <label>사례금<input id="rewardAmount" type="number" min="0" placeholder="300000"></label>
+      <label>연락처<input id="contactPhone" placeholder="010-1111-2222"></label>
+      <label>상태
+        <select id="statusField">
+          <option value="OPEN" selected>OPEN</option>
+          <option value="RESOLVED">RESOLVED</option>
+          <option value="CLOSED">CLOSED</option>
+        </select>
+      </label>
+      <label class="full">이미지<input id="images" type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" multiple></label>
+    </div>
+    <div class="actions">
+      <button id="createNoticeButton" disabled>공고 생성 후 DM 테스트로 이동</button>
+      <button id="toDmButton" class="secondary">DM 테스트로 이동</button>
+      <button id="loadDetailButton" class="secondary" disabled>현재 noticeId 상세 새로고침</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>공고 상세</h2>
+    <div id="detail" class="detail muted" style="margin-top:10px">noticeId가 있으면 여기서 상세를 확인할 수 있습니다.</div>
+  </section>
+</main>
+
+<script>
+const BACKEND_BASE = window.location.origin;
+const EMULATOR_BASE = `${window.location.protocol}//${window.location.hostname}:9099`;
+const API_KEY = "fake-api-key";
+const PASSWORD = "Test1234!";
+const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
+const ACCOUNT_COUNT = 10;
+const query = new URLSearchParams(window.location.search);
+let currentNoticeId = (query.get("noticeId") || "").trim() || null;
+const requestedRole = (query.get("role") || "").trim();
+let activeRole = null;
+
+const users = Object.fromEntries(Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
+  const n = index + 1;
+  return [`user${n}`, { label: `유저 ${n}`, email: `dm-user${n}@local.dev`, token: null, userId: null }];
+}));
+
+const el = (id) => document.getElementById(id);
+function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
+function escapeHtml(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;"); }
+
+function renderSessionInfo() {
+  const user = activeRole ? users[activeRole] : null;
+  el("accountHint").textContent = user
+    ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
+    : "login-flow.html에서 로그인 후 진입해 주세요.";
+  el("createNoticeButton").disabled = !activeRole;
+  el("loadDetailButton").disabled = !activeRole || !currentNoticeId;
+}
+
+async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
+async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
+async function authApi(path, init = {}) {
+  if (!activeRole || !users[activeRole].token) throw new Error("먼저 로그인하세요.");
+  return request(`${BACKEND_BASE}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${users[activeRole].token}`, ...(init.headers || {}) }
+  });
+}
+
+async function ensureEmulatorUser(role) {
+  const user = users[role];
+  const body = { email: user.email, password: PASSWORD, returnSecureToken: true };
+  const signIn = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  if (signIn.status === 200) { user.token = signIn.body.idToken; return; }
+  const signUp = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  if (signUp.status !== 200) throw new Error(`${user.label} 에뮬레이터 로그인 실패: ${JSON.stringify(signUp.body)}`);
+  user.token = signUp.body.idToken;
+}
+
+async function login(role) {
+  setStatus(`${users[role].label} 로그인 중...`);
+  await ensureEmulatorUser(role);
+  const response = await request(`${BACKEND_BASE}/api/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
+  });
+  if (response.status !== 200) throw new Error(`백엔드 로그인 실패: ${JSON.stringify(response.body)}`);
+  users[role].userId = response.body?.data?.id;
+  activeRole = role;
+  try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
+  renderSessionInfo();
+  setStatus(`${users[role].label} 로그인 완료`, "good");
+  if (currentNoticeId) {
+    await loadNoticeDetail(currentNoticeId);
+  }
+}
+
+function moveToLoginFlow() {
+  const redirect = `/notice-flow.html${currentNoticeId ? `?noticeId=${encodeURIComponent(currentNoticeId)}` : ""}`;
+  window.location.href = `${window.location.origin}/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
+}
+
+function toDmTestUrl(noticeId = currentNoticeId) {
+  const params = new URLSearchParams();
+  if (noticeId) params.set("noticeId", noticeId);
+  if (activeRole) params.set("role", activeRole);
+  return `${window.location.origin}/dm-test.html${params.toString() ? `?${params.toString()}` : ""}`;
+}
+
+function parseOptionalInt(raw) {
+  const v = String(raw ?? "").trim();
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+
+function buildCreatePayload() {
+  const title = el("title").value.trim();
+  const animalType = el("animalType").value.trim();
+  const missingDate = el("missingDate").value.trim();
+  const missingRegion = el("missingRegion").value.trim();
+  if (!title || !animalType || !missingDate || !missingRegion) {
+    throw new Error("필수 필드(title, animalType, missingDate, missingRegion)를 입력하세요.");
+  }
+
+  return {
+    title,
+    animalType,
+    breed: el("breed").value.trim() || null,
+    gender: el("gender").value || null,
+    age: parseOptionalInt(el("age").value),
+    color: el("color").value.trim() || null,
+    description: el("description").value.trim() || null,
+    missingDate,
+    missingRegion,
+    missingAddress: el("missingAddress").value.trim() || null,
+    rewardAmount: parseOptionalInt(el("rewardAmount").value),
+    contactPhone: el("contactPhone").value.trim() || null,
+    status: el("statusField").value || "OPEN"
+  };
+}
+
+async function createNotice() {
+  if (!activeRole) throw new Error("먼저 로그인하세요.");
+  const payload = buildCreatePayload();
+  const formData = new FormData();
+  formData.append("request", new Blob([JSON.stringify(payload)], { type: "application/json" }));
+  const files = el("images").files ? [...el("images").files] : [];
+  files.forEach((file) => formData.append("images", file));
+
+  setStatus("공고 생성 중...");
+  let response = await authApi("/api/missing-pets", { method: "POST", body: formData });
+  if (response.status === 401) {
+    await ensureEmulatorUser(activeRole);
+    response = await authApi("/api/missing-pets", { method: "POST", body: formData });
+  }
+  if (response.status !== 201) throw new Error(`공고 생성 실패: ${JSON.stringify(response.body)}`);
+
+  currentNoticeId = response.body?.data?.id || null;
+  el("loadDetailButton").disabled = !activeRole || !currentNoticeId;
+  setStatus(`공고 생성 완료: ${response.body?.data?.title || currentNoticeId}`, "good");
+  if (currentNoticeId) {
+    await loadNoticeDetail(currentNoticeId);
+    setTimeout(() => {
+      window.location.href = toDmTestUrl(currentNoticeId);
+    }, 600);
+  }
+}
+
+async function loadAuthenticatedImages() {
+  if (!activeRole || !users[activeRole].token) return;
+  const nodes = [...document.querySelectorAll("img[data-auth-src]")];
+  for (const node of nodes) {
+    const url = node.getAttribute("data-auth-src");
+    if (!url || node.dataset.loaded === "true") continue;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${users[activeRole].token}` } });
+    if (!response.ok) {
+      node.remove();
+      continue;
+    }
+    node.src = URL.createObjectURL(await response.blob());
+    node.dataset.loaded = "true";
+  }
+}
+
+async function loadNoticeDetail(noticeId) {
+  if (!activeRole) throw new Error("상세를 보려면 먼저 로그인하세요.");
+  const response = await authApi(`/api/missing-pets/${noticeId}`);
+  if (response.status !== 200) throw new Error(`공고 상세 조회 실패: ${JSON.stringify(response.body)}`);
+  const notice = response.body?.data;
+  const detail = el("detail");
+  if (!notice) {
+    detail.textContent = "공고 상세 데이터가 없습니다.";
+    return;
+  }
+  detail.className = "detail";
+  detail.innerHTML = `
+    <div><strong>${escapeHtml(notice.title || "")}</strong></div>
+    <div class="muted">ID: ${escapeHtml(notice.id || "")}</div>
+    <div class="muted">작성자: ${escapeHtml(notice.authorNickname || "")}</div>
+    <div class="muted">동물: ${escapeHtml(notice.animalType || "")} / ${escapeHtml(notice.breed || "-")}</div>
+    <div class="muted">성별: ${escapeHtml(notice.gender || "-")} · 나이: ${escapeHtml(notice.age ?? "-")}</div>
+    <div class="muted">색상: ${escapeHtml(notice.color || "-")}</div>
+    <div class="muted">실종시각: ${escapeHtml(notice.missingDate || "")}</div>
+    <div class="muted">실종지역: ${escapeHtml(notice.missingRegion || "")} / ${escapeHtml(notice.missingAddress || "-")}</div>
+    <div class="muted">연락처: ${escapeHtml(notice.contactPhone || "-")} · 상태: ${escapeHtml(notice.status || "")}</div>
+    <div>${escapeHtml(notice.description || "")}</div>
+    <div class="detail-images">${(notice.imageUrls || []).map((url) => `<img data-auth-src="${escapeHtml(url)}" alt="notice image">`).join("")}</div>
+  `;
+  await loadAuthenticatedImages();
+}
+
+function run(handler) {
+  return async () => {
+    try { await handler(); }
+    catch (error) { console.error(error); setStatus(error.message || String(error), "bad"); }
+  };
+}
+
+el("createNoticeButton").addEventListener("click", run(createNotice));
+el("toDmButton").addEventListener("click", () => { window.location.href = toDmTestUrl(); });
+el("loadDetailButton").addEventListener("click", run(() => loadNoticeDetail(currentNoticeId)));
+el("goLoginFlowButton").addEventListener("click", moveToLoginFlow);
+
+if (!el("missingDate").value) el("missingDate").value = new Date().toISOString();
+renderSessionInfo();
+setStatus("login-flow에서 로그인한 계정으로 공고를 작성하세요.");
+
+const savedRole = (() => { try { return window.localStorage.getItem(ACTIVE_ROLE_KEY) || ""; } catch { return ""; } })();
+const initialRole = (requestedRole && Object.prototype.hasOwnProperty.call(users, requestedRole))
+  ? requestedRole
+  : (savedRole && Object.prototype.hasOwnProperty.call(users, savedRole) ? savedRole : "");
+if (initialRole) {
+  run(() => login(initialRole))();
+} else {
+  moveToLoginFlow();
+}
+</script>
+</body>
+</html>

@@ -4,6 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.UUID;
 
+/**
+ * 답장 대상 메시지 요약 DTO이다.
+ */
 @Schema(description = "답장 메시지 요약")
 public record NoticeChatMessageReplyResponse(
         @Schema(description = "원본 메시지 ID") UUID messageId,

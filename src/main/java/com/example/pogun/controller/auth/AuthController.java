@@ -4,6 +4,7 @@ import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LoginRequest;
 import com.example.pogun.dto.auth.LogoutResponse;
+import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.auth.SocialUnlinkResponse;
 import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.service.auth.AuthService;
@@ -36,9 +37,16 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "소셜 로그인", description = "Firebase ID Token을 사용하여 소셜 로그인을 수행합니다. 없으면 자동 가입됩니다.")
     public ResponseEntity<ApiResponse<AuthResponse>> firebaseSignIn(@Valid @RequestBody LoginRequest request) {
-        // Firebase 인증과 우리 서비스 회원 동기화를 한 번에 수행하는 진입점이다.
+        // Firebase 인증은 완료하되, 신규 사용자는 정식 회원 대신 온보딩 대기 상태로 둔다.
         AuthResponse data = authService.loginOrSignUp(request.getFirebaseIdToken());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그인 성공", data));
+    }
+
+    @PostMapping("/onboarding/complete")
+    @Operation(summary = "온보딩 완료", description = "소셜 인증 후 지역 정보를 받아 정식 회원가입을 완료합니다.")
+    public ResponseEntity<ApiResponse<AuthResponse>> completeOnboarding(@Valid @RequestBody OnboardingCompleteRequest request) {
+        AuthResponse data = authService.completeOnboarding(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "회원가입 완료", data));
     }
 
     @PostMapping("/logout")

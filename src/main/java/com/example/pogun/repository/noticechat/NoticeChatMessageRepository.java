@@ -3,12 +3,15 @@ package com.example.pogun.repository.noticechat;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.user.User;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,25 +21,10 @@ import java.util.UUID;
 
 @Repository
 public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMessage, UUID> {
+    @EntityGraph(attributePaths = {"senderUser", "images", "replyToMessage", "replyToMessage.senderUser"})
     @Query("""
             SELECT m
             FROM NoticeChatMessage m
-            LEFT JOIN FETCH m.senderUser
-            LEFT JOIN FETCH m.replyToMessage reply
-            LEFT JOIN FETCH reply.senderUser
-            WHERE m.room = :room
-              AND m.deletedAt IS NULL
-            ORDER BY m.roomSequence ASC, m.createdAt ASC
-            """)
-    List<NoticeChatMessage> findVisibleByRoom(@Param("room") NoticeChatRoom room);
-
-    @Query("""
-            SELECT DISTINCT m
-            FROM NoticeChatMessage m
-            LEFT JOIN FETCH m.senderUser
-            LEFT JOIN FETCH m.images
-            LEFT JOIN FETCH m.replyToMessage reply
-            LEFT JOIN FETCH reply.senderUser
             WHERE m.room = :room
               AND m.deletedAt IS NULL
               AND (:beforeSequence IS NULL OR m.roomSequence < :beforeSequence)
@@ -48,6 +36,7 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
             Pageable pageable
     );
 
+    @EntityGraph(attributePaths = {"senderUser", "images", "replyToMessage", "replyToMessage.senderUser"})
     @Query("""
             SELECT m
             FROM NoticeChatMessage m
@@ -58,7 +47,9 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
             """)
     List<NoticeChatMessage> searchVisibleText(@Param("room") NoticeChatRoom room, @Param("keyword") String keyword);
 
-    long countByRoomAndSenderUserNotAndIsReadFalse(NoticeChatRoom room, User senderUser);
+    Optional<NoticeChatMessage> findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(NoticeChatRoom room);
+
+    Optional<NoticeChatMessage> findByRoomAndSenderUserAndClientMessageId(NoticeChatRoom room, User senderUser, String clientMessageId);
 
     @Query("""
             SELECT COUNT(m)
@@ -71,12 +62,18 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
     long countUnreadByWatermark(
             @Param("room") NoticeChatRoom room,
             @Param("reader") User reader,
-            @Param("lastReadRoomSequence") Long lastReadRoomSequence
+            @Param("lastReadRoomSequence") long lastReadRoomSequence
     );
 
-    Optional<NoticeChatMessage> findByRoomAndSenderUserAndClientMessageId(NoticeChatRoom room, User senderUser, String clientMessageId);
+    List<NoticeChatMessage> findByDeletedAtBefore(Instant cutoff);
 
-    Optional<NoticeChatMessage> findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(NoticeChatRoom room);
+    @Modifying
+    @Query("""
+            UPDATE NoticeChatMessage message
+            SET message.replyToMessage = NULL
+            WHERE message.replyToMessage IN :messages
+            """)
+    void clearReplyTargets(@Param("messages") List<NoticeChatMessage> messages);
 
     void deleteByRoomIn(List<NoticeChatRoom> rooms);
 }

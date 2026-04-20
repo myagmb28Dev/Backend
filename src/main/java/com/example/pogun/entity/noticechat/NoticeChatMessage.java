@@ -1,7 +1,7 @@
 package com.example.pogun.entity.noticechat;
 
-import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
+import com.example.pogun.entity.user.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -41,9 +41,9 @@ import java.util.UUID;
         @Index(name = "idx_notice_chat_messages_room", columnList = "room_id"),
         @Index(name = "idx_notice_chat_messages_room_created_at", columnList = "room_id,created_at"),
         @Index(name = "idx_notice_chat_messages_room_sequence", columnList = "room_id,room_sequence"),
+        @Index(name = "idx_notice_chat_messages_visible_page", columnList = "room_id,deleted_at,room_sequence"),
         @Index(name = "idx_notice_chat_messages_read", columnList = "room_id,is_read"),
-        @Index(name = "idx_notice_chat_messages_reply_to", columnList = "reply_to_message_id"),
-        @Index(name = "idx_notice_chat_messages_visible_page", columnList = "room_id,deleted_at,room_sequence")
+        @Index(name = "idx_notice_chat_messages_reply_to", columnList = "reply_to_message_id")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uk_notice_chat_message_client_id", columnNames = {"room_id", "sender_user_id", "client_message_id"})
 })
@@ -70,9 +70,9 @@ public class NoticeChatMessage {
     @JoinColumn(name = "sender_user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_notice_chat_messages_sender"))
     private User senderUser;
 
-    @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "message_type", nullable = false, length = 20)
+    @Builder.Default
+    @Column(name = "message_type", length = 20)
     private NoticeChatMessageType messageType = NoticeChatMessageType.TEXT;
 
     @Column(name = "message", length = 2000)
@@ -95,6 +95,9 @@ public class NoticeChatMessage {
 
     @Column(name = "room_sequence")
     private Long roomSequence;
+
+    @Column(name = "edited_at")
+    private Instant editedAt;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;

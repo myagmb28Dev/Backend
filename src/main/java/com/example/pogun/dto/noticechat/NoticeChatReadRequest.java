@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@Schema(description = "채팅 읽음 처리 요청")
+@Schema(description = "채팅 읽음 워터마크 요청")
 public class NoticeChatReadRequest {
     @Schema(description = "채팅방 ID")
     private UUID roomId;
@@ -16,6 +16,6 @@ public class NoticeChatReadRequest {
     @Schema(description = "마지막으로 읽은 메시지 ID")
     private UUID lastReadMessageId;
 
-    @Schema(description = "마지막으로 읽은 메시지 순번")
+    @Schema(description = "마지막으로 읽은 방 순번")
     private Long lastReadRoomSequence;
 }

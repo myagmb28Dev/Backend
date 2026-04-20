@@ -13,12 +13,10 @@ public record NoticeChatRoomResponse(
         @Schema(description = "채팅방 ID") UUID roomId,
         @Schema(description = "공고 ID") UUID noticeId,
         @Schema(description = "공고 제목") String noticeTitle,
-        @Schema(description = "공고 대표 썸네일 URL") String noticeThumbnailUrl,
         @Schema(description = "채팅방 상태") String roomStatus,
         @Schema(description = "최근 메시지 유형") String lastMessageType,
         @Schema(description = "최근 메시지 시각") Instant lastMessageAt,
         @Schema(description = "최근 메시지 미리보기") String lastMessagePreview,
-        @Schema(description = "최근 메시지 순번") Long lastMessageSequence,
         @Schema(description = "생성 시각") Instant createdAt,
         @Schema(description = "상대방 사용자 ID") UUID opponentUserId,
         @Schema(description = "상대방 닉네임") String opponentNickname,
@@ -31,6 +29,12 @@ public record NoticeChatRoomResponse(
         @Schema(description = "상대방 마지막 활동 시각") Instant opponentLastActiveAt,
         @Schema(description = "마지막으로 읽은 메시지 ID") UUID lastReadMessageId,
         @Schema(description = "마지막 읽음 시각") Instant lastReadAt,
-        @Schema(description = "마지막 읽음 메시지 순번") Long lastReadRoomSequence
+        @Schema(description = "마지막으로 읽은 방 순번") Long lastReadRoomSequence,
+        @Schema(description = "방의 마지막 메시지 순번") Long lastMessageSequence,
+        @Schema(description = "공고 대표 이미지 URL") String noticeThumbnailUrl,
+        @Schema(description = "최종 표시 채팅방 이름") String displayRoomName,
+        @Schema(description = "최종 표시 썸네일 URL") String displayThumbnailUrl,
+        @Schema(description = "사용자별 채팅방 표시 이름") String customRoomName,
+        @Schema(description = "사용자별 채팅방 썸네일 URL") String customThumbnailUrl
 ) {
 }

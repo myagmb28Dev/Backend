@@ -27,6 +27,7 @@ public class SecurityConfig {
     private final FirebaseTokenFilter firebaseTokenFilter;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
     private final ApiAccessDeniedHandler apiAccessDeniedHandler;
+    private final FirebaseAuthProperties firebaseAuthProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -39,6 +40,12 @@ public class SecurityConfig {
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
                         .accessDeniedHandler(apiAccessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/dm-test.html")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
+                        .requestMatchers("/notice-flow.html")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
+                        .requestMatchers("/login-flow.html")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(firebaseAuthProperties.isEmulatorMode()))
                         .requestMatchers(
                                 "/",
                                 "/health",

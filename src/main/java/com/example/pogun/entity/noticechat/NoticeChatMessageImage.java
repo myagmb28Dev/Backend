@@ -30,7 +30,11 @@ import java.util.UUID;
         @Index(name = "idx_notice_chat_message_images_message", columnList = "message_id"),
         @Index(name = "idx_notice_chat_message_images_order", columnList = "message_id,display_order")
 })
+/**
+ * 이미지 메시지에 속한 개별 이미지 엔티티이다.
+ */
 public class NoticeChatMessageImage {
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -58,9 +62,6 @@ public class NoticeChatMessageImage {
 
     @Column(name = "preview_url", length = 500)
     private String previewUrl;
-
-    @Column(name = "content_type", length = 100)
-    private String contentType;
 
     @Column(name = "display_order", nullable = false)
     private int displayOrder;

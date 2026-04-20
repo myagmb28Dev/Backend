@@ -20,6 +20,10 @@ public class UpdateProfileRequest {
     @Schema(description = "전화번호", example = "010-1234-5678")
     private String phoneNumber;
 
+    @Size(max = 100, message = "region은 100자를 초과할 수 없습니다.")
+    @Schema(description = "지역", example = "서울특별시 강남구")
+    private String region;
+
     @Size(max = 1000, message = "profileImageUrl은 1000자를 초과할 수 없습니다.")
     @Schema(description = "프로필 이미지 URL", example = "https://cdn.example.com/profile.png")
     private String profileImageUrl;

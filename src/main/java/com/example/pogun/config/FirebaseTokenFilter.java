@@ -2,8 +2,7 @@ package com.example.pogun.config;
 
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.repository.user.UserRepository;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseToken;
+import com.example.pogun.service.auth.FirebaseIdentityService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +25,7 @@ import java.util.List;
 public class
 FirebaseTokenFilter extends OncePerRequestFilter {
 
-    private final FirebaseAuth firebaseAuth;
+    private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final ApiErrorResponseWriter apiErrorResponseWriter;
 
@@ -41,11 +40,21 @@ FirebaseTokenFilter extends OncePerRequestFilter {
 
             try {
                 // revoke 여부까지 함께 검사해 로그아웃된 토큰이 보호 API를 다시 통과하지 못하게 한다.
-                FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken, true);
-                String uid = decodedToken.getUid();
+                String uid = firebaseIdentityService.verifyIdToken(idToken, true).uid();
+                if (!userRepository.existsByFirebaseUid(uid) && shouldRequireCompletedRegistration(request)) {
+                    SecurityContextHolder.clearContext();
+                    apiErrorResponseWriter.write(
+                            response,
+                            org.springframework.http.HttpStatus.FORBIDDEN,
+                            "ONBOARDING_REQUIRED",
+                            "회원가입 완료 후 이용할 수 있습니다.",
+                            null
+                    );
+                    return;
+                }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        uid, null, resolveAuthorities(uid));
+                    uid, idToken, resolveAuthorities(uid));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
             } catch (Exception e) {
@@ -64,6 +73,19 @@ FirebaseTokenFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    private boolean shouldRequireCompletedRegistration(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+
+        if ("POST".equalsIgnoreCase(method) && "/api/auth/onboarding/complete".equals(path)) {
+            return false;
+        }
+        if ("POST".equalsIgnoreCase(method) && "/api/auth/login".equals(path)) {
+            return false;
+        }
+        return path.startsWith("/api/");
+    }
+
     private List<SimpleGrantedAuthority> resolveAuthorities(String firebaseUid) {
         // Firebase 토큰 자체에는 우리 서비스 role 이 없으므로 DB 사용자 role 을 다시 읽어 권한을 확정한다.
         UserRole role = userRepository.findByFirebaseUid(firebaseUid)
@@ -73,4 +95,3 @@ FirebaseTokenFilter extends OncePerRequestFilter {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 }
-

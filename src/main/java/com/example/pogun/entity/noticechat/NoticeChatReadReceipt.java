@@ -33,13 +33,14 @@ import java.util.UUID;
 @Entity
 @Table(name = "notice_chat_read_receipts",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_notice_chat_read_receipts_room_reader", columnNames = {"room_id", "reader_id"})
+                @UniqueConstraint(name = "uk_notice_chat_read_receipt_room_reader", columnNames = {"room_id", "reader_user_id"})
         },
         indexes = {
                 @Index(name = "idx_notice_chat_read_receipts_room", columnList = "room_id"),
-                @Index(name = "idx_notice_chat_read_receipts_reader", columnList = "reader_id")
+                @Index(name = "idx_notice_chat_read_receipts_reader", columnList = "reader_user_id")
         })
 public class NoticeChatReadReceipt {
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -59,17 +60,17 @@ public class NoticeChatReadReceipt {
     private NoticeChatRoom room;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "reader_id", nullable = false, foreignKey = @ForeignKey(name = "fk_notice_chat_read_receipts_reader"))
+    @JoinColumn(name = "reader_user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_notice_chat_read_receipts_reader"))
     private User reader;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "last_read_message_id", foreignKey = @ForeignKey(name = "fk_notice_chat_read_receipts_message"))
+    @JoinColumn(name = "last_read_message_id", foreignKey = @ForeignKey(name = "fk_notice_chat_read_receipts_last_message"))
     private NoticeChatMessage lastReadMessage;
 
     @Builder.Default
     @Column(name = "last_read_room_sequence", nullable = false)
     private Long lastReadRoomSequence = 0L;
 
-    @Column(name = "read_at", nullable = false)
+    @Column(name = "read_at")
     private Instant readAt;
 }

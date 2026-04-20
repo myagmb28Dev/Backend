@@ -1,5 +1,6 @@
 package com.example.pogun.entity.user;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
@@ -29,18 +30,23 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "user_blocks",
-        uniqueConstraints = @UniqueConstraint(name = "uk_user_blocks_blocker_blocked", columnNames = {"blocker_id", "blocked_id"}),
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_user_blocks_blocker_blocked", columnNames = {"blocker_id", "blocked_id"})
+        },
         indexes = {
                 @Index(name = "idx_user_blocks_blocker", columnList = "blocker_id"),
                 @Index(name = "idx_user_blocks_blocked", columnList = "blocked_id")
         })
 public class UserBlock {
+
     @Id
     @GeneratedValue
     @UuidGenerator
+    @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
     @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

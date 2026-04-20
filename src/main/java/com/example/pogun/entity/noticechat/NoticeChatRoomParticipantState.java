@@ -41,6 +41,7 @@ import java.util.UUID;
                 @Index(name = "idx_notice_chat_room_participant_left", columnList = "user_id,left_at")
         })
 public class NoticeChatRoomParticipantState {
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -71,7 +72,7 @@ public class NoticeChatRoomParticipantState {
     private Instant lastReadAt;
 
     @Builder.Default
-    @Column(name = "last_read_room_sequence", nullable = false)
+    @Column(name = "last_read_room_sequence")
     private Long lastReadRoomSequence = 0L;
 
     @Builder.Default
@@ -85,6 +86,12 @@ public class NoticeChatRoomParticipantState {
     @Builder.Default
     @Column(name = "pinned", nullable = false)
     private Boolean pinned = false;
+
+    @Column(name = "custom_room_name", length = 100)
+    private String customRoomName;
+
+    @Column(name = "custom_thumbnail_url", length = 1000)
+    private String customThumbnailUrl;
 
     @Column(name = "left_at")
     private Instant leftAt;
