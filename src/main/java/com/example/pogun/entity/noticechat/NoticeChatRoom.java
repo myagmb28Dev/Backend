@@ -16,6 +16,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,6 +37,9 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "notice_chat_rooms",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_notice_chat_rooms_notice_owner_guest", columnNames = {"notice_id", "owner_user_id", "guest_user_id"})
+        },
         indexes = {
                 @Index(name = "idx_notice_chat_rooms_notice", columnList = "notice_id"),
                 @Index(name = "idx_notice_chat_rooms_owner", columnList = "owner_user_id"),
@@ -86,6 +90,10 @@ public class NoticeChatRoom {
 
     @Column(name = "last_message_preview", length = 200)
     private String lastMessagePreview;
+
+    @Builder.Default
+    @Column(name = "last_message_sequence")
+    private Long lastMessageSequence = 0L;
 }
 
 

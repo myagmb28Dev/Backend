@@ -61,6 +61,7 @@ public class PogunDmPlaywrightCleanup {
   public static void main(String[] args) throws Exception {
     List<String> statements = List.of(
       "DELETE FROM reports WHERE target_type = 'NOTICE_CHAT_ROOM' AND target_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
+      "DELETE FROM notice_chat_read_receipts WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
       "DELETE FROM notice_chat_room_participant_states WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
       "DELETE FROM notice_chat_message_images WHERE message_id IN (SELECT id FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')))",
       "UPDATE notice_chat_messages SET reply_to_message_id = NULL WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
@@ -70,11 +71,11 @@ public class PogunDmPlaywrightCleanup {
       "DELETE FROM notice_bookmarks WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM pet_notice_images WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'",
-      "DELETE FROM user_blocks WHERE blocker_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev') OR blocked_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
-      "DELETE FROM user_social_accounts WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
-      "DELETE FROM user_fcm_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
-      "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev')",
-      "DELETE FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev'"
+      "DELETE FROM user_blocks WHERE blocker_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev') OR blocked_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
+      "DELETE FROM user_social_accounts WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
+      "DELETE FROM user_fcm_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
+      "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
+      "DELETE FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev'"
     );
     try (Connection conn = DriverManager.getConnection(System.getenv("DB_URL"), System.getenv("DB_USERNAME"), System.getenv("DB_PASSWORD"))) {
       conn.setAutoCommit(false);
@@ -133,6 +134,11 @@ function createTestIdentity(prefix) {
     email: `${prefix}-${nonce}@local.dev`,
     password: 'Test1234!'
   };
+}
+
+function messagePageMessages(response) {
+  const data = response.body.data;
+  return Array.isArray(data) ? data : data.messages;
 }
 
 function createMissingPetPayload(title) {
@@ -230,6 +236,14 @@ function sleep(ms) {
 function createTinyPngBlob() {
   const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0YQAAAAASUVORK5CYII=';
   return new Blob([Buffer.from(base64, 'base64')], { type: 'image/png' });
+}
+
+function createTinyGifBlob() {
+  return new Blob([Buffer.from('R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64')], { type: 'image/gif' });
+}
+
+function createTinyMp4Blob() {
+  return new Blob([Buffer.from('fake-mp4-body')], { type: 'video/mp4' });
 }
 
 async function waitForTypingEvent(client, senderClient, roomId, destination, timeoutMs = 5000) {
@@ -463,28 +477,36 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
 
   const userOneIdentity = createTestIdentity('dm-user1');
   const userTwoIdentity = createTestIdentity('dm-user2');
+  const userThreeIdentity = createTestIdentity('dm-user3');
 
   const userOneSignUp = await emulatorSignUp(userOneIdentity);
   const userTwoSignUp = await emulatorSignUp(userTwoIdentity);
+  const userThreeSignUp = await emulatorSignUp(userThreeIdentity);
 
   expect(userOneSignUp.status).toBe(200);
   expect(userTwoSignUp.status).toBe(200);
+  expect(userThreeSignUp.status).toBe(200);
 
   const userOneToken = userOneSignUp.body.idToken;
   const userTwoToken = userTwoSignUp.body.idToken;
+  const userThreeToken = userThreeSignUp.body.idToken;
 
   expect(userOneToken).toBeTruthy();
   expect(userTwoToken).toBeTruthy();
 
   const userOneLogin = await login(userOneToken);
   const userTwoLogin = await login(userTwoToken);
+  const userThreeLogin = await login(userThreeToken);
 
   expect(userOneLogin.status).toBe(200);
   expect(userTwoLogin.status).toBe(200);
+  expect(userThreeLogin.status).toBe(200);
   const userOneUserId = userOneLogin.body?.data?.id;
   const userTwoUserId = userTwoLogin.body?.data?.id;
+  const userThreeUserId = userThreeLogin.body?.data?.id;
   expect(userOneUserId).toBeTruthy();
   expect(userTwoUserId).toBeTruthy();
+  expect(userThreeUserId).toBeTruthy();
 
   const noticeOneCreate = await api('/api/missing-pets', userOneToken, {
     method: 'POST',
@@ -523,6 +545,32 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   expect(roomCreate.body.data.noticeTitle).toBe('playwright-notice-one');
   expect(roomCreate.body.data.opponentUserId).toBe(userOneUserId);
   expect(roomCreate.body.data.lastMessageType).toBeNull();
+
+  const roomSettings = await api(`/api/chat/rooms/${roomId}/settings`, userTwoToken, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      customRoomName: 'playwright custom room'
+    })
+  });
+  expect(roomSettings.status, JSON.stringify(roomSettings.body)).toBe(200);
+  expect(roomSettings.body.data.customRoomName).toBe('playwright custom room');
+  expect(roomSettings.body.data.displayRoomName).toBe('playwright custom room');
+  expect(roomSettings.body.data.displayThumbnailUrl).toBeNull();
+
+  const roomThumbnailForm = new FormData();
+  roomThumbnailForm.append('image', createTinyPngBlob(), 'room-thumbnail.png');
+  const roomThumbnailSettings = await multipartApi(`/api/chat/rooms/${roomId}/settings/thumbnail`, userTwoToken, roomThumbnailForm);
+  expect(roomThumbnailSettings.status, JSON.stringify(roomThumbnailSettings.body)).toBe(200);
+  expect(roomThumbnailSettings.body.data.customThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
+  expect(roomThumbnailSettings.body.data.displayThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
+
+  const roomSettingsClear = await api(`/api/chat/rooms/${roomId}/settings`, userTwoToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ clearCustomRoomName: true, clearCustomThumbnailUrl: true })
+  });
+  expect(roomSettingsClear.status, JSON.stringify(roomSettingsClear.body)).toBe(200);
+  expect(roomSettingsClear.body.data.customRoomName).toBeNull();
+  expect(roomSettingsClear.body.data.displayRoomName).toContain('playwright-notice-one');
 
   const roomDetailBeforeMessage = await api(`/api/chat/rooms/${roomId}`, userTwoToken);
   expect(roomDetailBeforeMessage.status).toBe(200);
@@ -598,10 +646,11 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
 
   const userOneMessagesAfterRead = await api(`/api/chat/rooms/${roomId}/messages`, userOneToken);
   expect(userOneMessagesAfterRead.status, JSON.stringify(userOneMessagesAfterRead.body)).toBe(200);
-  expect(userOneMessagesAfterRead.body.data).toHaveLength(1);
-  expect(userOneMessagesAfterRead.body.data[0].message).toBe(userTwoMessageText);
-  expect(userOneMessagesAfterRead.body.data[0].isRead).toBe(true);
-  expect(userOneMessagesAfterRead.body.data[0].mine).toBe(false);
+  const userOneMessagesAfterReadList = messagePageMessages(userOneMessagesAfterRead);
+  expect(userOneMessagesAfterReadList).toHaveLength(1);
+  expect(userOneMessagesAfterReadList[0].message).toBe(userTwoMessageText);
+  expect(userOneMessagesAfterReadList[0].isRead).toBe(true);
+  expect(userOneMessagesAfterReadList[0].mine).toBe(false);
 
   const userOneRoomsAfterRead = await api('/api/chat/rooms', userOneToken);
   expect(userOneRoomsAfterRead.status).toBe(200);
@@ -630,13 +679,28 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   expect(noticeOneRoomForUserTwo.lastMessageType).toBe('TEXT');
   expect(noticeOneRoomForUserTwo.unreadCount).toBe(1);
 
+  const editedUserOneReplyText = '유저 1이 수정한 답장입니다.';
+  const userTwoRealtimeUpdatePromise = waitForChatMessage(
+    userTwoClient,
+    userTwoRoomSubscriptionId,
+    (payload) => payload.type === 'MESSAGE_UPDATED' && payload.message?.id === userTwoRealtimeReply.id
+  );
+  const updateReply = await api(`/api/chat/rooms/${roomId}/messages/${userTwoRealtimeReply.id}`, userOneToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ message: editedUserOneReplyText })
+  });
+  expect(updateReply.status, JSON.stringify(updateReply.body)).toBe(200);
+  const userTwoRealtimeUpdate = await userTwoRealtimeUpdatePromise;
+  expect(userTwoRealtimeUpdate.message.message).toBe(editedUserOneReplyText);
+
   const userTwoMessagesAfterRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
   expect(userTwoMessagesAfterRead.status).toBe(200);
-  expect(userTwoMessagesAfterRead.body.data).toHaveLength(2);
-  expect(userTwoMessagesAfterRead.body.data[1].message).toBe(userOneReplyText);
-  expect(userTwoMessagesAfterRead.body.data[1].reply.messageId).toBe(userOneRealtimeMessage.id);
-  expect(userTwoMessagesAfterRead.body.data[1].isRead).toBe(true);
-  expect(userTwoMessagesAfterRead.body.data[1].mine).toBe(false);
+  const userTwoMessagesAfterReadList = messagePageMessages(userTwoMessagesAfterRead);
+  expect(userTwoMessagesAfterReadList).toHaveLength(2);
+  expect(userTwoMessagesAfterReadList[1].message).toBe(editedUserOneReplyText);
+  expect(userTwoMessagesAfterReadList[1].reply.messageId).toBe(userOneRealtimeMessage.id);
+  expect(userTwoMessagesAfterReadList[1].isRead).toBe(true);
+  expect(userTwoMessagesAfterReadList[1].mine).toBe(false);
 
   const imageRealtimePromise = waitForChatMessage(
     userTwoClient,
@@ -662,6 +726,10 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   });
   expect(authenticatedImageFetch.status).toBe(200);
   expect(authenticatedImageFetch.headers.get('content-type')).toContain('image');
+  const forbiddenImageFetch = await fetch(`${baseURL}${imageRealtimeMessage.images[0].imageUrl}`, {
+    headers: { Authorization: `Bearer ${userThreeToken}` }
+  });
+  expect(forbiddenImageFetch.status).toBe(403);
 
   const userTwoRoomsAfterImage = await api('/api/chat/rooms', userTwoToken);
   expect(userTwoRoomsAfterImage.status).toBe(200);
@@ -675,13 +743,56 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
 
   const userTwoMessagesAfterImageRead = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
   expect(userTwoMessagesAfterImageRead.status).toBe(200);
-  expect(userTwoMessagesAfterImageRead.body.data.at(-1).messageType).toBe('IMAGE');
-  expect(userTwoMessagesAfterImageRead.body.data.at(-1).message).toBe(imageMessageText);
-  expect(userTwoMessagesAfterImageRead.body.data.at(-1).isRead).toBe(true);
+  const userTwoMessagesAfterImageReadList = messagePageMessages(userTwoMessagesAfterImageRead);
+  expect(userTwoMessagesAfterImageReadList.at(-1).messageType).toBe('IMAGE');
+  expect(userTwoMessagesAfterImageReadList.at(-1).message).toBe(imageMessageText);
+  expect(userTwoMessagesAfterImageReadList.at(-1).isRead).toBe(true);
+
+  const userTwoRealtimeDeletePromise = waitForChatMessage(
+    userTwoClient,
+    userTwoRoomSubscriptionId,
+    (payload) => payload.type === 'MESSAGE_DELETED' && payload.messageId === imageRealtimeMessage.id
+  );
+  const deleteImageMessage = await api(`/api/chat/rooms/${roomId}/messages/${imageRealtimeMessage.id}`, userOneToken, {
+    method: 'DELETE'
+  });
+  expect(deleteImageMessage.status, JSON.stringify(deleteImageMessage.body)).toBe(200);
+  const userTwoRealtimeDelete = await userTwoRealtimeDeletePromise;
+  expect(userTwoRealtimeDelete.messageId).toBe(imageRealtimeMessage.id);
+
+  const userTwoMessagesAfterDelete = await api(`/api/chat/rooms/${roomId}/messages`, userTwoToken);
+  expect(userTwoMessagesAfterDelete.status).toBe(200);
+  const userTwoMessagesAfterDeleteList = messagePageMessages(userTwoMessagesAfterDelete);
+  expect(userTwoMessagesAfterDeleteList.map((message) => message.id)).not.toContain(imageRealtimeMessage.id);
+  expect(userTwoMessagesAfterDeleteList.at(-1).message).toBe(editedUserOneReplyText);
+
+  const roomDetailAfterDelete = await api(`/api/chat/rooms/${roomId}`, userTwoToken);
+  expect(roomDetailAfterDelete.status).toBe(200);
+  expect(roomDetailAfterDelete.body.data.lastMessagePreview).toBe(editedUserOneReplyText);
+  expect(roomDetailAfterDelete.body.data.lastMessageType).toBe('TEXT');
 
   const userTwoRoomsAfterRead = await api('/api/chat/rooms', userTwoToken);
   expect(userTwoRoomsAfterRead.status).toBe(200);
   expect(userTwoRoomsAfterRead.body.data.find((room) => room.noticeId === noticeOneId).unreadCount).toBe(0);
+
+  const gifForm = new FormData();
+  gifForm.append('images', createTinyGifBlob(), 'tiny.gif');
+  const gifUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, gifForm);
+  expect(gifUpload.status, JSON.stringify(gifUpload.body)).toBe(201);
+  expect(gifUpload.body.data.messageType).toBe('IMAGE');
+  expect(gifUpload.body.data.images[0].imageUrl.endsWith('.gif')).toBe(true);
+
+  const mp4Form = new FormData();
+  mp4Form.append('images', createTinyMp4Blob(), 'tiny.mp4');
+  const mp4Upload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, mp4Form);
+  expect(mp4Upload.status, JSON.stringify(mp4Upload.body)).toBe(201);
+  expect(mp4Upload.body.data.messageType).toBe('VIDEO');
+  expect(mp4Upload.body.data.images[0].imageUrl.endsWith('.mp4')).toBe(true);
+
+  const oversizedForm = new FormData();
+  oversizedForm.append('images', new Blob([Buffer.alloc(30 * 1024 * 1024 + 1)], { type: 'video/mp4' }), 'too-large.mp4');
+  const oversizedUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, oversizedForm);
+  expect(oversizedUpload.status).toBe(400);
 
   userOneClient.close();
   userTwoClient.close();

@@ -2,6 +2,7 @@ package com.example.pogun.service.auth;
 
 import com.example.pogun.config.FirebaseAuthProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -9,6 +10,7 @@ import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 class FirebaseEmulatorIdentityProviderTest {
 
@@ -19,10 +21,10 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(true);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
         String token = tokenFor("pogun-local", "emulator-uid", "tester@local.dev");
 
-        FirebaseIdentityService.FirebaseIdentity identity = provider.verifyIdToken(token, true);
+        FirebaseIdentityService.FirebaseIdentity identity = provider.verifyIdToken(token, false);
 
         assertThat(identity.uid()).isEqualTo("emulator-uid");
         assertThat(identity.email()).isEqualTo("tester@local.dev");
@@ -36,7 +38,7 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(false);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
 
         assertThatThrownBy(() -> provider.verifyIdToken(tokenFor("pogun-local", "uid", "tester@local.dev"), true))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -50,7 +52,7 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(true);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
 
         assertThatThrownBy(() -> provider.verifyIdToken(tokenFor("other-project", "uid", "tester@local.dev"), true))
                 .isInstanceOf(IllegalArgumentException.class)

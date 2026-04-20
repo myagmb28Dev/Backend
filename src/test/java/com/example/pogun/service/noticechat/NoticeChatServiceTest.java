@@ -2,6 +2,7 @@ package com.example.pogun.service.noticechat;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
+import com.example.pogun.dto.noticechat.NoticeChatMessageUpdateRequest;
 import com.example.pogun.dto.storage.StoredImageVariant;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.enums.PetGender;
@@ -17,6 +18,7 @@ import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageImageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
+import com.example.pogun.repository.noticechat.NoticeChatReadReceiptRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
@@ -31,6 +33,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.multipart.MultipartFile;
@@ -59,6 +62,8 @@ class NoticeChatServiceTest {
     private NoticeChatMessageRepository noticeChatMessageRepository;
     @Mock
     private NoticeChatMessageImageRepository noticeChatMessageImageRepository;
+    @Mock
+    private NoticeChatReadReceiptRepository noticeChatReadReceiptRepository;
     @Mock
     private NoticeChatRoomParticipantStateRepository participantStateRepository;
     @Mock
@@ -103,8 +108,8 @@ class NoticeChatServiceTest {
         when(petNoticeRepository.findById(openNotice.getId())).thenReturn(Optional.of(openNotice));
         when(noticeChatRoomRepository.findByNoticeAndOwnerUserAndGuestUser(openNotice, author, currentUser))
                 .thenReturn(Optional.of(existingRoom));
-        when(noticeChatMessageRepository.countByRoomAndSenderUserNotAndIsReadFalse(eq(existingRoom), any(User.class))).thenReturn(0L);
-        when(noticeChatMessageRepository.findTopByRoomOrderByCreatedAtDesc(existingRoom)).thenReturn(Optional.empty());
+        when(noticeChatMessageRepository.countUnreadByWatermark(eq(existingRoom), any(User.class), eq(0L))).thenReturn(0L);
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(existingRoom)).thenReturn(Optional.empty());
 
         var result = noticeChatService.createOrGetRoom(openNotice.getId().toString());
 
@@ -155,6 +160,7 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
@@ -206,6 +212,7 @@ class NoticeChatServiceTest {
         request.setNotificationEnabled(false);
         request.setFavorite(true);
         request.setPinned(true);
+        request.setCustomRoomName(" 구조 요청 ");
         NoticeChatRoomParticipantState currentState = participantState(room, currentUser);
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
@@ -217,7 +224,54 @@ class NoticeChatServiceTest {
         assertThat(response.notificationEnabled()).isFalse();
         assertThat(response.favorite()).isTrue();
         assertThat(response.pinned()).isTrue();
+        assertThat(response.customRoomName()).isEqualTo("구조 요청");
+        assertThat(response.customThumbnailUrl()).isNull();
+        assertThat(response.displayRoomName()).isEqualTo("구조 요청");
+        assertThat(response.displayThumbnailUrl()).isNull();
         verify(participantStateRepository).save(any(NoticeChatRoomParticipantState.class));
+    }
+
+    @Test
+    void updateSettings_clearsCustomRoomDisplayOptions() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        var request = new com.example.pogun.dto.noticechat.NoticeChatRoomSettingsRequest();
+        request.setClearCustomRoomName(true);
+        request.setClearCustomThumbnailUrl(true);
+        NoticeChatRoomParticipantState currentState = participantState(room, currentUser);
+        currentState.setCustomRoomName("사용자 설정 이름");
+        currentState.setCustomThumbnailUrl("https://local.test/custom.webp");
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
+        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
+
+        var response = noticeChatService.updateSettings(roomId.toString(), request);
+
+        assertThat(response.customRoomName()).isNull();
+        assertThat(response.customThumbnailUrl()).isNull();
+        assertThat(response.displayRoomName()).isEqualTo("실종 공고 · 작성자");
+    }
+
+    @Test
+    void updateRoomThumbnail_storesUploadedImageAsCustomThumbnail() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        NoticeChatRoomParticipantState currentState = participantState(room, currentUser);
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
+        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
+        when(localImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), file))
+                .thenReturn(variant("/uploads/notice-chat/rooms/test/room.webp"));
+
+        var response = noticeChatService.updateRoomThumbnail(roomId.toString(), file);
+
+        assertThat(response.customThumbnailUrl()).endsWith("-thumbnail.webp");
+        assertThat(response.displayThumbnailUrl()).endsWith("-thumbnail.webp");
+        verify(participantStateRepository).save(currentState);
     }
 
     @Test
@@ -245,6 +299,7 @@ class NoticeChatServiceTest {
                         variant("/uploads/notice-chat/messages/test/one.webp"),
                         variant("/uploads/notice-chat/messages/test/two.webp")
                 ));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, " 이미지와 함께 보낸 글 ", List.of(first, second));
@@ -274,6 +329,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
                 .thenReturn(List.of(variant("/uploads/notice-chat/messages/test/one.webp")));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, "   ", List.of(file));
@@ -296,6 +352,60 @@ class NoticeChatServiceTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("MESSAGE_TOO_LONG"));
         verify(localImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendImages_rejectsTotalMediaSizeOverThirtyMegabytes() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getSize()).thenReturn(30L * 1024L * 1024L + 1L);
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> noticeChatService.sendImages(roomId.toString(), null, null, List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("TOTAL_MEDIA_SIZE_EXCEEDED"));
+        verify(localImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendImages_savesMp4AsVideoMessage() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getSize()).thenReturn(1024L);
+        when(localImageStorageService.isVideoFile(file)).thenReturn(true);
+        NoticeChatMessage savedMessage = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.VIDEO)
+                .message(null)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+                .thenReturn(List.of(new StoredImageVariant(
+                        "/uploads/notice-chat/messages/test/video.mp4",
+                        "/uploads/notice-chat/messages/test/video.mp4",
+                        null,
+                        null,
+                        null
+                )));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+
+        var response = noticeChatService.sendImages(roomId.toString(), null, null, List.of(file));
+
+        assertThat(response.messageType()).isEqualTo("VIDEO");
+        assertThat(room.getLastMessagePreview()).isEqualTo("동영상을 보냈습니다");
     }
 
     @Test
@@ -330,6 +440,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findById(parentMessage.getId())).thenReturn(Optional.of(parentMessage));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
@@ -344,8 +455,8 @@ class NoticeChatServiceTest {
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.countByRoomAndSenderUserNotAndIsReadFalse(room, currentUser)).thenReturn(0L);
-        when(noticeChatMessageRepository.findTopByRoomOrderByCreatedAtDesc(room)).thenReturn(Optional.empty());
+        when(noticeChatMessageRepository.countUnreadByWatermark(room, currentUser, 0L)).thenReturn(0L);
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)).thenReturn(Optional.empty());
 
         var response = noticeChatService.getRoom(roomId.toString());
 
@@ -356,7 +467,7 @@ class NoticeChatServiceTest {
     }
 
     @Test
-    void getMessages_marksUnreadMessagesAsRead() {
+    void getMessages_updatesReadWatermarkWithoutBulkUpdate() {
         UUID roomId = UUID.randomUUID();
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
         NoticeChatMessage unread = NoticeChatMessage.builder()
@@ -366,18 +477,21 @@ class NoticeChatServiceTest {
                 .messageType(NoticeChatMessageType.TEXT)
                 .message("읽지 않은 메시지")
                 .isRead(false)
+                .roomSequence(7L)
                 .createdAt(Instant.now())
                 .build();
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.markUnreadMessagesAsRead(room, currentUser)).thenReturn(1);
-        when(noticeChatMessageRepository.findByRoomOrderByRoomSequenceAscCreatedAtAsc(room)).thenReturn(List.of(unread));
+        when(noticeChatMessageRepository.findVisiblePage(eq(room), eq(null), eq(PageRequest.of(0, 51)))).thenReturn(List.of(unread));
+        when(noticeChatReadReceiptRepository.findByRoomAndReader(room, currentUser)).thenReturn(Optional.empty());
 
-        var response = noticeChatService.getMessages(roomId.toString());
+        var response = noticeChatService.getMessages(roomId.toString(), null, null);
 
-        assertThat(response).hasSize(1);
-        verify(noticeChatMessageRepository).markUnreadMessagesAsRead(room, currentUser);
+        assertThat(response.messages()).hasSize(1);
+        assertThat(response.messages().get(0).roomSequence()).isEqualTo(7L);
+        verify(participantStateRepository).save(any(NoticeChatRoomParticipantState.class));
+        verify(noticeChatReadReceiptRepository).save(any());
     }
 
     @Test
@@ -403,6 +517,123 @@ class NoticeChatServiceTest {
         assertThatThrownBy(() -> noticeChatService.sendMessage(principal(currentUser), request))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("INVALID_REPLY_MESSAGE"));
+    }
+
+    @Test
+    void updateMessage_updatesOwnTextMessageAndBroadcasts() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessage message = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("수정 전")
+                .roomSequence(9L)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+        NoticeChatMessageUpdateRequest request = new NoticeChatMessageUpdateRequest();
+        request.setMessage(" 수정 후 ");
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findById(message.getId())).thenReturn(Optional.of(message));
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room))
+                .thenReturn(Optional.of(message));
+
+        var response = noticeChatService.updateMessage(roomId.toString(), message.getId().toString(), request);
+
+        assertThat(response.message()).isEqualTo("수정 후");
+        assertThat(room.getLastMessagePreview()).isEqualTo("수정 후");
+        verify(noticeChatMessageRepository).saveAndFlush(message);
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), any(Object.class));
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + author.getId() + "/rooms/" + roomId), any(Object.class));
+    }
+
+    @Test
+    void updateMessage_rejectsOtherUserMessage() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessage message = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(author)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("상대 메시지")
+                .createdAt(Instant.now())
+                .build();
+        NoticeChatMessageUpdateRequest request = new NoticeChatMessageUpdateRequest();
+        request.setMessage("수정 시도");
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findById(message.getId())).thenReturn(Optional.of(message));
+
+        assertThatThrownBy(() -> noticeChatService.updateMessage(roomId.toString(), message.getId().toString(), request))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("CHAT_MESSAGE_FORBIDDEN"));
+    }
+
+    @Test
+    void deleteMessage_softDeletesOwnMessageAndClearsEmptyRoomPreview() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessage message = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("삭제할 메시지")
+                .roomSequence(4L)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+        room.setLastMessagePreview("삭제할 메시지");
+        room.setLastMessageType(NoticeChatMessageType.TEXT);
+        room.setLastMessageAt(message.getCreatedAt());
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findById(message.getId())).thenReturn(Optional.of(message));
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room))
+                .thenReturn(Optional.empty());
+
+        noticeChatService.deleteMessage(roomId.toString(), message.getId().toString());
+
+        assertThat(message.getDeletedAt()).isNotNull();
+        assertThat(room.getLastMessagePreview()).isNull();
+        assertThat(room.getLastMessageType()).isNull();
+        assertThat(room.getLastMessageAt()).isNull();
+        verify(noticeChatRoomRepository).save(room);
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), any(Object.class));
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + author.getId() + "/rooms/" + roomId), any(Object.class));
+    }
+
+    @Test
+    void deleteMessage_rejectsOtherUserMessage() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessage message = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(author)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("상대 메시지")
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findById(message.getId())).thenReturn(Optional.of(message));
+
+        assertThatThrownBy(() -> noticeChatService.deleteMessage(roomId.toString(), message.getId().toString()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("CHAT_MESSAGE_FORBIDDEN"));
     }
 
     private Principal principal(User user) {

@@ -41,6 +41,7 @@ import java.util.UUID;
         @Index(name = "idx_notice_chat_messages_room", columnList = "room_id"),
         @Index(name = "idx_notice_chat_messages_room_created_at", columnList = "room_id,created_at"),
         @Index(name = "idx_notice_chat_messages_room_sequence", columnList = "room_id,room_sequence"),
+        @Index(name = "idx_notice_chat_messages_visible_page", columnList = "room_id,deleted_at,room_sequence"),
         @Index(name = "idx_notice_chat_messages_read", columnList = "room_id,is_read"),
         @Index(name = "idx_notice_chat_messages_reply_to", columnList = "reply_to_message_id")
 }, uniqueConstraints = {
@@ -94,5 +95,8 @@ public class NoticeChatMessage {
 
     @Column(name = "room_sequence")
     private Long roomSequence;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }
 

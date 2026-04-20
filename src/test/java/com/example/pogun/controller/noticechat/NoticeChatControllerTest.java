@@ -2,6 +2,7 @@ package com.example.pogun.controller.noticechat;
 
 import com.example.pogun.controller.common.GlobalExceptionHandler;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.dto.noticechat.NoticeChatMessagePageResponse;
 import com.example.pogun.dto.noticechat.NoticeChatMessageResponse;
 import com.example.pogun.dto.noticechat.NoticeChatRoomCreateResult;
 import com.example.pogun.dto.noticechat.NoticeChatRoomResponse;
@@ -24,7 +25,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -83,12 +86,14 @@ class NoticeChatControllerTest {
     @Test
     void getMessages_returnsMessageList() throws Exception {
         UUID roomId = UUID.randomUUID();
-        when(noticeChatService.getMessages(roomId.toString())).thenReturn(List.of(messageResponse(roomId)));
+        when(noticeChatService.getMessages(eq(roomId.toString()), any(), any()))
+                .thenReturn(new NoticeChatMessagePageResponse(List.of(messageResponse(roomId)), false, null, 50));
 
         mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].roomId").value(roomId.toString()))
-                .andExpect(jsonPath("$.data[0].messageType").value("TEXT"));
+                .andExpect(jsonPath("$.data.messages[0].roomId").value(roomId.toString()))
+                .andExpect(jsonPath("$.data.messages[0].messageType").value("TEXT"))
+                .andExpect(jsonPath("$.data.limit").value(50));
     }
 
     @Test
@@ -103,6 +108,45 @@ class NoticeChatControllerTest {
                         .param("message", "이미지와 함께 보낸 글"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.roomId").value(roomId.toString()));
+    }
+
+    @Test
+    void updateMessage_returnsUpdatedMessage() throws Exception {
+        UUID roomId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        when(noticeChatService.updateMessage(eq(roomId.toString()), eq(messageId.toString()), any()))
+                .thenReturn(messageResponse(roomId));
+
+        mockMvc.perform(patch("/api/chat/rooms/{roomId}/messages/{messageId}", roomId, messageId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"수정된 메시지\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roomId").value(roomId.toString()))
+                .andExpect(jsonPath("$.data.messageType").value("TEXT"));
+    }
+
+    @Test
+    void updateRoomThumbnail_returnsUpdatedRoom() throws Exception {
+        UUID roomId = UUID.randomUUID();
+        UUID noticeId = UUID.randomUUID();
+        MockMultipartFile file = new MockMultipartFile("image", "room.png", MediaType.IMAGE_PNG_VALUE, new byte[]{1, 2, 3});
+        when(noticeChatService.updateRoomThumbnail(eq(roomId.toString()), any()))
+                .thenReturn(roomResponse(roomId, noticeId));
+
+        mockMvc.perform(multipart("/api/chat/rooms/{roomId}/settings/thumbnail", roomId)
+                        .file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roomId").value(roomId.toString()));
+    }
+
+    @Test
+    void deleteMessage_returnsSuccess() throws Exception {
+        UUID roomId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/chat/rooms/{roomId}/messages/{messageId}", roomId, messageId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("채팅 메시지 삭제 성공"));
     }
 
     @Test
@@ -134,6 +178,13 @@ class NoticeChatControllerTest {
                 false,
                 null,
                 false,
+                null,
+                null,
+                null,
+                0L,
+                0L,
+                null,
+                "실종 공고 · 상대",
                 null,
                 null,
                 null

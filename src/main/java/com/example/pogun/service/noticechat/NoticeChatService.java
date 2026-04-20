@@ -3,9 +3,12 @@ package com.example.pogun.service.noticechat;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
 import com.example.pogun.dto.noticechat.NoticeChatMessageImageResponse;
+import com.example.pogun.dto.noticechat.NoticeChatMessagePageResponse;
 import com.example.pogun.dto.noticechat.NoticeChatMessageReplyResponse;
 import com.example.pogun.dto.noticechat.NoticeChatMessageResponse;
+import com.example.pogun.dto.noticechat.NoticeChatMessageUpdateRequest;
 import com.example.pogun.dto.noticechat.NoticeChatImageOriginalResponse;
+import com.example.pogun.dto.noticechat.NoticeChatReadRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomEventRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomCreateResult;
 import com.example.pogun.dto.noticechat.NoticeChatRoomResponse;
@@ -16,6 +19,7 @@ import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatMessageImage;
+import com.example.pogun.entity.noticechat.NoticeChatReadReceipt;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.noticechat.NoticeChatRoomParticipantState;
 import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
@@ -25,6 +29,7 @@ import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageImageRepository;
+import com.example.pogun.repository.noticechat.NoticeChatReadReceiptRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
@@ -32,6 +37,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -42,6 +48,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.security.Principal;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,11 +61,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NoticeChatService {
     private static final int MAX_IMAGE_COUNT = 10;
+    private static final long MAX_TOTAL_MEDIA_SIZE = 30L * 1024L * 1024L;
+    private static final int DEFAULT_MESSAGE_PAGE_LIMIT = 50;
+    private static final int MAX_MESSAGE_PAGE_LIMIT = 100;
     private static final String IMAGE_MESSAGE_PREVIEW = "사진을 보냈습니다";
+    private static final String VIDEO_MESSAGE_PREVIEW = "동영상을 보냈습니다";
 
     private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final NoticeChatMessageRepository noticeChatMessageRepository;
     private final NoticeChatMessageImageRepository noticeChatMessageImageRepository;
+    private final NoticeChatReadReceiptRepository noticeChatReadReceiptRepository;
     private final NoticeChatRoomParticipantStateRepository participantStateRepository;
     private final PetNoticeRepository petNoticeRepository;
     private final UserRepository userRepository;
@@ -134,27 +146,50 @@ public class NoticeChatService {
     }
 
     @Transactional
-    public List<NoticeChatMessageResponse> getMessages(String roomId) {
+    public NoticeChatMessagePageResponse getMessages(String roomId, Long beforeSequence, Integer limit) {
         User currentUser = getCurrentUser();
         assertChatAvailableUser(currentUser, "채팅 메시지를 조회할 수 없습니다.");
         NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
-        log.info("채팅 메시지 조회 시작 roomId={} userId={}", room.getId(), currentUser.getId());
+        int resolvedLimit = resolveMessagePageLimit(limit);
+        List<NoticeChatMessage> page = noticeChatMessageRepository.findVisiblePage(
+                room,
+                beforeSequence,
+                PageRequest.of(0, resolvedLimit + 1)
+        );
+        boolean hasMore = page.size() > resolvedLimit;
+        List<NoticeChatMessage> messages = page.stream().limit(resolvedLimit).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        Collections.reverse(messages);
 
-        List<NoticeChatMessage> messages = noticeChatMessageRepository.findByRoomOrderByRoomSequenceAscCreatedAtAsc(room);
-        markRoomAsRead(room, currentUser, messages);
-
-        log.info("채팅 메시지 조회 완료 roomId={} messageCount={} userId={}", room.getId(), messages.size(), currentUser.getId());
-        return messages.stream().map(message -> toMessageResponse(message, currentUser)).toList();
+        markRoomAsReadByWatermark(room, currentUser, latestOpponentMessage(messages, currentUser));
+        Long nextBeforeSequence = hasMore && !messages.isEmpty() ? messages.get(0).getRoomSequence() : null;
+        return new NoticeChatMessagePageResponse(
+                messages.stream().map(message -> toMessageResponse(message, currentUser)).toList(),
+                hasMore,
+                nextBeforeSequence,
+                resolvedLimit
+        );
     }
 
     @Transactional
-    public NoticeChatRoomResponse markRoomAsRead(String roomId) {
+    public NoticeChatRoomResponse markRoomAsRead(String roomId, NoticeChatReadRequest request) {
         User currentUser = getCurrentUser();
         assertChatAvailableUser(currentUser, "채팅방 읽음 처리를 할 수 없습니다.");
         NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
-        List<NoticeChatMessage> messages = noticeChatMessageRepository.findByRoomOrderByRoomSequenceAscCreatedAtAsc(room);
-        markRoomAsRead(room, currentUser, messages);
+        NoticeChatMessage latestReadMessage = resolveReadMessage(room, request);
+        markRoomAsReadByWatermark(room, currentUser, latestReadMessage, request != null ? request.getLastReadRoomSequence() : null);
         return toRoomResponse(room, currentUser);
+    }
+
+    @Transactional
+    public Map<String, Object> markRoomAsRead(Principal principal, NoticeChatReadRequest request) {
+        User user = getEventUser(principal, "채팅방 읽음 처리를 할 수 없습니다.");
+        if (request == null || request.getRoomId() == null) {
+            throw ApiException.badRequest("MISSING_ROOM_ID", "채팅방 ID는 필수입니다.");
+        }
+        NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), user);
+        NoticeChatMessage latestReadMessage = resolveReadMessage(room, request);
+        NoticeChatRoomParticipantState state = markRoomAsReadByWatermark(room, user, latestReadMessage, request.getLastReadRoomSequence());
+        return readPayload(room.getId(), user.getId(), state);
     }
 
     @Transactional(readOnly = true)
@@ -166,7 +201,7 @@ public class NoticeChatService {
         if (normalizedKeyword == null) {
             return List.of();
         }
-        return noticeChatMessageRepository.findByRoomAndMessageContainingIgnoreCaseOrderByRoomSequenceAscCreatedAtAsc(room, normalizedKeyword).stream()
+        return noticeChatMessageRepository.searchVisibleText(room, normalizedKeyword).stream()
                 .filter(message -> resolveMessageType(message) == NoticeChatMessageType.TEXT)
                 .map(message -> toMessageResponse(message, currentUser))
                 .toList();
@@ -204,7 +239,7 @@ public class NoticeChatService {
             }
         }
         String content = trimToNull(request.getMessage());
-        log.info("채팅 메시지 전송 시작 roomId={} senderUserId={} messageLength={}",
+        log.debug("채팅 메시지 전송 시작 roomId={} senderUserId={} messageLength={}",
                 room.getId(), sender.getId(), content == null ? 0 : content.length());
 
         if (room.getStatus() == NoticeChatRoomStatus.CLOSED) {
@@ -230,7 +265,7 @@ public class NoticeChatService {
     @Transactional
     public NoticeChatMessageResponse sendImages(String roomId, String replyToMessageId, String message, List<MultipartFile> images) {
         User sender = getCurrentUser();
-        assertChatAvailableUser(sender, "이미지 메시지를 전송할 수 없습니다.");
+        assertChatAvailableUser(sender, "미디어 메시지를 전송할 수 없습니다.");
         NoticeChatRoom room = getAccessibleRoom(roomId, sender);
         assertRoomAcceptsConversation(room);
         User opponent = getOpponent(room, sender);
@@ -241,28 +276,107 @@ public class NoticeChatService {
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
         if (nonEmptyImages.isEmpty()) {
-            throw ApiException.badRequest("EMPTY_IMAGE_MESSAGE", "이미지는 최소 1장 이상 첨부해야 합니다.");
+            throw ApiException.badRequest("EMPTY_MEDIA_MESSAGE", "첨부 파일은 최소 1개 이상 필요합니다.");
         }
         if (nonEmptyImages.size() > MAX_IMAGE_COUNT) {
-            throw ApiException.badRequest("TOO_MANY_IMAGES", "이미지는 최대 10장까지 첨부할 수 있습니다.");
+            throw ApiException.badRequest("TOO_MANY_MEDIA", "첨부 파일은 최대 10개까지 전송할 수 있습니다.");
         }
+        validateTotalMediaSize(nonEmptyImages);
         String content = trimToNull(message);
         if (content != null && content.length() > 2000) {
             throw ApiException.badRequest("MESSAGE_TOO_LONG", "message는 2000자를 초과할 수 없습니다.");
         }
 
         NoticeChatMessage replyToMessage = resolveReplyTarget(parseNullableUuid(replyToMessageId, "INVALID_REPLY_MESSAGE_ID", "올바르지 않은 답장 메시지 ID 형식입니다."), room);
+        NoticeChatMessageType mediaType = nonEmptyImages.stream().anyMatch(localImageStorageService::isVideoFile)
+                ? NoticeChatMessageType.VIDEO
+                : NoticeChatMessageType.IMAGE;
         List<StoredImageVariant> imageVariants = localImageStorageService.storeImageVariants("notice-chat", "messages", sender.getId(), nonEmptyImages);
         NoticeChatMessage saved = saveMessage(
                 room,
                 sender,
-                NoticeChatMessageType.IMAGE,
+                mediaType,
                 content,
                 replyToMessage,
                 null,
                 imageVariants
         );
         return broadcastMessage(room, sender, saved);
+    }
+
+    private void validateTotalMediaSize(List<MultipartFile> files) {
+        long totalSize = files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .mapToLong(MultipartFile::getSize)
+                .sum();
+        if (totalSize > MAX_TOTAL_MEDIA_SIZE) {
+            throw ApiException.badRequest("TOTAL_MEDIA_SIZE_EXCEEDED", "첨부 파일 총 용량은 30MB 이하여야 합니다.");
+        }
+    }
+
+    @Transactional
+    public NoticeChatMessageResponse updateMessage(String roomId, String messageId, NoticeChatMessageUpdateRequest request) {
+        User currentUser = getCurrentUser();
+        assertChatAvailableUser(currentUser, "메시지를 수정할 수 없습니다.");
+        NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
+        assertRoomAcceptsConversation(room);
+        User opponent = getOpponent(room, currentUser);
+        assertOpponentCanReceiveChat(opponent);
+        assertNotBlockedEitherDirection(currentUser, opponent);
+
+        NoticeChatMessage message = getMessageInRoom(messageId, room);
+        assertOwnMessage(message, currentUser, "CHAT_MESSAGE_FORBIDDEN", "본인이 보낸 메시지만 수정할 수 있습니다.");
+        if (message.getDeletedAt() != null) {
+            throw ApiException.notFound("CHAT_MESSAGE_NOT_FOUND", "메시지를 찾을 수 없습니다.");
+        }
+        if (resolveMessageType(message) != NoticeChatMessageType.TEXT) {
+            throw ApiException.badRequest("CHAT_MESSAGE_NOT_EDITABLE", "텍스트 메시지만 수정할 수 있습니다.");
+        }
+        String content = trimToNull(request != null ? request.getMessage() : null);
+        if (content == null) {
+            throw ApiException.badRequest("EMPTY_MESSAGE", "메시지 내용은 비어 있을 수 없습니다.");
+        }
+        message.setMessage(content);
+        NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
+        refreshLastMessageSummary(room);
+        NoticeChatMessageResponse currentPayload = toMessageResponse(saved, currentUser);
+        NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        afterCommitOrNow(() -> {
+            sendMessageEvent(currentUser.getId(), room.getId(), "MESSAGE_UPDATED", currentPayload);
+            sendMessageEvent(opponent.getId(), room.getId(), "MESSAGE_UPDATED", opponentPayload);
+            broadcastRoomUpdate(roomUpdatePayload);
+        });
+        return currentPayload;
+    }
+
+    @Transactional
+    public void deleteMessage(String roomId, String messageId) {
+        User currentUser = getCurrentUser();
+        assertChatAvailableUser(currentUser, "메시지를 삭제할 수 없습니다.");
+        NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
+        assertRoomAcceptsConversation(room);
+        User opponent = getOpponent(room, currentUser);
+        assertOpponentCanReceiveChat(opponent);
+        assertNotBlockedEitherDirection(currentUser, opponent);
+
+        NoticeChatMessage message = getMessageInRoom(messageId, room);
+        assertOwnMessage(message, currentUser, "CHAT_MESSAGE_FORBIDDEN", "본인이 보낸 메시지만 삭제할 수 있습니다.");
+        if (message.getDeletedAt() == null) {
+            message.setDeletedAt(Instant.now());
+            noticeChatMessageRepository.saveAndFlush(message);
+        }
+        refreshLastMessageSummary(room);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "MESSAGE_DELETED");
+        payload.put("roomId", room.getId());
+        payload.put("messageId", message.getId());
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        afterCommitOrNow(() -> {
+            simpMessagingTemplate.convertAndSend(userRoomTopic(currentUser.getId(), room.getId()), (Object) payload);
+            simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), room.getId()), (Object) payload);
+            broadcastRoomUpdate(roomUpdatePayload);
+        });
     }
 
     @Transactional
@@ -273,7 +387,7 @@ public class NoticeChatService {
         state.setOnline(true);
         state.setLastActiveAt(Instant.now());
         participantStateRepository.save(state);
-        markRoomAsRead(room, user, noticeChatMessageRepository.findByRoomOrderByRoomSequenceAscCreatedAtAsc(room));
+        markRoomAsReadByWatermark(room, user, latestVisibleOpponentMessage(room, user));
         sendRoomLifecycleEvent(room, user, "ROOM_ENTERED");
         return toRoomResponse(room, user);
     }
@@ -319,6 +433,36 @@ public class NoticeChatService {
         if (request.getPinned() != null) {
             state.setPinned(request.getPinned());
         }
+        if (Boolean.TRUE.equals(request.getClearCustomRoomName())) {
+            state.setCustomRoomName(null);
+        } else if (request.getCustomRoomName() != null) {
+            String customRoomName = trimToNull(request.getCustomRoomName());
+            if (customRoomName != null && customRoomName.length() > 100) {
+                throw ApiException.badRequest("CUSTOM_ROOM_NAME_TOO_LONG", "채팅방 이름은 100자를 초과할 수 없습니다.");
+            }
+            state.setCustomRoomName(customRoomName);
+        }
+        if (Boolean.TRUE.equals(request.getClearCustomThumbnailUrl())) {
+            state.setCustomThumbnailUrl(null);
+        }
+        participantStateRepository.save(state);
+        return toRoomResponse(room, currentUser);
+    }
+
+    @Transactional
+    public NoticeChatRoomResponse updateRoomThumbnail(String roomId, MultipartFile image) {
+        User currentUser = getCurrentUser();
+        assertChatAvailableUser(currentUser, "채팅방 썸네일을 변경할 수 없습니다.");
+        NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
+        NoticeChatRoomParticipantState state = ensureParticipantState(room, currentUser);
+        if (image == null || image.isEmpty()) {
+            throw ApiException.badRequest("EMPTY_ROOM_THUMBNAIL", "채팅방 썸네일 이미지는 필수입니다.");
+        }
+        if (localImageStorageService.isVideoFile(image)) {
+            throw ApiException.badRequest("INVALID_ROOM_THUMBNAIL", "채팅방 썸네일에는 영상 파일을 사용할 수 없습니다.");
+        }
+        StoredImageVariant variant = localImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), image);
+        state.setCustomThumbnailUrl(variant.thumbnailUrl() != null ? variant.thumbnailUrl() : variant.webpUrl());
         participantStateRepository.save(state);
         return toRoomResponse(room, currentUser);
     }
@@ -357,7 +501,7 @@ public class NoticeChatService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("roomId", room.getId());
         payload.put("senderUserId", sender.getId());
-        payload.put("senderNickname", sender.getNickname());
+        payload.put("senderNickname", displayUserName(sender));
         payload.put("isTyping", Boolean.TRUE.equals(request.getTyping()));
 
         simpMessagingTemplate.convertAndSend(
@@ -421,6 +565,13 @@ public class NoticeChatService {
         NoticeChatMessageType lastMessageType = resolveLastMessageType(room);
         NoticeChatRoomParticipantState currentState = ensureParticipantState(room, currentUser);
         NoticeChatRoomParticipantState opponentState = ensureParticipantState(room, opponent);
+        String noticeThumbnailUrl = resolveNoticeThumbnailUrl(room.getNotice());
+        String displayRoomName = trimToNull(currentState.getCustomRoomName()) != null
+                ? currentState.getCustomRoomName().trim()
+                : room.getNotice().getTitle() + " · " + displayUserName(opponent);
+        String displayThumbnailUrl = trimToNull(currentState.getCustomThumbnailUrl()) != null
+                ? currentState.getCustomThumbnailUrl().trim()
+                : noticeThumbnailUrl;
         return new NoticeChatRoomResponse(
                 room.getId(),
                 room.getNotice().getId(),
@@ -431,8 +582,8 @@ public class NoticeChatService {
                 resolveLastMessagePreview(room, lastMessageType),
                 room.getCreatedAt(),
                 opponent.getId(),
-                opponent.getNickname(),
-                noticeChatMessageRepository.countByRoomAndSenderUserNotAndIsReadFalse(room, currentUser),
+                displayUserName(opponent),
+                noticeChatMessageRepository.countUnreadByWatermark(room, currentUser, currentState.getLastReadRoomSequence()),
                 currentState.getNotificationEnabled(),
                 currentState.getFavorite(),
                 currentState.getPinned(),
@@ -440,17 +591,28 @@ public class NoticeChatService {
                 opponentState.getOnline(),
                 opponentState.getLastActiveAt(),
                 currentState.getLastReadMessage() != null ? currentState.getLastReadMessage().getId() : null,
-                currentState.getLastReadAt()
+                currentState.getLastReadAt(),
+                currentState.getLastReadRoomSequence(),
+                room.getLastMessageSequence(),
+                noticeThumbnailUrl,
+                displayRoomName,
+                displayThumbnailUrl,
+                currentState.getCustomRoomName(),
+                currentState.getCustomThumbnailUrl()
         );
     }
 
     private NoticeChatMessageResponse toMessageResponse(NoticeChatMessage message, User currentUser) {
         NoticeChatMessageType messageType = resolveMessageType(message);
+        boolean mine = message.getSenderUser().getId().equals(currentUser.getId());
+        Boolean isRead = mine
+                ? ensureParticipantState(message.getRoom(), getOpponent(message.getRoom(), currentUser)).getLastReadRoomSequence() >= safeSequence(message)
+                : Boolean.TRUE;
         return new NoticeChatMessageResponse(
                 message.getId(),
                 message.getRoom().getId(),
                 message.getSenderUser().getId(),
-                message.getSenderUser().getNickname(),
+                displayUserName(message.getSenderUser()),
                 message.getMessage(),
                 messageType.name(),
                 message.getImages().stream()
@@ -465,8 +627,8 @@ public class NoticeChatService {
                         ))
                         .toList(),
                 toReplyResponse(message.getReplyToMessage()),
-                message.getIsRead(),
-                message.getSenderUser().getId().equals(currentUser.getId()),
+                isRead,
+                mine,
                 message.getCreatedAt(),
                 message.getClientMessageId(),
                 message.getRoomSequence(),
@@ -544,7 +706,10 @@ public class NoticeChatService {
         if (lastMessageType == NoticeChatMessageType.IMAGE) {
             return IMAGE_MESSAGE_PREVIEW;
         }
-        return noticeChatMessageRepository.findTopByRoomOrderByCreatedAtDesc(room)
+        if (lastMessageType == NoticeChatMessageType.VIDEO) {
+            return VIDEO_MESSAGE_PREVIEW;
+        }
+        return noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)
                 .map(this::toPreview)
                 .orElse(null);
     }
@@ -553,7 +718,7 @@ public class NoticeChatService {
         if (room.getLastMessageType() != null) {
             return room.getLastMessageType();
         }
-        return noticeChatMessageRepository.findTopByRoomOrderByCreatedAtDesc(room)
+        return noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)
                 .map(this::resolveMessageType)
                 .orElse(null);
     }
@@ -570,29 +735,13 @@ public class NoticeChatService {
         return userRoomTopic(userId, roomId) + "/typing";
     }
 
-    private void sendReadReceipt(
-            UUID roomId,
-            UUID readerUserId,
-            UUID opponentUserId,
-            UUID latestReadMessageId,
-            int readCount
-    ) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("type", "READ_RECEIPT");
-        payload.put("roomId", roomId);
-        payload.put("readerUserId", readerUserId);
-        payload.put("latestReadMessageId", latestReadMessageId);
-        payload.put("readCount", readCount);
-        simpMessagingTemplate.convertAndSend(userRoomTopic(opponentUserId, roomId), (Object) payload);
-    }
-
     private void sendRoomLifecycleEvent(NoticeChatRoom room, User user, String type) {
         User opponent = getOpponent(room, user);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", type);
         payload.put("roomId", room.getId());
         payload.put("userId", user.getId());
-        payload.put("nickname", user.getNickname());
+        payload.put("nickname", displayUserName(user));
         payload.put("lastActiveAt", Instant.now());
         simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), room.getId()), (Object) payload);
     }
@@ -611,6 +760,14 @@ public class NoticeChatService {
         simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.guestUserId()), roomUpdatePayload.guestPayload());
     }
 
+    private void sendMessageEvent(UUID userId, UUID roomId, String type, NoticeChatMessageResponse message) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", type);
+        payload.put("roomId", roomId);
+        payload.put("message", message);
+        simpMessagingTemplate.convertAndSend(userRoomTopic(userId, roomId), (Object) payload);
+    }
+
     private NoticeChatMessage saveMessage(
             NoticeChatRoom room,
             User sender,
@@ -620,15 +777,18 @@ public class NoticeChatService {
             String clientMessageId,
             List<StoredImageVariant> imageVariants
     ) {
+        NoticeChatRoom lockedRoom = noticeChatRoomRepository.findByIdForUpdate(room.getId())
+                .orElseThrow(() -> ApiException.notFound("CHAT_ROOM_NOT_FOUND", "채팅방을 찾을 수 없습니다."));
+        long nextSequence = (lockedRoom.getLastMessageSequence() == null ? 0L : lockedRoom.getLastMessageSequence()) + 1;
         List<NoticeChatMessageImage> images = new ArrayList<>();
         NoticeChatMessage message = NoticeChatMessage.builder()
-                .room(room)
+                .room(lockedRoom)
                 .senderUser(sender)
                 .messageType(messageType)
                 .message(content)
                 .replyToMessage(replyToMessage)
                 .clientMessageId(clientMessageId)
-                .roomSequence(noticeChatMessageRepository.findMaxRoomSequence(room) + 1)
+                .roomSequence(nextSequence)
                 .images(images)
                 .build();
         for (int index = 0; index < imageVariants.size(); index++) {
@@ -646,50 +806,152 @@ public class NoticeChatService {
         }
 
         NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
-        room.setLastMessageAt(saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now());
-        room.setLastMessageType(saved.getMessageType());
-        room.setLastMessagePreview(toPreview(saved));
-        noticeChatRoomRepository.save(room);
-        log.info("채팅 메시지 저장 완료 roomId={} messageId={} senderUserId={} type={} createdAt={}",
-                room.getId(), saved.getId(), sender.getId(), saved.getMessageType(), saved.getCreatedAt());
+        lockedRoom.setLastMessageSequence(nextSequence);
+        lockedRoom.setLastMessageAt(saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now());
+        lockedRoom.setLastMessageType(saved.getMessageType());
+        lockedRoom.setLastMessagePreview(toPreview(saved));
+        noticeChatRoomRepository.save(lockedRoom);
+        log.debug("채팅 메시지 저장 완료 roomId={} messageId={} senderUserId={} type={} createdAt={}",
+                lockedRoom.getId(), saved.getId(), sender.getId(), saved.getMessageType(), saved.getCreatedAt());
         return saved;
     }
 
-    private void markRoomAsRead(NoticeChatRoom room, User reader, List<NoticeChatMessage> messages) {
-        int updatedCount = noticeChatMessageRepository.markUnreadMessagesAsRead(room, reader);
-        if (updatedCount > 0) {
-            messages.stream()
-                    .filter(message -> !message.getSenderUser().getId().equals(reader.getId()))
-                    .forEach(message -> message.setIsRead(true));
-        }
-        NoticeChatMessage latestReadMessage = messages.stream()
-                .filter(message -> !message.getSenderUser().getId().equals(reader.getId()))
-                .reduce((first, second) -> second)
-                .orElse(null);
+    private NoticeChatRoomParticipantState markRoomAsReadByWatermark(NoticeChatRoom room, User reader, NoticeChatMessage latestReadMessage) {
+        return markRoomAsReadByWatermark(room, reader, latestReadMessage, null);
+    }
+
+    private NoticeChatRoomParticipantState markRoomAsReadByWatermark(
+            NoticeChatRoom room,
+            User reader,
+            NoticeChatMessage latestReadMessage,
+            Long requestedSequence
+    ) {
         NoticeChatRoomParticipantState state = ensureParticipantState(room, reader);
-        if (latestReadMessage != null) {
+        long currentSequence = state.getLastReadRoomSequence() == null ? 0L : state.getLastReadRoomSequence();
+        long messageSequence = latestReadMessage != null ? safeSequence(latestReadMessage) : 0L;
+        long requested = requestedSequence == null ? 0L : requestedSequence;
+        long nextSequence = Math.max(currentSequence, Math.max(messageSequence, requested));
+        if (nextSequence <= currentSequence && latestReadMessage == null) {
+            return state;
+        }
+        Instant now = Instant.now();
+        state.setLastReadRoomSequence(nextSequence);
+        if (latestReadMessage != null && safeSequence(latestReadMessage) >= currentSequence) {
             state.setLastReadMessage(latestReadMessage);
-            state.setLastReadAt(Instant.now());
-            participantStateRepository.save(state);
         }
-        if (updatedCount > 0) {
-            UUID readRoomId = room.getId();
-            UUID readerUserId = reader.getId();
-            UUID opponentUserId = getOpponent(room, reader).getId();
-            UUID latestReadMessageId = latestReadMessage != null ? latestReadMessage.getId() : null;
-            afterCommitOrNow(() -> sendReadReceipt(
-                    readRoomId,
-                    readerUserId,
-                    opponentUserId,
-                    latestReadMessageId,
-                    updatedCount
-            ));
+        state.setLastReadAt(now);
+        participantStateRepository.save(state);
+
+        NoticeChatReadReceipt receipt = noticeChatReadReceiptRepository.findByRoomAndReader(room, reader)
+                .orElseGet(() -> NoticeChatReadReceipt.builder()
+                        .room(room)
+                        .reader(reader)
+                        .build());
+        receipt.setLastReadRoomSequence(nextSequence);
+        if (latestReadMessage != null) {
+            receipt.setLastReadMessage(latestReadMessage);
         }
+        receipt.setReadAt(now);
+        noticeChatReadReceiptRepository.save(receipt);
+
+        Map<String, Object> payload = readPayload(room.getId(), reader.getId(), state);
+        afterCommitOrNow(() -> simpMessagingTemplate.convertAndSend(userRoomTopic(getOpponent(room, reader).getId(), room.getId()), (Object) payload));
+        return state;
+    }
+
+    private NoticeChatMessage getMessageInRoom(String messageId, NoticeChatRoom room) {
+        try {
+            NoticeChatMessage message = noticeChatMessageRepository.findById(UUID.fromString(messageId))
+                    .orElseThrow(() -> ApiException.notFound("CHAT_MESSAGE_NOT_FOUND", "메시지를 찾을 수 없습니다."));
+            if (!message.getRoom().getId().equals(room.getId())) {
+                throw ApiException.notFound("CHAT_MESSAGE_NOT_FOUND", "메시지를 찾을 수 없습니다.");
+            }
+            return message;
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_CHAT_MESSAGE_ID", "올바르지 않은 메시지 ID 형식입니다.");
+        }
+    }
+
+    private void assertOwnMessage(NoticeChatMessage message, User currentUser, String code, String fallbackMessage) {
+        if (!message.getSenderUser().getId().equals(currentUser.getId())) {
+            throw ApiException.forbidden(code, fallbackMessage);
+        }
+    }
+
+    private void refreshLastMessageSummary(NoticeChatRoom room) {
+        NoticeChatMessage latest = noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)
+                .orElse(null);
+        if (latest == null) {
+            room.setLastMessageAt(null);
+            room.setLastMessageType(null);
+            room.setLastMessagePreview(null);
+        } else {
+            room.setLastMessageAt(latest.getCreatedAt());
+            room.setLastMessageType(resolveMessageType(latest));
+            room.setLastMessagePreview(toPreview(latest));
+        }
+        noticeChatRoomRepository.save(room);
     }
 
     private void ensureParticipantStates(NoticeChatRoom room) {
         ensureParticipantState(room, room.getOwnerUser());
         ensureParticipantState(room, room.getGuestUser());
+    }
+
+    private int resolveMessagePageLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_MESSAGE_PAGE_LIMIT;
+        }
+        return Math.min(limit, MAX_MESSAGE_PAGE_LIMIT);
+    }
+
+    private NoticeChatMessage latestOpponentMessage(List<NoticeChatMessage> messages, User reader) {
+        return messages.stream()
+                .filter(message -> !message.getSenderUser().getId().equals(reader.getId()))
+                .max(Comparator.comparingLong(this::safeSequence))
+                .orElse(null);
+    }
+
+    private NoticeChatMessage latestVisibleOpponentMessage(NoticeChatRoom room, User reader) {
+        return noticeChatMessageRepository.findVisiblePage(room, null, PageRequest.of(0, 100))
+                .stream()
+                .filter(message -> !message.getSenderUser().getId().equals(reader.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private NoticeChatMessage resolveReadMessage(NoticeChatRoom room, NoticeChatReadRequest request) {
+        if (request == null || request.getLastReadMessageId() == null) {
+            return null;
+        }
+        NoticeChatMessage message = noticeChatMessageRepository.findById(request.getLastReadMessageId())
+                .orElseThrow(() -> ApiException.notFound("CHAT_MESSAGE_NOT_FOUND", "읽음 처리할 메시지를 찾을 수 없습니다."));
+        if (!message.getRoom().getId().equals(room.getId()) || message.getDeletedAt() != null) {
+            throw ApiException.badRequest("INVALID_READ_MESSAGE", "해당 채팅방의 메시지만 읽음 처리할 수 있습니다.");
+        }
+        return message;
+    }
+
+    private Map<String, Object> readPayload(UUID roomId, UUID readerUserId, NoticeChatRoomParticipantState state) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "READ_RECEIPT");
+        payload.put("roomId", roomId);
+        payload.put("readerUserId", readerUserId);
+        payload.put("latestReadMessageId", state.getLastReadMessage() != null ? state.getLastReadMessage().getId() : null);
+        payload.put("latestReadRoomSequence", state.getLastReadRoomSequence());
+        payload.put("readAt", state.getLastReadAt());
+        return payload;
+    }
+
+    private long safeSequence(NoticeChatMessage message) {
+        return message.getRoomSequence() == null ? 0L : message.getRoomSequence();
+    }
+
+    private String resolveNoticeThumbnailUrl(PetNotice notice) {
+        if (notice.getImages() == null || notice.getImages().isEmpty()) {
+            return null;
+        }
+        return notice.getImages().get(0).getImageUrl();
     }
 
     private NoticeChatRoomParticipantState ensureParticipantState(NoticeChatRoom room, User user) {
@@ -716,14 +978,15 @@ public class NoticeChatService {
     }
 
     private NoticeChatMessageResponse broadcastMessage(NoticeChatRoom room, User sender, NoticeChatMessage saved) {
-        User opponent = getOpponent(room, sender);
+        NoticeChatRoom savedRoom = saved.getRoom();
+        User opponent = getOpponent(savedRoom, sender);
         NoticeChatMessageResponse senderPayload = toMessageResponse(saved, sender);
         NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
-        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(savedRoom);
 
         afterCommitOrNow(() -> {
-            simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), room.getId()), senderPayload);
-            simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), room.getId()), opponentPayload);
+            simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
+            simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), savedRoom.getId()), opponentPayload);
             broadcastRoomUpdate(roomUpdatePayload);
         });
         return senderPayload;
@@ -736,6 +999,9 @@ public class NoticeChatService {
         if (resolveMessageType(message) == NoticeChatMessageType.IMAGE) {
             return IMAGE_MESSAGE_PREVIEW;
         }
+        if (resolveMessageType(message) == NoticeChatMessageType.VIDEO) {
+            return VIDEO_MESSAGE_PREVIEW;
+        }
         String trimmed = trimToNull(message.getMessage());
         if (trimmed == null) {
             return null;
@@ -747,15 +1013,56 @@ public class NoticeChatService {
         if (replyToMessage == null) {
             return null;
         }
-        String preview = resolveMessageType(replyToMessage) == NoticeChatMessageType.IMAGE
-                ? "사진"
+        NoticeChatMessageType type = resolveMessageType(replyToMessage);
+        String preview = type == NoticeChatMessageType.IMAGE ? "사진"
+                : type == NoticeChatMessageType.VIDEO ? "동영상"
                 : toPreview(replyToMessage);
+        String thumbnailUrl = replyToMessage.getImages().stream()
+                .min(Comparator.comparingInt(NoticeChatMessageImage::getDisplayOrder))
+                .map(image -> image.getThumbnailUrl() != null ? image.getThumbnailUrl()
+                        : image.getPreviewUrl() != null ? image.getPreviewUrl()
+                        : image.getWebpUrl() != null ? image.getWebpUrl()
+                        : image.getImageUrl())
+                .orElse(null);
         return new NoticeChatMessageReplyResponse(
                 replyToMessage.getId(),
                 replyToMessage.getSenderUser().getId(),
-                replyToMessage.getSenderUser().getNickname(),
-                preview
+                displayUserName(replyToMessage.getSenderUser()),
+                preview,
+                type.name(),
+                thumbnailUrl
         );
+    }
+
+    private String displayUserName(User user) {
+        if (user == null) {
+            return "알 수 없는 사용자";
+        }
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            return "탈퇴한 사용자";
+        }
+        if (user.getStatus() == UserStatus.BANNED) {
+            return "이용 제한 사용자";
+        }
+        String testLabel = testUserLabel(user);
+        if (testLabel != null) {
+            return testLabel;
+        }
+        return user.getNickname();
+    }
+
+    private String testUserLabel(User user) {
+        if (user.getEmail() == null) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("^dm-user(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(user.getEmail());
+        if (!matcher.matches()) {
+            return null;
+        }
+        int number = Integer.parseInt(matcher.group(1));
+        return number >= 1 && number <= 10 ? "유저 " + number : null;
     }
 
     private NoticeChatMessage resolveReplyTarget(UUID replyToMessageId, NoticeChatRoom room) {

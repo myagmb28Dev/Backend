@@ -28,6 +28,13 @@ public record NoticeChatRoomResponse(
         @Schema(description = "상대방 온라인 여부") Boolean opponentOnline,
         @Schema(description = "상대방 마지막 활동 시각") Instant opponentLastActiveAt,
         @Schema(description = "마지막으로 읽은 메시지 ID") UUID lastReadMessageId,
-        @Schema(description = "마지막 읽음 시각") Instant lastReadAt
+        @Schema(description = "마지막 읽음 시각") Instant lastReadAt,
+        @Schema(description = "마지막으로 읽은 방 순번") Long lastReadRoomSequence,
+        @Schema(description = "방의 마지막 메시지 순번") Long lastMessageSequence,
+        @Schema(description = "공고 대표 이미지 URL") String noticeThumbnailUrl,
+        @Schema(description = "최종 표시 채팅방 이름") String displayRoomName,
+        @Schema(description = "최종 표시 썸네일 URL") String displayThumbnailUrl,
+        @Schema(description = "사용자별 채팅방 표시 이름") String customRoomName,
+        @Schema(description = "사용자별 채팅방 썸네일 URL") String customThumbnailUrl
 ) {
 }

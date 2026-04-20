@@ -3,8 +3,11 @@ package com.example.pogun.repository.noticechat;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.user.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -17,6 +20,10 @@ import java.util.UUID;
 @Repository
 public interface NoticeChatRoomRepository extends JpaRepository<NoticeChatRoom, UUID> {
     Optional<NoticeChatRoom> findByNoticeAndOwnerUserAndGuestUser(PetNotice notice, User ownerUser, User guestUser);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM NoticeChatRoom r WHERE r.id = :id")
+    Optional<NoticeChatRoom> findByIdForUpdate(@Param("id") UUID id);
 
     @Query("""
             SELECT r

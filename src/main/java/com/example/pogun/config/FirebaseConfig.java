@@ -95,7 +95,7 @@ public class FirebaseConfig {
             FirebaseAuth firebaseAuth
     ) {
         if (firebaseAuthProperties.isEmulatorMode()) {
-            return new FirebaseEmulatorIdentityProvider(objectMapper, firebaseAuthProperties);
+            return new FirebaseEmulatorIdentityProvider(objectMapper, firebaseAuthProperties, firebaseAuth);
         }
         return new FirebaseAdminIdentityProvider(firebaseAuth);
     }

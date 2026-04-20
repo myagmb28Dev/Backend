@@ -34,11 +34,13 @@ import java.util.UUID;
 @Service
 public class LocalImageStorageService {
 
-    private static final long MAX_FILE_SIZE = 5L * 1024L * 1024L;
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg");
+    private static final long MAX_FILE_SIZE = 30L * 1024L * 1024L;
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".gif", ".mp4");
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             MediaType.IMAGE_PNG_VALUE,
             MediaType.IMAGE_JPEG_VALUE,
+            MediaType.IMAGE_GIF_VALUE,
+            "video/mp4",
             MediaType.APPLICATION_OCTET_STREAM_VALUE
     );
 
@@ -87,7 +89,11 @@ public class LocalImageStorageService {
         validateImage(file);
 
         String baseName = UUID.randomUUID().toString();
-        String originalFilename = baseName + extractExtension(file.getOriginalFilename());
+        String extension = extractExtension(file.getOriginalFilename());
+        String originalFilename = baseName + extension;
+        if (".gif".equals(extension) || ".mp4".equals(extension)) {
+            return storeOriginalMedia(domain, resourceType, ownerId, file, originalFilename);
+        }
         String webpFilename = baseName + ".webp";
         String mediumFilename = baseName + "-medium.webp";
         String thumbnailFilename = baseName + "-thumbnail.webp";
@@ -132,6 +138,26 @@ public class LocalImageStorageService {
                 }
             }
             throw ApiException.internal("IMAGE_UPLOAD_FAILED", "이미지를 저장하지 못했습니다.");
+        }
+    }
+
+    public boolean isVideoFile(MultipartFile file) {
+        return ".mp4".equals(extractExtension(file != null ? file.getOriginalFilename() : null))
+                || "video/mp4".equals(normalizeContentType(file != null ? file.getContentType() : null));
+    }
+
+    private StoredImageVariant storeOriginalMedia(String domain, String resourceType, UUID ownerId, MultipartFile file, String filename) {
+        try {
+            Path targetDirectory = resolveTargetDirectory(domain, resourceType, ownerId);
+            Files.createDirectories(targetDirectory);
+            Path originalTarget = targetDirectory.resolve(filename);
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, originalTarget);
+            }
+            String publicPath = buildPublicPath(domain, resourceType, ownerId, filename);
+            return new StoredImageVariant(publicPath, publicPath, publicPath, publicPath, publicPath);
+        } catch (IOException e) {
+            throw ApiException.internal("IMAGE_UPLOAD_FAILED", "첨부 파일을 저장하지 못했습니다.");
         }
     }
 
@@ -212,7 +238,7 @@ public class LocalImageStorageService {
             throw ApiException.badRequest("INVALID_IMAGE", "이미지가 비어 있습니다.");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw ApiException.badRequest("INVALID_IMAGE", "이미지 크기는 5MB 이하여야 합니다.");
+            throw ApiException.badRequest("INVALID_IMAGE", "파일 크기는 30MB 이하여야 합니다.");
         }
 
         String filename = file.getOriginalFilename();
@@ -223,6 +249,12 @@ public class LocalImageStorageService {
 
         try {
             String contentType = normalizeContentType(file.getContentType());
+            if (".mp4".equals(extension)) {
+                if (!MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType) && !"video/mp4".equals(contentType)) {
+                    throw ApiException.badRequest("INVALID_IMAGE", "허용되지 않는 영상 형식입니다.");
+                }
+                return;
+            }
             ImageFormat imageFormat = detectImageFormat(file);
             if (imageFormat == ImageFormat.UNKNOWN) {
                 throw ApiException.badRequest("INVALID_IMAGE", "파일 내용이 유효한 이미지가 아닙니다.");
@@ -272,6 +304,12 @@ public class LocalImageStorageService {
                     && (header[2] & 0xFF) == 0xFF) {
             return ImageFormat.JPEG;
         }
+        if (header.length >= 6
+                    && header[0] == 0x47
+                    && header[1] == 0x49
+                    && header[2] == 0x46) {
+            return ImageFormat.GIF;
+        }
         return ImageFormat.UNKNOWN;
     }
 
@@ -284,7 +322,8 @@ public class LocalImageStorageService {
         }
         if (contentType.startsWith("image/")) {
             return (imageFormat == ImageFormat.PNG && MediaType.IMAGE_PNG_VALUE.equals(contentType))
-                    || (imageFormat == ImageFormat.JPEG && MediaType.IMAGE_JPEG_VALUE.equals(contentType));
+                    || (imageFormat == ImageFormat.JPEG && MediaType.IMAGE_JPEG_VALUE.equals(contentType))
+                    || (imageFormat == ImageFormat.GIF && MediaType.IMAGE_GIF_VALUE.equals(contentType));
         }
         return false;
     }
@@ -292,6 +331,7 @@ public class LocalImageStorageService {
     private enum ImageFormat {
         PNG,
         JPEG,
+        GIF,
         UNKNOWN
     }
 }
