@@ -21,6 +21,7 @@ public record UserProfileResponse(
         @Schema(description = "대표 로그인 제공자") String provider,
         @Schema(description = "연결된 제공자 목록") List<String> linkedProviders,
         @Schema(description = "역할") String role,
-        @Schema(description = "상태") String status
+        @Schema(description = "상태") String status,
+        @Schema(description = "가용 상태") String availabilityStatus
 ) {
 }

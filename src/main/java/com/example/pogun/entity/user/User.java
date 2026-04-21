@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserStatus;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -83,6 +84,14 @@ public class User {
 
     @Column(name = "auth_provider", length = 30)
     private String authProvider;
+
+    @Column(name = "last_active_at")
+    private Instant lastActiveAt;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "availability_status", nullable = false, length = 20)
+    private UserAvailabilityStatus availabilityStatus = UserAvailabilityStatus.ONLINE;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)

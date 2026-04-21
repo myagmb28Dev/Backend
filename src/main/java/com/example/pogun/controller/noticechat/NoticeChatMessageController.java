@@ -90,19 +90,4 @@ public class NoticeChatMessageController {
         }
         return principal;
     }
-
-    @MessageMapping("/chat/enter")
-    public void enter(@Valid @Payload NoticeChatRoomEventRequest request, Principal principal) {
-        noticeChatService.enterRoom(principal, request);
-    }
-
-    @MessageMapping("/chat/leave")
-    public void leave(@Valid @Payload NoticeChatRoomEventRequest request, Principal principal) {
-        noticeChatService.leaveSocketRoom(principal, request);
-    }
-
-    @MessageMapping("/chat/read")
-    public void read(@Valid @Payload NoticeChatReadRequest request, Principal principal) {
-        noticeChatService.markRoomAsRead(principal, request);
-    }
 }

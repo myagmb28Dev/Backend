@@ -3,9 +3,11 @@ const path = require('path');
 const crypto = require('crypto');
 const { test, expect } = require('@playwright/test');
 
+const repoRoot = path.resolve(__dirname, '..', '..');
+
 test('community browser flow rejects invalid inputs without server errors', async ({ page }) => {
-  const baseURL = 'http://localhost:8080';
-  const token = fs.readFileSync(path.join(process.cwd(), '.local', 'emulator-firebase-id-token.txt'), 'utf8').trim();
+  const baseURL = process.env.BASE_URL || 'http://localhost:8081';
+  const token = fs.readFileSync(path.join(repoRoot, '.local', 'emulator-firebase-id-token.txt'), 'utf8').trim();
 
   const consoleErrors = [];
   const apiResponses = [];

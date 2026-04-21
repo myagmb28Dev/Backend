@@ -17,6 +17,9 @@ import com.example.pogun.dto.noticechat.NoticeChatTypingRequest;
 import com.example.pogun.dto.storage.StoredImageVariant;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatMessageImage;
 import com.example.pogun.entity.noticechat.NoticeChatReadReceipt;
@@ -34,7 +37,9 @@ import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRep
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.LocalImageStorageService;
+import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -77,6 +82,8 @@ public class NoticeChatService {
     private final UserBlockRepository userBlockRepository;
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final LocalImageStorageService localImageStorageService;
+    private final NotificationService notificationService;
+    private final UserPresenceService userPresenceService;
 
     @Transactional
     public NoticeChatRoomCreateResult createOrGetRoom(String noticeId) {
@@ -468,20 +475,6 @@ public class NoticeChatService {
         return toRoomResponse(room, currentUser);
     }
 
-    @Transactional
-    public void markUserOffline(String firebaseUid) {
-        if (firebaseUid == null || firebaseUid.isBlank()) {
-            return;
-        }
-        userRepository.findByFirebaseUid(firebaseUid).ifPresent(user -> {
-            Instant now = Instant.now();
-            for (NoticeChatRoomParticipantState state : participantStateRepository.findByUser(user)) {
-                state.setOnline(false);
-                state.setLastActiveAt(now);
-            }
-        });
-    }
-
     @Transactional(readOnly = true)
     public Map<String, Object> sendTypingEvent(Principal principal, NoticeChatTypingRequest request) {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
@@ -565,7 +558,7 @@ public class NoticeChatService {
         User opponent = getOpponent(room, currentUser);
         NoticeChatMessageType lastMessageType = resolveLastMessageType(room);
         NoticeChatRoomParticipantState currentState = ensureParticipantState(room, currentUser);
-        NoticeChatRoomParticipantState opponentState = ensureParticipantState(room, opponent);
+        UserPresenceService.PresenceSnapshot opponentPresence = userPresenceService.snapshot(opponent);
         String noticeThumbnailUrl = resolveNoticeThumbnailUrl(room.getNotice());
         String displayRoomName = trimToNull(currentState.getCustomRoomName()) != null
                 ? currentState.getCustomRoomName().trim()
@@ -589,8 +582,9 @@ public class NoticeChatService {
                 currentState.getFavorite(),
                 currentState.getPinned(),
                 currentState.getLeftAt(),
-                opponentState.getOnline(),
-                opponentState.getLastActiveAt(),
+                opponentPresence.online(),
+                opponentPresence.availabilityStatus().name(),
+                opponentPresence.lastActiveAt(),
                 currentState.getLastReadMessage() != null ? currentState.getLastReadMessage().getId() : null,
                 currentState.getLastReadAt(),
                 currentState.getLastReadRoomSequence(),
@@ -831,6 +825,7 @@ public class NoticeChatService {
             Long requestedSequence
     ) {
         NoticeChatRoomParticipantState state = ensureParticipantState(room, reader);
+        notificationService.markDirectMessageNotificationsAsRead(reader, room.getId());
         long currentSequence = state.getLastReadRoomSequence() == null ? 0L : state.getLastReadRoomSequence();
         long messageSequence = latestReadMessage != null ? safeSequence(latestReadMessage) : 0L;
         long requested = requestedSequence == null ? 0L : requestedSequence;
@@ -987,6 +982,8 @@ public class NoticeChatService {
         NoticeChatMessageResponse senderPayload = toMessageResponse(saved, sender);
         NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
         RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(savedRoom);
+        boolean opponentNotificationEnabled = Boolean.TRUE.equals(ensureParticipantState(savedRoom, opponent).getNotificationEnabled());
+        notifyDirectMessage(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
 
         afterCommitOrNow(() -> {
             simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
@@ -994,6 +991,36 @@ public class NoticeChatService {
             broadcastRoomUpdate(roomUpdatePayload);
         });
         return senderPayload;
+    }
+
+    private void notifyDirectMessage(NoticeChatRoom room, NoticeChatMessage message, User sender, User opponent, boolean opponentNotificationEnabled) {
+        if (!opponentNotificationEnabled) {
+            return;
+        }
+        boolean replyToOpponent = message.getReplyToMessage() != null
+                && message.getReplyToMessage().getSenderUser() != null
+                && message.getReplyToMessage().getSenderUser().getId().equals(opponent.getId());
+        NotificationType type = replyToOpponent ? NotificationType.DM_REPLY : NotificationType.DM_MESSAGE;
+        String preview = toPreview(message);
+        if (preview == null) {
+            preview = "새 메시지가 도착했습니다.";
+        }
+        notificationService.createAndSendNotification(
+                opponent,
+                sender,
+                type,
+                NotificationTargetType.NOTICE_CHAT_MESSAGE,
+                message.getId(),
+                replyToOpponent ? "답장이 도착했습니다." : sender.getNickname() + "님의 메시지",
+                preview,
+                NotificationPriority.HIGH,
+                "dm-message:" + opponent.getId() + ":" + message.getId(),
+                Map.of(
+                        "roomId", room.getId().toString(),
+                        "messageId", message.getId().toString(),
+                        "senderUserId", sender.getId().toString()
+                )
+        );
     }
 
     private String toPreview(NoticeChatMessage message) {
@@ -1060,7 +1087,7 @@ public class NoticeChatService {
             return null;
         }
         java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("^dm-user(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .compile("^(?:dm-user|playwright-user)(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
                 .matcher(user.getEmail());
         if (!matcher.matches()) {
             return null;

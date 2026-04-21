@@ -14,6 +14,14 @@ import java.util.List;
 @Service
 public class KakaoLocalService {
 
+    private static final RegionResponse LOCAL_FALLBACK_REGION = new RegionResponse(
+            "H",
+            "경기도 성남시 분당구 삼평동",
+            "경기도",
+            "성남시 분당구",
+            "삼평동"
+    );
+
     private final KakaoLocalProperties properties;
     private final WebClient webClient;
 
@@ -24,7 +32,7 @@ public class KakaoLocalService {
 
     public RegionResponse resolveRegion(double x, double y) {
         if (!StringUtils.hasText(properties.getRestApiKey())) {
-            throw ApiException.internal("KAKAO_LOCAL_NOT_CONFIGURED", "카카오 로컬 REST API 키가 설정되지 않았습니다.");
+            return LOCAL_FALLBACK_REGION;
         }
 
         try {

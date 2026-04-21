@@ -11,6 +11,7 @@
     main { width:min(980px,calc(100% - 28px)); margin:20px auto 32px; display:grid; gap:14px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 10px 26px rgba(31,41,51,.06); }
     h1,h2,h3,p { margin:0; }
+    .page-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
     .status { min-height:40px; padding:10px 12px; border-radius:12px; background:rgba(31,41,51,.06); color:var(--muted); font-size:13px; font-weight:700; }
     .status.good { background:rgba(31,138,76,.12); color:var(--good); }
     .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
@@ -31,13 +32,44 @@
     .detail-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:8px; }
     .detail-images img { width:100%; border-radius:10px; border:1px solid rgba(31,41,51,.1); display:block; background:#f5efe4; }
     @media (max-width:760px){ .grid{grid-template-columns:1fr;} }
+    @media (max-width:640px){
+      html,body{width:100%;max-width:100%;overflow-x:hidden;}
+      main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;}
+      .card{width:100%;min-width:0;border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(31,41,51,.06);}
+      .page-head{display:grid;gap:10px;}
+      h1{font-size:22px;line-height:1.25;overflow-wrap:anywhere;}
+      h2{font-size:18px;line-height:1.25;}
+      h3{font-size:16px;line-height:1.3;}
+      .status{min-width:0;border-radius:10px;overflow-wrap:anywhere;}
+      .grid{grid-template-columns:1fr;gap:9px;}
+      label{font-size:12px;line-height:1.35;}
+      input,select,textarea{min-width:0;border-radius:10px;font-size:13px;padding:10px;}
+      textarea{min-height:76px;}
+      .actions{display:grid;grid-template-columns:1fr;gap:7px;}
+      button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;white-space:normal;}
+      .muted{font-size:12px;line-height:1.45;overflow-wrap:anywhere;}
+      .detail{min-width:0;overflow-wrap:anywhere;}
+      .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+      .detail-images img{border-radius:8px;}
+    }
+    @media (max-width:380px){
+      main{padding:8px;}
+      .card{padding:12px;}
+      h1{font-size:20px;}
+      .detail-images{grid-template-columns:1fr;}
+    }
   </style>
 </head>
 <body>
 <main>
   <section class="card">
-    <h1>Notice Flow</h1>
-    <p class="muted" style="margin-top:6px">실종동물 공고를 필드 입력 + 이미지 첨부로 생성하고, 생성 후 DM 테스트로 이동합니다.</p>
+    <div class="page-head">
+      <div>
+        <h1>Notice Flow</h1>
+        <p class="muted" style="margin-top:6px">실종동물 공고를 필드 입력 + 이미지 첨부로 생성하고, 생성 후 DM 테스트로 이동합니다.</p>
+      </div>
+      <div id="notificationBellMount"></div>
+    </div>
     <div id="status" class="status" style="margin-top:10px">준비 중</div>
   </section>
 
@@ -95,20 +127,14 @@
 
 <script>
 const BACKEND_BASE = window.location.origin;
-const EMULATOR_BASE = `${window.location.protocol}//${window.location.hostname}:9099`;
-const API_KEY = "fake-api-key";
-const PASSWORD = "Test1234!";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
-const ACCOUNT_COUNT = 10;
+const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
+const REAL_ROLE = "google";
 const query = new URLSearchParams(window.location.search);
 let currentNoticeId = (query.get("noticeId") || "").trim() || null;
-const requestedRole = (query.get("role") || "").trim();
 let activeRole = null;
 
-const users = Object.fromEntries(Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
-  const n = index + 1;
-  return [`user${n}`, { label: `유저 ${n}`, email: `dm-user${n}@local.dev`, token: null, userId: null }];
-}));
+const users = { [REAL_ROLE]: { label: "Google 사용자", email: "", token: null, userId: null } };
 
 const el = (id) => document.getElementById(id);
 function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
@@ -127,34 +153,68 @@ async function readJson(response) { const text = await response.text(); try { re
 async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
 async function authApi(path, init = {}) {
   if (!activeRole || !users[activeRole].token) throw new Error("먼저 로그인하세요.");
+  const headers = { Authorization: `Bearer ${users[activeRole].token}`, ...(init.headers || {}) };
+  if (!(init.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   return request(`${BACKEND_BASE}${path}`, {
     ...init,
-    headers: { Authorization: `Bearer ${users[activeRole].token}`, ...(init.headers || {}) }
+    headers
   });
 }
 
-async function ensureEmulatorUser(role) {
-  const user = users[role];
-  const body = { email: user.email, password: PASSWORD, returnSecureToken: true };
-  const signIn = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-  });
-  if (signIn.status === 200) { user.token = signIn.body.idToken; return; }
-  const signUp = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-  });
-  if (signUp.status !== 200) throw new Error(`${user.label} 에뮬레이터 로그인 실패: ${JSON.stringify(signUp.body)}`);
-  user.token = signUp.body.idToken;
+function loadRealSession() {
+  try {
+    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    return session?.firebaseIdToken ? session : null;
+  } catch {
+    return null;
+  }
 }
 
 async function login(role) {
+  role = REAL_ROLE;
+  const session = loadRealSession();
+  if (!session) {
+    moveToLoginFlow();
+    return;
+  }
+  users[role].token = session.firebaseIdToken;
+  users[role].email = session.email || "";
+  users[role].label = session.nickname || session.email || "Google 사용자";
   setStatus(`${users[role].label} 로그인 중...`);
-  await ensureEmulatorUser(role);
   const response = await request(`${BACKEND_BASE}/api/auth/login`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
   });
-  if (response.status !== 200) throw new Error(`백엔드 로그인 실패: ${JSON.stringify(response.body)}`);
-  users[role].userId = response.body?.data?.id;
+  if (response.status !== 200) {
+    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    moveToLoginFlow();
+    return;
+  }
+  const data = response.body?.data || {};
+  if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
+    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    const redirect = `/notice-flow.html${window.location.search || ""}`;
+    window.location.href = `${window.location.origin}/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
+    return;
+  }
+  users[role].userId = data.id;
+  users[role].email = data.email || users[role].email;
+  users[role].label = data.nickname || users[role].label;
+  try {
+    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify({
+      ...session,
+      firebaseIdToken: users[role].token,
+      firebaseUid: data.firebaseUid || session.firebaseUid || "",
+      email: data.email || session.email || "",
+      nickname: data.nickname || session.nickname || "",
+      profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+      userId: data.id,
+      registrationStatus: data.registrationStatus
+    }));
+  } catch {}
   activeRole = role;
   try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
   renderSessionInfo();
@@ -173,7 +233,7 @@ function toDmTestUrl(noticeId = currentNoticeId) {
   const params = new URLSearchParams();
   if (noticeId) params.set("noticeId", noticeId);
   if (activeRole) params.set("role", activeRole);
-  return `${window.location.origin}/dm-test.html${params.toString() ? `?${params.toString()}` : ""}`;
+  return `${window.location.origin}/dm-flow.html${params.toString() ? `?${params.toString()}` : ""}`;
 }
 
 function parseOptionalInt(raw) {
@@ -220,8 +280,9 @@ async function createNotice() {
   setStatus("공고 생성 중...");
   let response = await authApi("/api/missing-pets", { method: "POST", body: formData });
   if (response.status === 401) {
-    await ensureEmulatorUser(activeRole);
-    response = await authApi("/api/missing-pets", { method: "POST", body: formData });
+    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    moveToLoginFlow();
+    return;
   }
   if (response.status !== 201) throw new Error(`공고 생성 실패: ${JSON.stringify(response.body)}`);
 
@@ -296,14 +357,20 @@ renderSessionInfo();
 setStatus("login-flow에서 로그인한 계정으로 공고를 작성하세요.");
 
 const savedRole = (() => { try { return window.localStorage.getItem(ACTIVE_ROLE_KEY) || ""; } catch { return ""; } })();
-const initialRole = (requestedRole && Object.prototype.hasOwnProperty.call(users, requestedRole))
-  ? requestedRole
-  : (savedRole && Object.prototype.hasOwnProperty.call(users, savedRole) ? savedRole : "");
+const initialRole = savedRole === REAL_ROLE ? REAL_ROLE : (loadRealSession() ? REAL_ROLE : "");
 if (initialRole) {
-  run(() => login(initialRole))();
+  run(() => login(REAL_ROLE))();
 } else {
   moveToLoginFlow();
 }
+</script>
+<script type="module">
+import { mountNotificationBell, refreshNotificationBell } from "./notification-web.js";
+
+mountNotificationBell("notificationBellMount");
+refreshNotificationBell("notificationBellMount").catch(() => {});
+window.addEventListener("focus", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
+window.addEventListener("notification-web:message", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
 </script>
 </body>
 </html>

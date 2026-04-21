@@ -1,30 +1,44 @@
 package com.example.pogun.service.notification;
 
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
 import com.example.pogun.dto.notification.NotificationResponse;
+import com.example.pogun.dto.notification.NotificationSettingItemRequest;
+import com.example.pogun.dto.notification.NotificationSettingResponse;
+import com.example.pogun.dto.notification.NotificationSettingsUpdateRequest;
+import com.example.pogun.dto.notification.NotificationUnreadCountResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.notification.Notification;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.notification.UserFcmToken;
+import com.example.pogun.entity.notification.UserNotificationSetting;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
+import com.example.pogun.repository.notification.UserNotificationSettingRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 /**
  * 도메인 비즈니스 로직을 담당하는 NotificationService이다.
@@ -36,14 +50,41 @@ import java.util.UUID;
 public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
+    private final UserNotificationSettingRepository userNotificationSettingRepository;
     private final UserRepository userRepository;
     private final FirebaseMessaging firebaseMessaging;
 
-    public List<NotificationResponse> getNotifications() {
+    @Transactional(readOnly = true)
+    public NotificationListResponse getNotifications(int page, int size, Boolean unreadOnly, String type) {
         User user = getCurrentUser();
-        return notificationRepository.findByUserOrderByCreatedAtDesc(user).stream()
-                .map(this::toNotificationResponse)
-                .toList();
+        int resolvedPage = Math.max(page, 0);
+        int resolvedSize = Math.min(Math.max(size, 1), 100);
+        NotificationType notificationType = parseNullableType(type);
+        PageRequest pageRequest = PageRequest.of(resolvedPage, resolvedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        boolean onlyUnread = Boolean.TRUE.equals(unreadOnly);
+        Page<Notification> notifications;
+        if (notificationType != null && onlyUnread) {
+            notifications = notificationRepository.findByUserAndTypeAndIsReadFalseOrderByCreatedAtDesc(user, notificationType, pageRequest);
+        } else if (notificationType != null) {
+            notifications = notificationRepository.findByUserAndTypeOrderByCreatedAtDesc(user, notificationType, pageRequest);
+        } else if (onlyUnread) {
+            notifications = notificationRepository.findByUserAndIsReadFalseOrderByCreatedAtDesc(user, pageRequest);
+        } else {
+            notifications = notificationRepository.findByUserOrderByCreatedAtDesc(user, pageRequest);
+        }
+        return new NotificationListResponse(
+                notifications.getTotalElements(),
+                notifications.getTotalPages(),
+                notifications.getNumber(),
+                notifications.getSize(),
+                notifications.getContent().stream().map(this::toNotificationResponse).toList()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationUnreadCountResponse getUnreadCount() {
+        User user = getCurrentUser();
+        return new NotificationUnreadCountResponse(notificationRepository.countByUserAndIsReadFalse(user));
     }
 
     @Transactional
@@ -68,6 +109,57 @@ public class NotificationService {
         }
         notificationRepository.saveAll(notifications);
         return new NotificationReadAllResponse(updatedCount);
+    }
+
+    @Transactional
+    public long markDirectMessageNotificationsAsRead(User user, UUID roomId) {
+        if (user == null || user.getId() == null || roomId == null) {
+            return 0L;
+        }
+        List<Notification> notifications = notificationRepository.findUnreadByUserIdAndRoomIdAndTargetTypeAndTypeIn(
+                user.getId(),
+                roomId,
+                NotificationTargetType.NOTICE_CHAT_MESSAGE.name(),
+                List.of(NotificationType.DM_MESSAGE.name(), NotificationType.DM_REPLY.name())
+        );
+        if (notifications.isEmpty()) {
+            return 0L;
+        }
+        notifications.forEach(notification -> notification.setIsRead(true));
+        notificationRepository.saveAll(notifications);
+        return notifications.size();
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationSettingResponse> getSettings() {
+        User user = getCurrentUser();
+        Map<NotificationType, Boolean> savedSettings = new LinkedHashMap<>();
+        for (UserNotificationSetting setting : userNotificationSettingRepository.findByUser(user)) {
+            savedSettings.put(setting.getType(), Boolean.TRUE.equals(setting.getEnabled()));
+        }
+        return Arrays.stream(NotificationType.values())
+                .map(type -> new NotificationSettingResponse(type.name(), savedSettings.getOrDefault(type, true)))
+                .toList();
+    }
+
+    @Transactional
+    public List<NotificationSettingResponse> updateSettings(NotificationSettingsUpdateRequest request) {
+        User user = getCurrentUser();
+        if (request == null || request.getSettings() == null || request.getSettings().isEmpty()) {
+            throw ApiException.badRequest("MISSING_NOTIFICATION_SETTINGS", "알림 설정은 필수입니다.");
+        }
+        for (NotificationSettingItemRequest item : request.getSettings()) {
+            NotificationType type = parseType(item.getType());
+            UserNotificationSetting setting = userNotificationSettingRepository.findByUserAndType(user, type)
+                    .orElseGet(() -> UserNotificationSetting.builder()
+                            .user(user)
+                            .type(type)
+                            .enabled(true)
+                            .build());
+            setting.setEnabled(Boolean.TRUE.equals(item.getEnabled()));
+            userNotificationSettingRepository.save(setting);
+        }
+        return getSettings();
     }
 
     // FCM token 자체를 기준으로 upsert 해서 같은 기기 재설치나 사용자 재로그인 상황에서도 최신 메타데이터를 유지한다.
@@ -95,16 +187,83 @@ public class NotificationService {
     // 알림 레코드는 항상 먼저 저장하고, 푸시 발송은 best-effort 로 처리해 실패해도 알림 목록 조회는 가능하게 둔다.
     @Transactional
     public Map<String, Object> createAndSendNotification(User user, NotificationType type, NotificationTargetType targetType, UUID targetId, String title, String body, Map<String, String> data) {
+        return createAndSendNotification(user, null, type, targetType, targetId, title, body, NotificationPriority.NORMAL, null, data);
+    }
+
+    @Transactional
+    public Map<String, Object> createAndSendNotification(
+            User user,
+            User actorUser,
+            NotificationType type,
+            NotificationTargetType targetType,
+            UUID targetId,
+            String title,
+            String body,
+            NotificationPriority priority,
+            String dedupKey,
+            Map<String, String> metadata
+    ) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        if (user == null || type == null || targetType == null || targetId == null) {
+            response.put("skipped", true);
+            response.put("reason", "INVALID_NOTIFICATION_REQUEST");
+            return response;
+        }
+        if (actorUser != null && Objects.equals(user.getId(), actorUser.getId())) {
+            response.put("skipped", true);
+            response.put("reason", "SELF_NOTIFICATION");
+            return response;
+        }
+        User managedUser = userRepository.getReferenceById(user.getId());
+        User managedActorUser = actorUser != null ? userRepository.getReferenceById(actorUser.getId()) : null;
+        if (!isNotificationEnabled(user, type)) {
+            response.put("skipped", true);
+            response.put("reason", "NOTIFICATION_DISABLED");
+            return response;
+        }
+        String normalizedDedupKey = trimToNull(dedupKey);
+        if (normalizedDedupKey != null) {
+            Notification existing = notificationRepository.findByDedupKey(normalizedDedupKey).orElse(null);
+            if (existing != null) {
+                response.put("notification", toNotificationResponse(existing));
+                response.put("sentCount", 0);
+                response.put("activeTokenCount", 0);
+                response.put("deduplicated", true);
+                return response;
+            }
+        }
+
+        Map<String, String> safeMetadata = new LinkedHashMap<>();
+        if (metadata != null) {
+            metadata.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    safeMetadata.put(key, value);
+                }
+            });
+        }
         Notification notification = notificationRepository.save(Notification.builder()
-                .user(user)
+                .user(managedUser)
+                .actorUser(managedActorUser)
                 .type(type)
                 .targetType(targetType)
                 .targetId(targetId)
                 .title(title)
                 .body(body)
+                .priority(priority == null ? NotificationPriority.NORMAL : priority)
+                .dedupKey(normalizedDedupKey)
+                .metadata(safeMetadata)
                 .build());
 
-        List<UserFcmToken> activeTokens = userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(user);
+        if (managedUser.getAvailabilityStatus() == UserAvailabilityStatus.IDLE) {
+            response.put("notification", toNotificationResponse(notification));
+            response.put("sentCount", 0);
+            response.put("activeTokenCount", 0);
+            response.put("pushSkipped", true);
+            response.put("reason", "USER_IDLE");
+            return response;
+        }
+
+        List<UserFcmToken> activeTokens = userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedUser);
         int sentCount = 0;
 
         for (UserFcmToken fcmToken : activeTokens) {
@@ -116,10 +275,9 @@ public class NotificationService {
                         .putData("targetType", targetType.name())
                         .putData("targetId", targetId.toString())
                         .putData("title", title)
-                        .putData("body", body);
-                if (data != null) {
-                    data.forEach((key, value) -> { if (key != null && value != null) builder.putData(key, value); });
-                }
+                        .putData("body", body)
+                        .putData("priority", notification.getPriority().name());
+                safeMetadata.forEach(builder::putData);
                 firebaseMessaging.send(builder.build());
                 sentCount++;
             } catch (FirebaseMessagingException e) {
@@ -132,11 +290,16 @@ public class NotificationService {
             }
         }
 
-        Map<String, Object> response = new LinkedHashMap<>();
         response.put("notification", toNotificationResponse(notification));
         response.put("sentCount", sentCount);
         response.put("activeTokenCount", activeTokens.size());
         return response;
+    }
+
+    public boolean isNotificationEnabled(User user, NotificationType type) {
+        return userNotificationSettingRepository.findByUserAndType(user, type)
+                .map(UserNotificationSetting::getEnabled)
+                .orElse(true);
     }
 
     private User getCurrentUser() {
@@ -158,7 +321,34 @@ public class NotificationService {
     }
 
     private NotificationResponse toNotificationResponse(Notification notification) {
-        return new NotificationResponse(notification.getId(), notification.getType().name(), notification.getTargetType().name(), notification.getTargetId(), notification.getTitle(), notification.getBody(), notification.getIsRead(), notification.getCreatedAt());
+        return new NotificationResponse(
+                notification.getId(),
+                notification.getType().name(),
+                notification.getTargetType().name(),
+                notification.getTargetId(),
+                notification.getActorUser() != null ? notification.getActorUser().getId() : null,
+                notification.getTitle(),
+                notification.getBody(),
+                notification.getPriority().name(),
+                notification.getMetadata() == null ? Map.of() : Map.copyOf(notification.getMetadata()),
+                notification.getIsRead(),
+                notification.getCreatedAt()
+        );
+    }
+
+    private NotificationType parseNullableType(String type) {
+        if (trimToNull(type) == null) {
+            return null;
+        }
+        return parseType(type);
+    }
+
+    private NotificationType parseType(String type) {
+        try {
+            return NotificationType.valueOf(trimToNull(type).toUpperCase());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw ApiException.badRequest("INVALID_NOTIFICATION_TYPE", "올바르지 않은 알림 타입입니다.");
+        }
     }
 
     private boolean isUnregisteredToken(FirebaseMessagingException e) {

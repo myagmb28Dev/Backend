@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const baseURL = process.env.BASE_URL || 'http://localhost:8081';
 
 function tinyPngFile() {
   const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0YQAAAAASUVORK5CYII=';
@@ -9,10 +10,10 @@ function tinyPngFile() {
   };
 }
 
-test('notice-flow creates notice then redirects to dm-test with noticeId', async ({ page }) => {
+test('notice-flow creates notice then redirects to dm-flow with noticeId', async ({ page }) => {
   const title = `playwright-notice-flow-${Date.now()}`;
 
-  await page.goto('http://localhost:8080/login-flow.html');
+  await page.goto(`${baseURL}/login-flow.html`);
   await page.click('#user1LoginButton');
   await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 20000 });
 
@@ -25,6 +26,6 @@ test('notice-flow creates notice then redirects to dm-test with noticeId', async
   await page.setInputFiles('#images', tinyPngFile());
 
   await page.click('#createNoticeButton');
-  await expect(page).toHaveURL(/\/dm-test\.html\?noticeId=/, { timeout: 30000 });
+  await expect(page).toHaveURL(/\/dm-flow\.html\?noticeId=/, { timeout: 30000 });
   await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 20000 });
 });

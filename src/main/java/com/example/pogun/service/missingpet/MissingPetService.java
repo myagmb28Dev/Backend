@@ -280,7 +280,7 @@ public class MissingPetService {
             return null;
         }
         java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("^dm-user(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .compile("^(?:dm-user|playwright-user)(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
                 .matcher(user.getEmail());
         if (!matcher.matches()) {
             return null;

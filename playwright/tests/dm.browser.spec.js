@@ -5,9 +5,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const baseURL = 'http://localhost:8080';
-const emulatorBaseURL = 'http://127.0.0.1:9099';
-const emulatorApiKey = 'fake-api-key';
+const baseURL = process.env.BASE_URL || 'http://localhost:8081';
 const repoRoot = path.resolve(__dirname, '..', '..');
 
 function parseDotEnv() {
@@ -71,11 +69,9 @@ public class PogunDmPlaywrightCleanup {
       "DELETE FROM notice_bookmarks WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM pet_notice_images WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'",
-      "DELETE FROM user_blocks WHERE blocker_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev') OR blocked_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
-      "DELETE FROM user_social_accounts WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
-      "DELETE FROM user_fcm_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
-      "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev')",
-      "DELETE FROM users WHERE email LIKE 'dm-user1-%@local.dev' OR email LIKE 'dm-user2-%@local.dev' OR email LIKE 'dm-user3-%@local.dev'"
+      "DELETE FROM user_blocks WHERE blocker_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR blocked_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev')",
+      "DELETE FROM user_fcm_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev')",
+      "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR actor_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev')"
     );
     try (Connection conn = DriverManager.getConnection(System.getenv("DB_URL"), System.getenv("DB_USERNAME"), System.getenv("DB_PASSWORD"))) {
       conn.setAutoCommit(false);
@@ -128,12 +124,11 @@ function cleanupGeneratedNoticeChatUploads() {
 test.beforeEach(() => cleanupDmTestData());
 test.afterEach(() => cleanupDmTestData());
 
-function createTestIdentity(prefix) {
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-  return {
-    email: `${prefix}-${nonce}@local.dev`,
-    password: 'Test1234!'
-  };
+function loadPlaywrightToken(index) {
+  return fs.readFileSync(
+    path.join(repoRoot, '.local', `emulator-user${index}-firebase-id-token.txt`),
+    'utf8'
+  ).trim();
 }
 
 function messagePageMessages(response) {
@@ -163,26 +158,6 @@ async function readJsonSafe(response) {
   } catch {
     return text;
   }
-}
-
-async function emulatorSignUp(identity) {
-  const response = await fetch(
-    `${emulatorBaseURL}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${emulatorApiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: identity.email,
-        password: identity.password,
-        returnSecureToken: true
-      })
-    }
-  );
-
-  return {
-    status: response.status,
-    body: await readJsonSafe(response)
-  };
 }
 
 async function api(pathname, token, init = {}) {
@@ -475,21 +450,9 @@ async function createStompClient(token) {
 test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime send, image send, reply, preview, and read state', async () => {
   test.slow();
 
-  const userOneIdentity = createTestIdentity('dm-user1');
-  const userTwoIdentity = createTestIdentity('dm-user2');
-  const userThreeIdentity = createTestIdentity('dm-user3');
-
-  const userOneSignUp = await emulatorSignUp(userOneIdentity);
-  const userTwoSignUp = await emulatorSignUp(userTwoIdentity);
-  const userThreeSignUp = await emulatorSignUp(userThreeIdentity);
-
-  expect(userOneSignUp.status).toBe(200);
-  expect(userTwoSignUp.status).toBe(200);
-  expect(userThreeSignUp.status).toBe(200);
-
-  const userOneToken = userOneSignUp.body.idToken;
-  const userTwoToken = userTwoSignUp.body.idToken;
-  const userThreeToken = userThreeSignUp.body.idToken;
+  const userOneToken = loadPlaywrightToken(1);
+  const userTwoToken = loadPlaywrightToken(2);
+  const userThreeToken = loadPlaywrightToken(3);
 
   expect(userOneToken).toBeTruthy();
   expect(userTwoToken).toBeTruthy();
