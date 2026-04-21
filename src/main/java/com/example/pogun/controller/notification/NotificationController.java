@@ -3,8 +3,12 @@ package com.example.pogun.controller.notification;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
 import com.example.pogun.dto.notification.NotificationResponse;
+import com.example.pogun.dto.notification.NotificationSettingResponse;
+import com.example.pogun.dto.notification.NotificationSettingsUpdateRequest;
+import com.example.pogun.dto.notification.NotificationUnreadCountResponse;
 import com.example.pogun.service.notification.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -35,9 +40,21 @@ public class NotificationController {
 
     @GetMapping
     @Operation(summary = "알림 목록 조회", description = "사용자에게 전달된 알림 목록을 조회합니다.")
-    public ResponseEntity<ApiResponse<List<NotificationResponse>>> list() {
-        List<NotificationResponse> data = notificationService.getNotifications();
+    public ResponseEntity<ApiResponse<NotificationListResponse>> list(
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size,
+            @RequestParam(required = false, defaultValue = "false") Boolean unreadOnly,
+            @RequestParam(required = false) String type
+    ) {
+        NotificationListResponse data = notificationService.getNotifications(page, size, unreadOnly, type);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 목록 조회 성공", data));
+    }
+
+    @GetMapping("/unread-count")
+    @Operation(summary = "읽지 않은 알림 수 조회", description = "사용자의 읽지 않은 알림 수를 조회합니다.")
+    public ResponseEntity<ApiResponse<NotificationUnreadCountResponse>> unreadCount() {
+        NotificationUnreadCountResponse data = notificationService.getUnreadCount();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "읽지 않은 알림 수 조회 성공", data));
     }
 
     @PatchMapping("/{notificationId}/read")
@@ -52,6 +69,20 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<NotificationReadAllResponse>> markReadAll() {
         NotificationReadAllResponse data = notificationService.markAllNotificationsAsRead();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 전체 읽음 처리 성공", data));
+    }
+
+    @GetMapping("/settings")
+    @Operation(summary = "알림 설정 조회", description = "알림 타입별 수신 설정을 조회합니다.")
+    public ResponseEntity<ApiResponse<List<NotificationSettingResponse>>> settings() {
+        List<NotificationSettingResponse> data = notificationService.getSettings();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 설정 조회 성공", data));
+    }
+
+    @PatchMapping("/settings")
+    @Operation(summary = "알림 설정 변경", description = "알림 타입별 수신 설정을 변경합니다.")
+    public ResponseEntity<ApiResponse<List<NotificationSettingResponse>>> updateSettings(@Valid @RequestBody NotificationSettingsUpdateRequest request) {
+        List<NotificationSettingResponse> data = notificationService.updateSettings(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 설정 변경 성공", data));
     }
 
     @PostMapping("/fcm-token")

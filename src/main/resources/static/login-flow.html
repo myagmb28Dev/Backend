@@ -11,6 +11,8 @@
     main { width:min(920px,calc(100% - 28px)); margin:20px auto; display:grid; gap:14px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 10px 26px rgba(31,41,51,.06); }
     h1,h2,p { margin:0; }
+    .page-head, .section-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .page-tools { display:flex; align-items:flex-start; justify-content:flex-end; }
     .status { min-height:40px; padding:10px 12px; border-radius:12px; background:rgba(31,41,51,.06); color:var(--muted); font-size:13px; font-weight:700; }
     .status.good { background:rgba(31,138,76,.12); color:var(--good); }
     .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
@@ -19,97 +21,475 @@
     .account-toggle.active { border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px rgba(192,95,44,.12); }
     .muted { color:var(--muted); font-size:12px; margin-top:8px; }
     .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .onboarding { display:none; }
+    .onboarding.visible { display:block; }
+    .map-shell { margin-top:10px; display:grid; gap:8px; }
+    .map-canvas { width:100%; min-height:280px; border:1px solid rgba(31,41,51,.14); border-radius:8px; background:rgba(31,41,51,.07); overflow:hidden; }
+    .map-status { min-height:34px; padding:8px 10px; border-radius:8px; background:rgba(31,41,51,.06); color:var(--muted); font-size:12px; font-weight:800; overflow-wrap:anywhere; }
+    .map-status.good { background:rgba(31,138,76,.12); color:var(--good); }
+    .map-status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
+    .selected-region { padding:12px; border:1px solid rgba(31,41,51,.12); border-radius:8px; background:#fff; display:grid; gap:5px; }
+    .selected-region span { color:var(--muted); font-size:12px; font-weight:800; }
+    .selected-region strong { color:var(--ink); font-size:18px; line-height:1.25; overflow-wrap:anywhere; }
+    .push-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:10px; }
+    .push-item { padding:12px; border:1px solid rgba(31,41,51,.12); border-radius:8px; background:#fff; display:grid; gap:5px; }
+    .push-item span { color:var(--muted); font-size:12px; font-weight:800; }
+    .push-item strong { color:var(--ink); font-size:15px; line-height:1.35; overflow-wrap:anywhere; }
+    label { display:grid; gap:5px; color:var(--muted); font-size:12px; font-weight:800; }
+    input { width:100%; border:1px solid rgba(31,41,51,.14); border-radius:8px; padding:11px 12px; background:#fff; color:var(--ink); font:inherit; font-weight:700; }
     button { border:0; border-radius:12px; padding:11px 14px; font-weight:800; cursor:pointer; color:#fff; background:var(--accent); }
     button.secondary { background:rgba(31,41,51,.11); color:var(--ink); }
+    @media (max-width:640px){
+      html,body{width:100%;max-width:100%;overflow-x:hidden;}
+      main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;}
+      .card{width:100%;min-width:0;border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(31,41,51,.06);}
+      .page-head,.section-head{display:grid;gap:10px;}
+      h1{font-size:22px;line-height:1.25;overflow-wrap:anywhere;}
+      h2{font-size:18px;line-height:1.25;}
+      .status{min-width:0;border-radius:10px;overflow-wrap:anywhere;}
+      .account-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+      .account-toggle{width:100%;min-width:0;border-radius:8px;padding:10px 8px;}
+      .map-canvas{min-height:240px;}
+      .selected-region strong{font-size:16px;}
+      .push-grid{grid-template-columns:1fr;}
+      .actions{display:grid;grid-template-columns:1fr;gap:7px;}
+      button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;white-space:normal;}
+      .muted{font-size:12px;line-height:1.45;overflow-wrap:anywhere;}
+    }
+    @media (max-width:380px){
+      main{padding:8px;}
+      .card{padding:12px;}
+      h1{font-size:20px;}
+      .account-strip{grid-template-columns:1fr;}
+    }
   </style>
 </head>
 <body>
 <main>
   <section class="card">
-    <h1>Login Flow</h1>
-    <p class="muted">이 페이지에서 로그인한 세션을 notice-flow와 dm-test가 공유합니다.</p>
+    <div class="page-head">
+      <div>
+        <h1>Login Flow</h1>
+        <p class="muted">이 페이지에서 로그인한 세션을 notice-flow, dm-flow, notification-flow가 공유합니다.</p>
+      </div>
+      <div class="page-tools">
+        <div id="notificationBellMount"></div>
+      </div>
+    </div>
     <div id="status" class="status" style="margin-top:10px">준비 중</div>
   </section>
 
   <section class="card">
-    <h2>테스트 계정 선택</h2>
-    <div id="accountGrid" class="account-strip"></div>
-    <div id="accountHint" class="muted">로그인할 유저를 선택하세요.</div>
+    <h2>Google 로그인</h2>
+    <div id="accountHint" class="muted">실제 Firebase Google 계정으로 로그인하세요.</div>
+    <div class="actions">
+      <button id="googleLoginButton" type="button">Google로 로그인</button>
+      <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
+    </div>
+    <div id="onboardingPanel" class="onboarding">
+      <h2 style="margin-top:14px">온보딩 완료</h2>
+      <p class="muted">신규 계정은 지역 좌표를 저장해야 Notice Flow와 DM Flow에 들어갈 수 있습니다.</p>
+      <div class="map-shell">
+        <div id="mapStatus" class="map-status">지도 설정 확인 전입니다.</div>
+        <div id="onboardingMap" class="map-canvas" aria-label="온보딩 위치 선택 지도"></div>
+        <div class="actions">
+          <button id="useCurrentLocationButton" type="button" class="secondary">현재 위치 사용</button>
+          <button id="resetLocationButton" type="button" class="secondary">기본 위치로 이동</button>
+        </div>
+        <div class="selected-region">
+          <span>선택된 지역</span>
+          <strong id="selectedRegionName">지역명을 확인하는 중입니다.</strong>
+        </div>
+      </div>
+      <input id="onboardingX" type="hidden" value="127.1086228">
+      <input id="onboardingY" type="hidden" value="37.4012191">
+      <div class="actions">
+        <button id="completeOnboardingButton" type="button">온보딩 완료</button>
+      </div>
+    </div>
     <div class="actions">
       <button id="goNoticeButton" class="secondary">Notice Flow 열기</button>
-      <button id="goDmButton" class="secondary">DM Test 열기</button>
+      <button id="goDmButton" class="secondary">DM Flow 열기</button>
+      <button id="goNotificationFlowButton" class="secondary">Notification Flow 열기</button>
       <button id="goRedirectButton">요청된 경로로 이동</button>
     </div>
   </section>
+
+  <section class="card">
+    <div class="section-head">
+      <div>
+        <h2>웹 알림 테스트</h2>
+        <p class="muted">온보딩 완료 후 브라우저 알림 권한을 허용하고, 실제 FCM 토큰을 기존 알림 API에 저장합니다.</p>
+      </div>
+    </div>
+    <div class="push-grid">
+      <div class="push-item">
+        <span>브라우저 지원</span>
+        <strong id="pushSupportState">확인 전</strong>
+      </div>
+      <div class="push-item">
+        <span>알림 권한</span>
+        <strong id="pushPermissionState">확인 전</strong>
+      </div>
+      <div class="push-item">
+        <span>토큰 등록 상태</span>
+        <strong id="pushRegistrationState">로그인 후 등록할 수 있습니다.</strong>
+      </div>
+      <div class="push-item">
+        <span>마지막 수신</span>
+        <strong id="pushForegroundState">아직 수신한 알림이 없습니다.</strong>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="registerWebPushButton" type="button" disabled>웹 알림 권한 허용 및 토큰 등록</button>
+      <button id="refreshPushStateButton" type="button" class="secondary">알림 상태 새로고침</button>
+    </div>
+    <div id="pushStatus" class="status" style="margin-top:10px">로그인 후 웹 알림 상태를 확인할 수 있습니다.</div>
+  </section>
 </main>
 
-<script>
-const BACKEND_BASE = window.location.origin;
-const EMULATOR_BASE = `${window.location.protocol}//${window.location.hostname}:9099`;
-const API_KEY = "fake-api-key";
-const PASSWORD = "Test1234!";
-const ACCOUNT_COUNT = 10;
-const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
-const query = new URLSearchParams(window.location.search);
-const redirectPath = (query.get("redirect") || "").trim() || "/notice-flow.html";
-const requestedRole = (query.get("role") || "").trim();
-let activeRole = null;
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    browserLocalPersistence,
+    signInWithPopup,
+    getRedirectResult,
+    onAuthStateChanged,
+    setPersistence,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import { FIREBASE_WEB_CONFIG } from "./firebase-web-config.js";
 
-const users = Object.fromEntries(Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
-  const n = index + 1;
-  return [`user${n}`, { label: `유저 ${n}`, email: `dm-user${n}@local.dev`, token: null, userId: null }];
-}));
+  const BACKEND_BASE = window.location.origin;
+    const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
+    const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
+    const query = new URLSearchParams(window.location.search);
+const redirectPath = (query.get("redirect") || "").trim() || "/notice-flow.html";
+const REAL_ROLE = "google";
+let auth = null;
+let firebaseUser = null;
+let currentSession = null;
+let activeRole = null;
+let pendingOnboardingRole = null;
+let onboardingMap = null;
+let onboardingMarker = null;
+let onboardingGeocoder = null;
+let onboardingMapConfig = null;
+let onboardingMapConfigPromise = null;
+let kakaoMapLoadPromise = null;
+let regionLookupSeq = 0;
+const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
+const users = { [REAL_ROLE]: { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null } };
 
 const el = (id) => document.getElementById(id);
 function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
+function setMapStatus(message, tone = "") { const node = el("mapStatus"); node.textContent = message; node.className = `map-status${tone ? ` ${tone}` : ""}`; }
+function setSelectedRegionName(message) { el("selectedRegionName").textContent = message; }
 
 async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
 async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
 
-function renderAccounts() {
-  const grid = el("accountGrid");
-  grid.innerHTML = "";
-  for (const [role, user] of Object.entries(users)) {
-    const button = document.createElement("button");
-    button.id = `${role}LoginButton`;
-    button.type = "button";
-    button.className = `account-toggle${activeRole === role ? " active" : ""}`;
-    button.textContent = user.label;
-    button.addEventListener("click", run(() => login(role)));
-    grid.appendChild(button);
-  }
+function renderSession() {
   const user = activeRole ? users[activeRole] : null;
+  const pendingUser = pendingOnboardingRole ? users[pendingOnboardingRole] : null;
   el("accountHint").textContent = user
     ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
-    : "로그인할 유저를 선택하세요.";
+    : pendingUser
+      ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
+      : "실제 Firebase Google 계정으로 로그인하세요.";
+  el("googleLoginButton").disabled = Boolean(activeRole || pendingOnboardingRole);
+  el("googleLogoutButton").disabled = !firebaseUser && !currentSession;
+  el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
+  if (pendingOnboardingRole) initOnboardingMap().catch((error) => setMapStatus(error.message || String(error), "bad"));
 }
 
-async function ensureEmulatorUser(role) {
-  const user = users[role];
-  const body = { email: user.email, password: PASSWORD, returnSecureToken: true };
-  const signIn = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-  });
-  if (signIn.status === 200) { user.token = signIn.body.idToken; return; }
-  const signUp = await request(`${EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-  });
-  if (signUp.status !== 200) throw new Error(`${user.label} 에뮬레이터 로그인 실패: ${JSON.stringify(signUp.body)}`);
-  user.token = signUp.body.idToken;
+function saveSession(session) {
+  currentSession = session;
+  try {
+    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify(session));
+    window.localStorage.setItem(ACTIVE_ROLE_KEY, REAL_ROLE);
+  } catch {}
+  window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
 }
 
-async function login(role) {
-  setStatus(`${users[role].label} 로그인 중...`);
-  await ensureEmulatorUser(role);
+function clearSession() {
+  currentSession = null;
+  activeRole = null;
+  pendingOnboardingRole = null;
+  users[REAL_ROLE] = { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null };
+  try {
+    window.localStorage.removeItem(REAL_SESSION_KEY);
+    window.localStorage.removeItem(ACTIVE_ROLE_KEY);
+  } catch {}
+  window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
+}
+
+function restoreSession() {
+  try {
+    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.firebaseIdToken) return null;
+    currentSession = parsed;
+    users[REAL_ROLE] = {
+      label: parsed.nickname || parsed.email || "Google 사용자",
+      email: parsed.email || "",
+      token: parsed.firebaseIdToken,
+      userId: parsed.userId || null,
+      registrationStatus: parsed.registrationStatus || null
+    };
+    if (parsed.registrationStatus === "COMPLETED" && parsed.userId) {
+      activeRole = REAL_ROLE;
+    } else {
+      pendingOnboardingRole = REAL_ROLE;
+    }
+    return parsed;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+function buildSession(token, data, fallbackUser = {}) {
+  return {
+    firebaseIdToken: token,
+    firebaseUid: data.firebaseUid || fallbackUser.uid || "",
+    email: data.email || fallbackUser.email || "",
+    nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || "Google 사용자",
+    profileImageUrl: data.profileImageUrl || fallbackUser.photoURL || "",
+    userId: data.id || null,
+    registrationStatus: data.registrationStatus || null
+  };
+}
+
+async function syncBackendLogin(token, fallbackUser = {}) {
   const response = await request(`${BACKEND_BASE}/api/auth/login`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ firebaseIdToken: token })
   });
-  if (response.status !== 200) throw new Error(`백엔드 로그인 실패: ${JSON.stringify(response.body)}`);
-  users[role].userId = response.body?.data?.id;
+  if (response.status !== 200) {
+    clearSession();
+    renderSession();
+    throw new Error(`백엔드 로그인 실패: ${JSON.stringify(response.body)}`);
+  }
+  const data = response.body?.data || {};
+  const session = buildSession(token, data, fallbackUser);
+  saveSession(session);
+  users[REAL_ROLE] = {
+    label: session.nickname || session.email || "Google 사용자",
+    email: session.email,
+    token,
+    userId: session.userId,
+    registrationStatus: session.registrationStatus
+  };
+  if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
+    activeRole = null;
+    pendingOnboardingRole = REAL_ROLE;
+    renderSession();
+    setStatus(`${users[REAL_ROLE].label} 온보딩이 필요합니다. 위치를 선택하고 온보딩을 완료하세요.`, "bad");
+    return;
+  }
+  activeRole = REAL_ROLE;
+  pendingOnboardingRole = null;
+  renderSession();
+  setStatus(`${users[REAL_ROLE].label} 로그인 완료`, "good");
+}
+
+  async function loadFirebaseAuth() {
+  const config = FIREBASE_WEB_CONFIG;
+  for (const key of ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"]) {
+    if (!config[key]) throw new Error(`Firebase Web 설정 누락: ${key}`);
+  }
+  const app = initializeApp(config);
+  auth = getAuth(app);
+  await setPersistence(auth, browserLocalPersistence);
+  return auth;
+}
+
+async function startGoogleLogin() {
+  if (!auth) await loadFirebaseAuth();
+  setStatus("Google 로그인 창을 여는 중입니다...");
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const popupProbe = window.open("", "pogun-google-login-probe", "popup=yes,width=520,height=720");
+  if (!popupProbe) {
+    throw new Error("브라우저가 로그인 팝업을 차단했습니다. 주소창 또는 브라우저 설정에서 팝업을 허용한 뒤 다시 시도하세요.");
+  }
+  popupProbe.close();
+  try {
+    const result = await signInWithPopup(auth, provider);
+    if (!result?.user) throw new Error("Firebase 로그인 결과에 사용자가 없습니다.");
+    await handleFirebaseUser(result.user, true);
+  } catch (error) {
+    if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+      throw new Error("브라우저가 로그인 팝업을 차단했습니다. 팝업 허용 후 다시 시도하세요.");
+    }
+    if (error?.code === "auth/popup-closed-by-user") {
+      throw new Error("Google 로그인 창이 닫혔습니다. 다시 시도하세요.");
+    }
+    throw error;
+  }
+}
+
+async function handleFirebaseUser(user, forceRefresh = false) {
+  if (!user) {
+    restoreSession();
+    renderSession();
+    return;
+  }
+  firebaseUser = user;
+  setStatus("Firebase 토큰 확인 중...");
+  try {
+    const token = await user.getIdToken(forceRefresh);
+    await syncBackendLogin(token, user);
+  } catch (error) {
+    clearSession();
+    renderSession();
+    throw error;
+  }
+}
+
+async function completeOnboarding() {
+  const role = pendingOnboardingRole || activeRole;
+  if (!role) throw new Error("먼저 온보딩할 계정을 선택하세요.");
+  const user = users[role];
+  if (!user.token) throw new Error("Firebase 토큰이 없습니다. 다시 로그인하세요.");
+  const x = Number(el("onboardingX").value);
+  const y = Number(el("onboardingY").value);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("좌표는 숫자로 입력하세요.");
+  setStatus(`${user.label} 온보딩 완료 처리 중...`);
+  const response = await request(`${BACKEND_BASE}/api/auth/onboarding/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+    body: JSON.stringify({ x, y })
+  });
+  if (response.status !== 200) throw new Error(`온보딩 완료 실패: ${JSON.stringify(response.body)}`);
+  const data = response.body?.data || {};
+  user.userId = data.id || null;
+  user.registrationStatus = data.registrationStatus || "COMPLETED";
+  if (!user.userId) throw new Error(`온보딩 응답에 사용자 ID가 없습니다: ${JSON.stringify(response.body)}`);
+  saveSession(buildSession(user.token, data, firebaseUser || {}));
   activeRole = role;
-  try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
-  renderAccounts();
-  setStatus(`${users[role].label} 로그인 완료`, "good");
+  pendingOnboardingRole = null;
+  renderSession();
+  setStatus(`${user.label} 온보딩 완료 · 로그인 준비됨`, "good");
+}
+
+async function loadOnboardingMapConfig() {
+  if (onboardingMapConfig) return onboardingMapConfig;
+  if (!onboardingMapConfigPromise) {
+    onboardingMapConfigPromise = request(`${BACKEND_BASE}/api/auth/onboarding/map-config`)
+      .then((response) => {
+        if (response.status !== 200) throw new Error(`지도 설정 조회 실패: ${JSON.stringify(response.body)}`);
+        onboardingMapConfig = response.body?.data || {};
+        return onboardingMapConfig;
+      });
+  }
+  return onboardingMapConfigPromise;
+}
+
+function currentLocationFromInputs() {
+  const x = Number(el("onboardingX").value);
+  const y = Number(el("onboardingY").value);
+  return {
+    x: Number.isFinite(x) ? x : DEFAULT_LOCATION.x,
+    y: Number.isFinite(y) ? y : DEFAULT_LOCATION.y
+  };
+}
+
+function setCoordinateInputs(x, y) {
+  el("onboardingX").value = Number(x).toFixed(7);
+  el("onboardingY").value = Number(y).toFixed(7);
+}
+
+function loadKakaoMapSdk(appKey) {
+  if (window.kakao?.maps) return Promise.resolve();
+  if (kakaoMapLoadPromise) return kakaoMapLoadPromise;
+  kakaoMapLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false&libraries=services`;
+    script.async = true;
+    script.onload = () => window.kakao.maps.load(resolve);
+    script.onerror = () => reject(new Error("카카오 지도 SDK 로딩 실패. JavaScript 키와 도메인 등록을 확인하세요."));
+    document.head.appendChild(script);
+  });
+  return kakaoMapLoadPromise;
+}
+
+function moveMapTo(x, y) {
+  setCoordinateInputs(x, y);
+  if (!onboardingMap || !window.kakao?.maps) return;
+  const position = new window.kakao.maps.LatLng(y, x);
+  onboardingMap.setCenter(position);
+  onboardingMarker.setPosition(position);
+  updateSelectedRegionName(x, y);
+}
+
+function updateSelectedRegionName(x, y) {
+  if (!onboardingGeocoder || !window.kakao?.maps?.services) {
+    setSelectedRegionName("지역명 확인 대기 중");
+    return;
+  }
+  const seq = ++regionLookupSeq;
+  setSelectedRegionName("지역명을 확인하는 중입니다.");
+  onboardingGeocoder.coord2RegionCode(x, y, (result, status) => {
+    if (seq !== regionLookupSeq) return;
+    if (status !== window.kakao.maps.services.Status.OK || !Array.isArray(result) || result.length === 0) {
+      setSelectedRegionName("지역명을 확인할 수 없습니다.");
+      return;
+    }
+    const region = result.find((item) => item.region_type === "H") || result[0];
+    setSelectedRegionName(region.address_name || "지역명을 확인할 수 없습니다.");
+  });
+}
+
+async function initOnboardingMap() {
+  const config = await loadOnboardingMapConfig();
+  const restState = config.kakaoRestKeyConfigured ? "REST 키 설정됨" : "REST 키 없음";
+  const jsState = config.kakaoJavascriptKeyConfigured ? "지도 JavaScript 키 설정됨" : "지도 JavaScript 키 없음";
+  if (!config.kakaoJavascriptKeyConfigured || !config.kakaoJavascriptKey) {
+    setSelectedRegionName("지도 JavaScript 키가 없어 지역명을 확인할 수 없습니다.");
+    setMapStatus(`${restState} · ${jsState}. 카카오 지도 JavaScript 키를 설정하세요.`, config.kakaoRestKeyConfigured ? "" : "bad");
+    return;
+  }
+  await loadKakaoMapSdk(config.kakaoJavascriptKey);
+  const { x, y } = currentLocationFromInputs();
+  const center = new window.kakao.maps.LatLng(y, x);
+  const container = el("onboardingMap");
+  if (!onboardingMap) {
+    onboardingMap = new window.kakao.maps.Map(container, { center, level: 4 });
+    onboardingMarker = new window.kakao.maps.Marker({ position: center, map: onboardingMap });
+    onboardingGeocoder = new window.kakao.maps.services.Geocoder();
+    window.kakao.maps.event.addListener(onboardingMap, "click", (event) => {
+      const latLng = event.latLng;
+      moveMapTo(latLng.getLng(), latLng.getLat());
+      setMapStatus("지도에서 선택한 위치의 지역명을 확인했습니다.", "good");
+    });
+  }
+  moveMapTo(x, y);
+  onboardingMap.relayout();
+  setMapStatus(`${restState} · ${jsState}. 지도를 클릭해 지역을 선택하세요.`, "good");
+}
+
+function useCurrentLocation() {
+  if (!navigator.geolocation) throw new Error("이 브라우저는 현재 위치 조회를 지원하지 않습니다.");
+  setMapStatus("현재 위치를 확인하는 중입니다...");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      moveMapTo(position.coords.longitude, position.coords.latitude);
+      setMapStatus("현재 위치의 지역명을 확인했습니다.", "good");
+    },
+    (error) => setMapStatus(`현재 위치 조회 실패: ${error.message}`, "bad"),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+}
+
+function assertCanNavigate() {
+  if (pendingOnboardingRole) throw new Error("온보딩을 먼저 완료하세요.");
+  if (!activeRole || !users[activeRole]?.userId) throw new Error("먼저 로그인을 완료하세요.");
 }
 
 function targetUrl(pathname) {
@@ -117,14 +497,15 @@ function targetUrl(pathname) {
   if (isAbsolute) return pathname;
   const prefix = pathname.startsWith("/") ? "" : "/";
   const hasQuery = pathname.includes("?");
-  const roleParam = activeRole ? `role=${encodeURIComponent(activeRole)}` : "";
+  const roleParam = activeRole ? `role=${encodeURIComponent(REAL_ROLE)}` : "";
   const tail = roleParam ? (hasQuery ? `&${roleParam}` : `?${roleParam}`) : "";
   return `${window.location.origin}${prefix}${pathname}${tail}`;
 }
 
-function goNotice() { window.location.href = targetUrl("/notice-flow.html"); }
-function goDm() { window.location.href = targetUrl("/dm-test.html"); }
-function goRedirect() { window.location.href = targetUrl(redirectPath); }
+function goNotice() { assertCanNavigate(); window.location.href = targetUrl("/notice-flow.html"); }
+function goDm() { assertCanNavigate(); window.location.href = targetUrl("/dm-flow.html"); }
+function goNotificationFlow() { assertCanNavigate(); window.location.href = targetUrl("/notification-flow.html"); }
+function goRedirect() { assertCanNavigate(); window.location.href = targetUrl(redirectPath); }
 
 function run(handler) {
   return async () => {
@@ -133,20 +514,150 @@ function run(handler) {
   };
 }
 
-el("goNoticeButton").addEventListener("click", goNotice);
-el("goDmButton").addEventListener("click", goDm);
-el("goRedirectButton").addEventListener("click", goRedirect);
+el("goNoticeButton").addEventListener("click", run(goNotice));
+el("goDmButton").addEventListener("click", run(goDm));
+el("goNotificationFlowButton").addEventListener("click", run(goNotificationFlow));
+el("goRedirectButton").addEventListener("click", run(goRedirect));
+el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
+el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+el("googleLogoutButton").addEventListener("click", run(async () => {
+  if (auth) await signOut(auth);
+  clearSession();
+  renderSession();
+  setStatus("로그아웃 완료", "good");
+}));
+el("useCurrentLocationButton").addEventListener("click", run(useCurrentLocation));
+el("resetLocationButton").addEventListener("click", run(() => {
+  moveMapTo(DEFAULT_LOCATION.x, DEFAULT_LOCATION.y);
+  setMapStatus("기본 위치의 지역명을 확인했습니다.", "good");
+}));
+el("onboardingX").addEventListener("change", () => moveMapTo(currentLocationFromInputs().x, currentLocationFromInputs().y));
+el("onboardingY").addEventListener("change", () => moveMapTo(currentLocationFromInputs().x, currentLocationFromInputs().y));
 
-renderAccounts();
-setStatus("먼저 로그인하세요.");
+restoreSession();
+renderSession();
+setStatus("Google로 로그인하세요.");
 
-const savedRole = (() => { try { return window.localStorage.getItem(ACTIVE_ROLE_KEY) || ""; } catch { return ""; } })();
-const initialRole = (requestedRole && Object.prototype.hasOwnProperty.call(users, requestedRole))
-  ? requestedRole
-  : (savedRole && Object.prototype.hasOwnProperty.call(users, savedRole) ? savedRole : "");
-if (initialRole) {
-  run(() => login(initialRole))();
+run(async () => {
+  await loadFirebaseAuth();
+  try {
+    const result = await getRedirectResult(auth);
+    if (result?.user) {
+      await handleFirebaseUser(result.user, true);
+      return;
+    }
+  } catch (error) {
+    clearSession();
+    throw error;
+  }
+  onAuthStateChanged(auth, (user) => {
+    if (!user) return;
+    handleFirebaseUser(user).catch((error) => {
+      console.error(error);
+      setStatus(error.message || String(error), "bad");
+    });
+  });
+})();
+</script>
+<script type="module">
+import { getStoredSession, maskToken, mountNotificationBell, refreshNotificationBell } from "./notification-web.js";
+import { getPushSupportState, getStoredRegisteredPushToken, initForegroundNotifications, registerWebPushToken, syncWebPushTokenIfPossible } from "./notification-push.js";
+
+const el = (id) => document.getElementById(id);
+let lastRegisteredToken = "";
+
+function setPushStatus(message, tone = "") {
+  const node = el("pushStatus");
+  node.textContent = message;
+  node.className = `status${tone ? ` ${tone}` : ""}`;
 }
+
+function permissionLabel(permission) {
+  return ({
+    granted: "허용됨",
+    denied: "차단됨",
+    default: "요청 전",
+    unsupported: "지원 안 함"
+  })[permission] || permission;
+}
+
+async function refreshPushUi() {
+  const session = getStoredSession();
+  const state = await getPushSupportState();
+  let knownToken = lastRegisteredToken || getStoredRegisteredPushToken();
+  await refreshNotificationBell("notificationBellMount");
+
+  el("pushSupportState").textContent = state.supported
+    ? "FCM 웹 푸시 지원됨"
+    : "이 브라우저에서는 FCM 웹 푸시를 지원하지 않습니다.";
+  el("pushPermissionState").textContent = permissionLabel(state.permission);
+
+  if (!session?.firebaseIdToken) {
+    lastRegisteredToken = "";
+    el("pushRegistrationState").textContent = "로그인 후 등록할 수 있습니다.";
+    el("registerWebPushButton").disabled = true;
+    return;
+  }
+  if (!session?.userId) {
+    lastRegisteredToken = "";
+    el("pushRegistrationState").textContent = "온보딩 완료 후 등록할 수 있습니다.";
+    el("registerWebPushButton").disabled = true;
+    return;
+  }
+
+  el("registerWebPushButton").disabled = !state.supported;
+  if (state.supported && state.permission === "granted") {
+    try {
+      const synced = await syncWebPushTokenIfPossible();
+      if (synced?.token) {
+        knownToken = synced.token;
+      }
+    } catch (error) {
+      setPushStatus(error.message || String(error), "bad");
+    }
+  }
+  lastRegisteredToken = knownToken || "";
+  el("pushRegistrationState").textContent = lastRegisteredToken
+    ? `등록 완료 · ${maskToken(lastRegisteredToken)}`
+    : state.permission === "granted"
+      ? "토큰 확인 중이거나 다시 등록이 필요합니다."
+      : "아직 등록하지 않았습니다.";
+}
+
+mountNotificationBell("notificationBellMount");
+initForegroundNotifications({
+  onMessageReceived(payload, built) {
+    el("pushForegroundState").textContent = `${built.title}${built.body ? ` · ${built.body}` : ""}`;
+    setPushStatus(`포그라운드 알림 수신 · ${built.title}`, "good");
+    refreshNotificationBell("notificationBellMount").catch(() => {});
+  }
+}).catch(() => {});
+
+el("registerWebPushButton").addEventListener("click", async () => {
+  try {
+    const result = await registerWebPushToken();
+    lastRegisteredToken = result.token;
+    setPushStatus(`FCM 토큰 등록 완료 · ${maskToken(result.token)}`, "good");
+    await refreshPushUi();
+  } catch (error) {
+    setPushStatus(error.message || String(error), "bad");
+    await refreshPushUi();
+  }
+});
+
+el("refreshPushStateButton").addEventListener("click", () => {
+  refreshPushUi().then(() => {
+    setPushStatus("알림 상태를 새로고침했습니다.", "good");
+  }).catch((error) => {
+    setPushStatus(error.message || String(error), "bad");
+  });
+});
+
+window.addEventListener("focus", () => refreshPushUi().catch(() => {}));
+window.addEventListener("pogun-auth-session-changed", () => refreshPushUi().catch(() => {}));
+window.addEventListener("notification-web:message", () => refreshPushUi().catch(() => {}));
+
+refreshPushUi().catch((error) => setPushStatus(error.message || String(error), "bad"));
 </script>
 </body>
 </html>

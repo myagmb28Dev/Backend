@@ -4,6 +4,8 @@ import com.example.pogun.dto.common.ApiResponse.ApiException;
 
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.dto.user.UpdateProfileRequest;
+import com.example.pogun.dto.user.UserAvailabilityResponse;
+import com.example.pogun.dto.user.UserAvailabilityUpdateRequest;
 import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
@@ -12,6 +14,7 @@ import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -74,6 +77,30 @@ public class UserService {
         return getProfileResponse(saved);
     }
 
+    public UserAvailabilityResponse getAvailability() {
+        User user = getCurrentUser();
+        return new UserAvailabilityResponse(
+                resolveAvailabilityStatus(user).name(),
+                user.getLastActiveAt()
+        );
+    }
+
+    public UserAvailabilityResponse updateAvailability(UserAvailabilityUpdateRequest request) {
+        User user = getCurrentUser();
+        if (request == null || request.getAvailabilityStatus() == null || request.getAvailabilityStatus().isBlank()) {
+            throw ApiException.badRequest("MISSING_AVAILABILITY_STATUS", "가용 상태는 필수입니다.");
+        }
+        UserAvailabilityStatus availabilityStatus;
+        try {
+            availabilityStatus = UserAvailabilityStatus.valueOf(request.getAvailabilityStatus().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_AVAILABILITY_STATUS", "올바르지 않은 가용 상태입니다.");
+        }
+        user.setAvailabilityStatus(availabilityStatus);
+        User saved = userRepository.save(user);
+        return new UserAvailabilityResponse(resolveAvailabilityStatus(saved).name(), saved.getLastActiveAt());
+    }
+
     public List<UserPetNoticeSummaryResponse> myPetNotices() {
         User user = getCurrentUser();
         return petNoticeRepository.findByAuthorOrderByCreatedAtDesc(user).stream()
@@ -101,8 +128,13 @@ public class UserService {
                 user.getAuthProvider() != null ? user.getAuthProvider() : "GOOGLE",
                 getLinkedProviders(user),
                 user.getRole().name(),
-                user.getStatus().name()
+                user.getStatus().name(),
+                resolveAvailabilityStatus(user).name()
         );
+    }
+
+    private UserAvailabilityStatus resolveAvailabilityStatus(User user) {
+        return user.getAvailabilityStatus() != null ? user.getAvailabilityStatus() : UserAvailabilityStatus.ONLINE;
     }
 
     private RegionResponse buildRegionResponse(User user) {

@@ -2,11 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 
-const baseURL = 'http://localhost:8080';
+const baseURL = process.env.BASE_URL || 'http://localhost:8081';
+const repoRoot = path.resolve(__dirname, '..', '..');
 
 function loadToken() {
   return fs.readFileSync(
-    path.join(process.cwd(), '.local', 'emulator-firebase-id-token.txt'),
+    path.join(repoRoot, '.local', 'emulator-firebase-id-token.txt'),
     'utf8'
   ).trim();
 }

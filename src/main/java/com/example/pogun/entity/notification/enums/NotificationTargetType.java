@@ -5,6 +5,8 @@ package com.example.pogun.entity.notification.enums;
 
 public enum NotificationTargetType {
     PET_NOTICE,
+    NOTICE_CHAT_ROOM,
+    NOTICE_CHAT_MESSAGE,
     COMMUNITY_POST,
     COMMUNITY_COMMENT,
     REPORT,

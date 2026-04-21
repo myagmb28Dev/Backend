@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final Pattern DM_TEST_EMAIL_PATTERN = Pattern.compile("^dm-user(\\d+)@local\\.dev$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LOCAL_TEST_EMAIL_PATTERN = Pattern.compile("^(?:dm-user|playwright-user)(\\d+)@local\\.dev$", Pattern.CASE_INSENSITIVE);
     private static final String REGISTRATION_COMPLETED = "COMPLETED";
     private static final String REGISTRATION_PENDING_ONBOARDING = "PENDING_ONBOARDING";
     private static final long PENDING_SIGNUP_TTL_SECONDS = 60L * 60L * 24L;
@@ -70,6 +70,7 @@ public class AuthService {
                         existingUser.setNickname(resolvedNickname);
                         existingUser.setProfileImageUrl(picture);
                         existingUser.setAuthProvider(normalizedProvider);
+                        existingUser.setLastActiveAt(Instant.now());
                         existingUser.setStatus(UserStatus.ACTIVE);
                         return userRepository.save(existingUser);
                     })
@@ -80,6 +81,7 @@ public class AuthService {
                                 existingByEmail.setNickname(resolvedNickname);
                                 existingByEmail.setProfileImageUrl(picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
+                                existingByEmail.setLastActiveAt(Instant.now());
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
                                 return userRepository.save(existingByEmail);
                             })
@@ -100,6 +102,9 @@ public class AuthService {
                     ? String.valueOf(firebaseAuthException.getAuthErrorCode())
                     : e.getMessage();
             throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + detail);
+        } catch (Exception e) {
+            log.error("소셜 로그인 처리 중 예기치 않은 오류 발생", e);
+            throw e;
         }
     }
 
@@ -136,6 +141,7 @@ public class AuthService {
                 .region2DepthName(region.region2DepthName())
                 .region3DepthName(region.region3DepthName())
                 .authProvider(pending.getProvider())
+                .lastActiveAt(Instant.now())
                 .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
                 .build();
@@ -155,7 +161,7 @@ public class AuthService {
             return displayName.trim();
         }
         if (email != null) {
-            Matcher matcher = DM_TEST_EMAIL_PATTERN.matcher(email.trim());
+            Matcher matcher = LOCAL_TEST_EMAIL_PATTERN.matcher(email.trim());
             if (matcher.matches()) {
                 return "유저" + matcher.group(1);
             }

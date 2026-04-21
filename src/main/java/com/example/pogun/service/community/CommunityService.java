@@ -24,13 +24,19 @@ import com.example.pogun.entity.community.CommunityPostImage;
 import com.example.pogun.entity.community.CommunityPostReaction;
 import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.community.CommunityPostVote;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.UserFollow;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostReactionRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityPostVoteRepository;
+import com.example.pogun.repository.user.UserFollowRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -65,6 +71,8 @@ public class CommunityService {
     private final CommunityPostReactionRepository communityPostReactionRepository;
     private final LocalImageStorageService localImageStorageService;
     private final UserRepository userRepository;
+    private final UserFollowRepository userFollowRepository;
+    private final NotificationService notificationService;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -134,6 +142,7 @@ public class CommunityService {
         attachImages(author.getId(), post, imageFiles, true);
 
         CommunityPost saved = communityPostRepository.save(post);
+        notifyCommunityPostCreated(saved, author);
         return new CommunityPostCreateResponse(saved.getId(), saved.getTitle(), saved.getCategory(), List.copyOf(saved.getTags()));
     }
 
@@ -235,6 +244,7 @@ public class CommunityService {
                 .build();
 
         CommunityComment saved = communityCommentRepository.save(comment);
+        notifyCommentCreated(saved, author);
 
         return new CommunityCommentCreateResponse(saved.getId(), post.getId(), parentComment == null ? null : parentComment.getId());
     }
@@ -290,6 +300,9 @@ public class CommunityService {
         long likeCountDelta = resolveLikeCountDelta(previousReaction, reaction);
         if (likeCountDelta != 0L) {
             communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+        }
+        if (likeCountDelta > 0) {
+            notifyPostLiked(post, user);
         }
 
         return new CommunityReactionResponse(post.getId(), reaction, "좋아요/반응 처리 성공");
@@ -504,6 +517,93 @@ public class CommunityService {
 
     private boolean isLikeReaction(String reactionType) {
         return reactionType != null && reactionType.trim().equalsIgnoreCase("LIKE");
+    }
+
+    private void notifyCommunityPostCreated(CommunityPost post, User author) {
+        Map<String, String> metadata = Map.of(
+                "postId", post.getId().toString(),
+                "category", post.getCategory()
+        );
+        for (UserFollow follow : userFollowRepository.findByFollowingOrderByCreatedAtDesc(author)) {
+            notificationService.createAndSendNotification(
+                    follow.getFollower(),
+                    author,
+                    NotificationType.FOLLOWING_POST,
+                    NotificationTargetType.COMMUNITY_POST,
+                    post.getId(),
+                    author.getNickname() + "님이 새 글을 작성했습니다.",
+                    post.getTitle(),
+                    NotificationPriority.NORMAL,
+                    "following-post:" + follow.getFollower().getId() + ":" + post.getId(),
+                    metadata
+            );
+        }
+        if ("NOTICE".equalsIgnoreCase(post.getCategory())) {
+            for (User user : userRepository.findAll()) {
+                notificationService.createAndSendNotification(
+                        user,
+                        author,
+                        NotificationType.COMMUNITY_NOTICE,
+                        NotificationTargetType.COMMUNITY_POST,
+                        post.getId(),
+                        "커뮤니티 공지",
+                        post.getTitle(),
+                        NotificationPriority.HIGH,
+                        "community-notice:" + user.getId() + ":" + post.getId(),
+                        metadata
+                );
+            }
+        }
+    }
+
+    private void notifyCommentCreated(CommunityComment comment, User actor) {
+        CommunityPost post = comment.getPost();
+        Map<String, String> metadata = Map.of(
+                "postId", post.getId().toString(),
+                "commentId", comment.getId().toString()
+        );
+        notificationService.createAndSendNotification(
+                post.getAuthor(),
+                actor,
+                NotificationType.COMMUNITY_POST_COMMENT,
+                NotificationTargetType.COMMUNITY_COMMENT,
+                comment.getId(),
+                "내 글에 댓글이 달렸습니다.",
+                post.getTitle() + " 글에 댓글이 달렸습니다.",
+                NotificationPriority.NORMAL,
+                "community-post-comment:" + post.getAuthor().getId() + ":" + comment.getId(),
+                metadata
+        );
+        CommunityComment parentComment = comment.getParentComment();
+        if (parentComment != null) {
+            notificationService.createAndSendNotification(
+                    parentComment.getAuthor(),
+                    actor,
+                    NotificationType.COMMUNITY_COMMENT_REPLY,
+                    NotificationTargetType.COMMUNITY_COMMENT,
+                    comment.getId(),
+                    "내 댓글에 답글이 달렸습니다.",
+                    post.getTitle() + " 글의 댓글에 답글이 달렸습니다.",
+                    NotificationPriority.NORMAL,
+                    "community-comment-reply:" + parentComment.getAuthor().getId() + ":" + comment.getId(),
+                    metadata
+            );
+        }
+    }
+
+    private void notifyPostLiked(CommunityPost post, User actor) {
+        notificationService.createAndSendNotification(
+                post.getAuthor(),
+                actor,
+                NotificationType.COMMUNITY_POST_LIKE,
+                NotificationTargetType.COMMUNITY_POST,
+                post.getId(),
+                "내 글을 좋아합니다.",
+                actor.getNickname() + "님이 " + post.getTitle() + " 글을 좋아합니다.",
+                NotificationPriority.NORMAL,
+                "community-post-like:" + post.getAuthor().getId() + ":" + actor.getId() + ":" + post.getId(),
+                Map.of("postId", post.getId().toString())
+        );
     }
 
     private void softDeleteCommentsForPost(CommunityPost post) {

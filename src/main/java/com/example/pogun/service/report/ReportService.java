@@ -1,6 +1,11 @@
 package com.example.pogun.service.report;
 
 import com.example.pogun.dto.report.ReportResponse;
+import com.example.pogun.entity.community.CommunityComment;
+import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.report.Report;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.report.enums.ReportStatus;
@@ -12,6 +17,7 @@ import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -37,6 +43,7 @@ public class ReportService {
     private final CommunityCommentRepository communityCommentRepository;
     private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     // 신고는 단일 테이블로 관리하되, 저장 전에 대상 존재 여부와 활성 중복 신고를 함께 차단한다.
     @Transactional
@@ -76,7 +83,11 @@ public class ReportService {
         } else {
             report.setReviewedAt(null);
         }
-        return toReportResponse(reportRepository.save(report));
+        Report saved = reportRepository.save(report);
+        if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
+            notifyReportResult(saved);
+        }
+        return toReportResponse(saved);
     }
 
     private User getCurrentUser() {
@@ -149,5 +160,51 @@ public class ReportService {
 
     private ReportResponse toReportResponse(Report report) {
         return new ReportResponse(report.getId(), report.getReporter().getId(), report.getTargetType().name(), report.getTargetId(), report.getReason(), report.getDescription(), report.getStatus().name(), report.getReviewedAt(), report.getCreatedAt());
+    }
+
+    private void notifyReportResult(Report report) {
+        String statusLabel = report.getStatus() == ReportStatus.RESOLVED ? "처리 완료" : "반려";
+        notificationService.createAndSendNotification(
+                report.getReporter(),
+                null,
+                NotificationType.REPORT_RESULT,
+                NotificationTargetType.REPORT,
+                report.getId(),
+                "신고 처리 결과가 도착했습니다.",
+                "신고가 " + statusLabel + "되었습니다.",
+                NotificationPriority.HIGH,
+                "report-result:reporter:" + report.getReporter().getId() + ":" + report.getId() + ":" + report.getStatus(),
+                Map.of("reportId", report.getId().toString(), "status", report.getStatus().name())
+        );
+
+        User targetAuthor = resolveCommunityTargetAuthor(report);
+        if (targetAuthor != null) {
+            notificationService.createAndSendNotification(
+                    targetAuthor,
+                    null,
+                    NotificationType.REPORT_RESULT,
+                    NotificationTargetType.REPORT,
+                    report.getId(),
+                    "내 커뮤니티 콘텐츠 신고 결과",
+                    "내 커뮤니티 콘텐츠에 대한 신고가 " + statusLabel + "되었습니다.",
+                    NotificationPriority.HIGH,
+                    "report-result:target:" + targetAuthor.getId() + ":" + report.getId() + ":" + report.getStatus(),
+                    Map.of("reportId", report.getId().toString(), "status", report.getStatus().name())
+            );
+        }
+    }
+
+    private User resolveCommunityTargetAuthor(Report report) {
+        if (report.getTargetType() == ReportTargetType.COMMUNITY_POST) {
+            return communityPostRepository.findById(report.getTargetId())
+                    .map(CommunityPost::getAuthor)
+                    .orElse(null);
+        }
+        if (report.getTargetType() == ReportTargetType.COMMUNITY_COMMENT) {
+            return communityCommentRepository.findById(report.getTargetId())
+                    .map(CommunityComment::getAuthor)
+                    .orElse(null);
+        }
+        return null;
     }
 }

@@ -26,6 +26,7 @@ public record NoticeChatRoomResponse(
         @Schema(description = "상단 고정 여부") Boolean pinned,
         @Schema(description = "채팅방 나간 시각") Instant leftAt,
         @Schema(description = "상대방 온라인 여부") Boolean opponentOnline,
+        @Schema(description = "상대방 가용 상태") String opponentAvailability,
         @Schema(description = "상대방 마지막 활동 시각") Instant opponentLastActiveAt,
         @Schema(description = "마지막으로 읽은 메시지 ID") UUID lastReadMessageId,
         @Schema(description = "마지막 읽음 시각") Instant lastReadAt,
