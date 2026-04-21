@@ -177,8 +177,10 @@ function renderRoomMeta(item) {
   if (!roomId) {
     return "";
   }
+  const roomName = String(item?.metadata?.roomName || "").trim();
   const shortRoomId = roomId.length > 8 ? roomId.slice(0, 8) : roomId;
-  return `<span class="pill">DM 방 ${escapeHtml(shortRoomId)}</span>
+  const label = roomName || `DM 방 ${shortRoomId}`;
+  return `<span class="pill">${escapeHtml(label)}</span>
           <a class="meta-link" href="/dm-flow.html?roomId=${encodeURIComponent(roomId)}">방 열기</a>`;
 }
 

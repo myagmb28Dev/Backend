@@ -12,6 +12,7 @@ import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.auth.FirebaseIdentityService;
+import com.example.pogun.service.user.UserPresenceService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -41,10 +42,12 @@ class StompAuthChannelInterceptorTest {
     private UserRepository userRepository;
     @Mock
     private NoticeChatRoomRepository noticeChatRoomRepository;
+        @Mock
+        private UserPresenceService userPresenceService;
 
     @Test
     void preSend_setsPrincipalOnConnect() throws Exception {
-        StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository);
+                StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
         when(firebaseIdentityService.verifyIdToken("token-value", true))
                 .thenReturn(new FirebaseIdentityService.FirebaseIdentity("firebase-uid", "tester@local.dev", "Tester", null, "password", List.of(), Map.of()));
 
@@ -62,7 +65,7 @@ class StompAuthChannelInterceptorTest {
 
     @Test
     void preSend_rejectsSubscriptionForNonParticipant() {
-        StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository);
+                StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
         User currentUser = user("current-uid", "current@test.dev", UserStatus.ACTIVE);
         User author = user("author-uid", "author@test.dev", UserStatus.ACTIVE);
         User guest = user("guest-uid", "guest@test.dev", UserStatus.ACTIVE);

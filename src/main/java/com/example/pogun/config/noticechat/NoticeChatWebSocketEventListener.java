@@ -1,5 +1,6 @@
 package com.example.pogun.config;
 
+import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
@@ -11,6 +12,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 @Component
 @RequiredArgsConstructor
 public class NoticeChatWebSocketEventListener {
+    private final NoticeChatService noticeChatService;
     private final UserPresenceService userPresenceService;
 
     @EventListener
@@ -21,6 +23,7 @@ public class NoticeChatWebSocketEventListener {
             return;
         }
         userPresenceService.markWebSocketConnected(firebaseUid, accessor.getSessionId());
+        noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
     }
 
     @EventListener
@@ -31,6 +34,7 @@ public class NoticeChatWebSocketEventListener {
             return;
         }
         userPresenceService.markWebSocketDisconnected(firebaseUid, accessor.getSessionId());
+        noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
     }
 
     private String resolveFirebaseUid(StompHeaderAccessor accessor) {

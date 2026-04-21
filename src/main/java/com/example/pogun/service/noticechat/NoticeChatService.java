@@ -505,6 +505,25 @@ public class NoticeChatService {
         return payload;
     }
 
+    @Transactional(readOnly = true)
+    public void publishPresenceUpdatesByFirebaseUid(String firebaseUid) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return;
+        }
+        userRepository.findByFirebaseUid(firebaseUid).ifPresent(this::publishPresenceUpdates);
+    }
+
+    @Transactional(readOnly = true)
+    public void publishPresenceUpdates(User user) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+        List<RoomUpdatePayload> payloads = noticeChatRoomRepository.findVisibleRoomsForUser(user.getId()).stream()
+                .map(this::buildRoomUpdatePayload)
+                .toList();
+        afterCommitOrNow(() -> payloads.forEach(this::broadcastRoomUpdate));
+    }
+
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return getUserByFirebaseUid(firebaseUid);
@@ -1017,10 +1036,20 @@ public class NoticeChatService {
                 "dm-message:" + opponent.getId() + ":" + message.getId(),
                 Map.of(
                         "roomId", room.getId().toString(),
+                        "roomName", resolveNotificationRoomName(room, sender),
                         "messageId", message.getId().toString(),
                         "senderUserId", sender.getId().toString()
                 )
         );
+    }
+
+    private String resolveNotificationRoomName(NoticeChatRoom room, User sender) {
+        String senderName = displayUserName(sender);
+        String noticeTitle = room != null && room.getNotice() != null ? trimToNull(room.getNotice().getTitle()) : null;
+        if (noticeTitle == null) {
+            return senderName;
+        }
+        return senderName + " · " + noticeTitle;
     }
 
     private String toPreview(NoticeChatMessage message) {

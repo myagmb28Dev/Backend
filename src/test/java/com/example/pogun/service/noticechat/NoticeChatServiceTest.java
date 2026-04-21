@@ -23,6 +23,8 @@ import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRep
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.notification.NotificationService;
+import com.example.pogun.service.user.UserPresenceService;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +78,10 @@ class NoticeChatServiceTest {
     private SimpMessagingTemplate simpMessagingTemplate;
     @Mock
     private LocalImageStorageService localImageStorageService;
+        @Mock
+        private NotificationService notificationService;
+        @Mock
+        private UserPresenceService userPresenceService;
 
     @InjectMocks
     private NoticeChatService noticeChatService;
@@ -94,6 +100,15 @@ class NoticeChatServiceTest {
         );
         lenient().when(participantStateRepository.findByRoomAndUser(any(NoticeChatRoom.class), any(User.class)))
                 .thenAnswer(invocation -> Optional.of(participantState(invocation.getArgument(0), invocation.getArgument(1))));
+        lenient().when(userPresenceService.snapshot(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            return new UserPresenceService.PresenceSnapshot(
+                    user != null && user.getStatus() == UserStatus.ACTIVE
+                            ? com.example.pogun.entity.user.enums.UserAvailabilityStatus.ONLINE
+                            : com.example.pogun.entity.user.enums.UserAvailabilityStatus.OFFLINE,
+                    user != null ? user.getLastActiveAt() : null
+            );
+        });
     }
 
     @AfterEach
@@ -217,7 +232,6 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
-        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
 
         var response = noticeChatService.updateSettings(roomId.toString(), request);
 
@@ -244,7 +258,6 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
-        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
 
         var response = noticeChatService.updateSettings(roomId.toString(), request);
 
@@ -263,7 +276,6 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
-        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(participantState(room, author)));
         when(localImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), file))
                 .thenReturn(variant("/uploads/notice-chat/rooms/test/room.webp"));
 

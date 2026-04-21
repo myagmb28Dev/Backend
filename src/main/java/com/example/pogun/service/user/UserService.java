@@ -19,6 +19,7 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class UserService {
     private final CommunityPostRepository communityPostRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
     private final LocalImageStorageService localImageStorageService;
+    private final NoticeChatService noticeChatService;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -98,6 +100,7 @@ public class UserService {
         }
         user.setAvailabilityStatus(availabilityStatus);
         User saved = userRepository.save(user);
+        noticeChatService.publishPresenceUpdates(saved);
         return new UserAvailabilityResponse(resolveAvailabilityStatus(saved).name(), saved.getLastActiveAt());
     }
 
