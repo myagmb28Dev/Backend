@@ -1,64 +1,124 @@
 package com.example.pogun.service.ai;
 
-import com.example.pogun.dto.ai.AiAnalysisCreateResponse;
-import com.example.pogun.dto.ai.AiAnalysisResultResponse;
-import com.example.pogun.dto.ai.AiPhotoUploadResponse;
-import com.example.pogun.dto.ai.AiRetryResponse;
-import com.example.pogun.dto.ai.AiSimilarPostsResponse;
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.entity.ai.AiAnalysis;
+import com.example.pogun.entity.ai.enums.AiAnalysisStatus;
+import com.example.pogun.entity.ai.enums.AiAnalysisTargetType;
+import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.repository.ai.AiAnalysisRepository;
+import com.example.pogun.repository.missingpet.PetNoticeRepository;
+import com.example.pogun.repository.shelterpet.ShelterPetRepository;
+import com.example.pogun.service.shelterpet.ShelterPublicApiClient;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-/**
- * 도메인 비즈니스 로직을 담당하는 AiService이다.
- */
 
+/**
+ * AI 분석 결과 수신과 후처리 로직이 붙을 자리이다.
+ */
 @Service
 @RequiredArgsConstructor
 public class AiService {
 
-    // 현재 AI 도메인은 업로드/요청/결과 계약을 먼저 고정한 상태이며, 실제 분석 파이프라인은 추후 연결 예정이다.
+    private final AiAnalysisRepository aiAnalysisRepository;
+    private final PetNoticeRepository petNoticeRepository;
+    private final ShelterPetRepository shelterPetRepository;
+    private final ShelterPublicApiClient shelterPublicApiClient;
 
-    public AiPhotoUploadResponse uploadPhoto(MultipartFile file) {
-        String filename = file.getOriginalFilename();
-        if (filename == null) filename = "unknown";
+    @Value("${app.ai.api-key:}")
+    private String aiApiKey;
 
-        return new AiPhotoUploadResponse(
-                "photo-" + System.currentTimeMillis(),
-                filename,
-                file.getSize(),
-                file.getContentType()
+    public AiAnalysisResultCallbackResponse saveMissingPetAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
+        PetNotice notice = petNoticeRepository.findById(parseNoticeId(missingPetId))
+                .orElseThrow(() -> ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다."));
+        if (Boolean.TRUE.equals(notice.getHidden())) {
+            throw ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다.");
+        }
+        verifyAiApiKey(apiKey);
+        return saveAnalysisResult(AiAnalysisTargetType.MISSING_PET, notice.getId().toString(), request);
+    }
+
+    public AiAnalysisResultCallbackResponse saveShelterAnalysisResult(String shelterId, String apiKey, AiAnalysisResultCallbackRequest request) {
+        if (shelterPetRepository.findById(shelterId).isEmpty()) {
+            shelterPublicApiClient.fetchShelterPet(shelterId);
+        }
+        verifyAiApiKey(apiKey);
+        return saveAnalysisResult(AiAnalysisTargetType.SHELTER, shelterId, request);
+    }
+
+    private AiAnalysisResultCallbackResponse saveAnalysisResult(AiAnalysisTargetType targetType, String targetId, AiAnalysisResultCallbackRequest request) {
+        AiAnalysis analysis = aiAnalysisRepository.findTopByTargetTypeAndTargetIdOrderByCreatedAtDesc(targetType, targetId)
+                .orElseGet(() -> AiAnalysis.builder()
+                        .targetType(targetType)
+                        .targetId(targetId)
+                        .features(new ArrayList<>())
+                        .similarNoticeIds(new ArrayList<>())
+                        .build());
+
+        analysis.setStatus(parseStatus(request.getStatus()));
+        analysis.setDetectedBreed(blankToNull(request.getBreed()));
+        analysis.setDetectedColor(blankToNull(request.getColor()));
+        analysis.setConfidence(request.getConfidence());
+        analysis.setProvider(blankToNull(request.getProvider()));
+        analysis.setErrorMessage(blankToNull(request.getErrorMessage()));
+        analysis.setCompletedAt(request.getAnalyzedAt() == null ? Instant.now() : request.getAnalyzedAt());
+        analysis.setFeatures(copyList(request.getFeatures()));
+        analysis.setSimilarNoticeIds(copyList(request.getSimilarNoticeIds()));
+
+        AiAnalysis saved = aiAnalysisRepository.save(analysis);
+        return new AiAnalysisResultCallbackResponse(
+                saved.getId().toString(),
+                saved.getTargetType().name(),
+                saved.getTargetId(),
+                saved.getStatus().name()
         );
     }
 
-    // 실제 큐 적재 대신 임시 analysis id 를 반환해 비동기 분석 API 계약만 먼저 유지한다.
-    public AiAnalysisCreateResponse requestAnalysis(Map<String, Object> request) {
-        return new AiAnalysisCreateResponse(
-                "analysis-1",
-                String.valueOf(request.getOrDefault("photoId", "photo-1")),
-                "PENDING"
-        );
+    public void verifyAiApiKey(String apiKey) {
+        if (aiApiKey == null || aiApiKey.isBlank()) {
+            throw ApiException.internal("AI_API_KEY_NOT_CONFIGURED", "AI API 키가 설정되지 않았습니다.");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            throw ApiException.unauthorized("AI_API_UNAUTHORIZED", "AI API 키가 필요합니다.");
+        }
+        if (!aiApiKey.equals(apiKey.trim())) {
+            throw ApiException.forbidden("AI_API_FORBIDDEN", "AI API 키가 올바르지 않습니다.");
+        }
     }
 
-    public AiAnalysisResultResponse getAnalysisResult(String analysisId) {
-        return new AiAnalysisResultResponse(
-                analysisId,
-                "SUCCESS",
-                List.of("흰색", "소형견", "귀가 접힘")
-        );
+    private AiAnalysisStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw ApiException.badRequest("INVALID_AI_STATUS", "status는 필수입니다.");
+        }
+        try {
+            return AiAnalysisStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_AI_STATUS", "올바르지 않은 AI 분석 상태입니다.");
+        }
     }
 
-    // 유사 공고 추천도 현재는 샘플 응답이며, 이후 분석 결과와 공고 매칭 로직으로 대체될 지점이다.
-    public AiSimilarPostsResponse getSimilarPosts(String analysisId) {
-        return new AiSimilarPostsResponse(
-                analysisId,
-                List.of("missing-post-3", "missing-post-4")
-        );
+    private java.util.UUID parseNoticeId(String value) {
+        try {
+            return java.util.UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_NOTICE_ID", "올바르지 않은 공고 ID 형식입니다.");
+        }
     }
 
-    public AiRetryResponse retryAnalysis(String analysisId) {
-        return new AiRetryResponse(analysisId, "RETRYING");
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private List<String> copyList(List<String> values) {
+        return values == null ? List.of() : values.stream()
+                .filter(item -> item != null && !item.isBlank())
+                .map(String::trim)
+                .toList();
     }
 }

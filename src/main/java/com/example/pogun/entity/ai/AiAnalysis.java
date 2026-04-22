@@ -2,6 +2,7 @@ package com.example.pogun.entity.ai;
 
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.ai.enums.AiAnalysisStatus;
+import com.example.pogun.entity.ai.enums.AiAnalysisTargetType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -39,8 +40,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "ai_analyses", indexes = {
         @Index(name = "idx_ai_analyses_author", columnList = "author_id"),
-        @Index(name = "idx_ai_analyses_photo", columnList = "photo_id"),
-        @Index(name = "idx_ai_analyses_status", columnList = "status")
+        @Index(name = "idx_ai_analyses_status", columnList = "status"),
+        @Index(name = "idx_ai_analyses_target", columnList = "target_type,target_id")
 })
 /**
  * 데이터베이스 테이블과 매핑되는 AiAnalysis 엔티티이다.
@@ -61,17 +62,38 @@ public class AiAnalysis {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "author_id", nullable = false, foreignKey = @ForeignKey(name = "fk_ai_analyses_author"))
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id", foreignKey = @ForeignKey(name = "fk_ai_analyses_author"))
     private User author;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "photo_id", nullable = false, foreignKey = @ForeignKey(name = "fk_ai_analyses_photo"))
-    private AiPhoto photo;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_type", length = 30)
+    private AiAnalysisTargetType targetType;
+
+    @Column(name = "target_id", length = 120)
+    private String targetId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private AiAnalysisStatus status;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @Column(name = "error_message", length = 500)
+    private String errorMessage;
+
+    @Column(name = "detected_breed", length = 120)
+    private String detectedBreed;
+
+    @Column(name = "detected_color", length = 120)
+    private String detectedColor;
+
+    @Column(name = "confidence")
+    private Double confidence;
+
+    @Column(name = "provider", length = 80)
+    private String provider;
 
     @Builder.Default
     @JdbcTypeCode(SqlTypes.JSON)
