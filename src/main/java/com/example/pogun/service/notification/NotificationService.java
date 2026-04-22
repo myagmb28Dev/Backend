@@ -280,9 +280,9 @@ public class NotificationService {
                 safeMetadata.forEach(builder::putData);
                 firebaseMessaging.send(builder.build());
                 sentCount++;
-            } catch (FirebaseMessagingException e) {
+            } catch (Exception e) {
                 log.warn("FCM 발송 실패. tokenId={}, reason={}", fcmToken.getId(), e.getMessage());
-                if (isUnregisteredToken(e)) {
+                if (e instanceof FirebaseMessagingException firebaseMessagingException && isUnregisteredToken(firebaseMessagingException)) {
                     // 만료된 토큰은 즉시 비활성화해 이후 대량 발송에서 같은 실패를 반복하지 않게 한다.
                     fcmToken.setActive(false);
                     userFcmTokenRepository.save(fcmToken);

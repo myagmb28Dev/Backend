@@ -5,13 +5,19 @@ import com.example.pogun.dto.shelterpet.ShelterPetImageAnalysisDetailResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetImageAnalysisResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListFiltersResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
+import com.example.pogun.dto.shelterpet.ShelterReferenceItemResponse;
+import com.example.pogun.dto.shelterpet.ShelterReferenceListResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetStatusResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetSummaryResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetUpdateResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetViewResponse;
+import com.example.pogun.entity.shelterpet.ShelterPet;
+import com.example.pogun.repository.shelterpet.ShelterPetRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 /**
@@ -22,14 +28,22 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ShelterPetService {
 
-    // 외부 보호소 API 연동 전이라, 프론트가 기대하는 응답 형태를 샘플 데이터로 먼저 유지하고 있다.
+    private final ShelterPublicApiClient shelterPublicApiClient;
+    private final ShelterPetRepository shelterPetRepository;
 
-    // 목록 응답은 나중에 외부 API 결과를 정규화해도 그대로 재사용할 수 있게 source 와 filter 정보를 함께 담는다.
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
-        List<ShelterPetSummaryResponse> items = List.of(
-                new ShelterPetSummaryResponse("ext-1", "서울", "믹스", "OPEN"),
-                new ShelterPetSummaryResponse("ext-2", "경기", "푸들", "RESOLVED")
-        );
+        ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, page, size);
+        List<ShelterPetSummaryResponse> items = result.items().stream()
+                .map(item -> {
+                    ShelterPet local = shelterPetRepository.findById(item.desertionNo()).orElse(null);
+                    return new ShelterPetSummaryResponse(
+                            item.desertionNo(),
+                            resolveRegionLabel(local, item),
+                            resolveBreedLabel(local, item),
+                            resolveStatusLabel(local, item)
+                    );
+                })
+                .toList();
 
         return new ShelterPetListResponse(
                 "KOREA_ANIMAL_PROTECTION_API",
@@ -39,45 +53,229 @@ public class ShelterPetService {
     }
 
     public ShelterPetDetailResponse getShelterPetDetail(String id) {
+        ShelterPublicApiClient.ShelterPublicApiAnimal external = shelterPublicApiClient.fetchShelterPet(id);
+        ShelterPet local = shelterPetRepository.findById(id).orElse(null);
         return new ShelterPetDetailResponse(
                 id,
-                "말티즈 실종",
-                "흰색 목줄 착용",
-                300000,
-                "010-1111-2222",
-                List.of("https://cdn.ex.com/n1-1.jpg", "https://cdn.ex.com/n1-2.jpg")
+                resolveTitle(local, external),
+                resolveDescription(local, external),
+                local == null ? null : local.getRewardAmount(),
+                firstNonBlank(local == null ? null : local.getContactPhone(), external.careTel()),
+                resolveImages(local, external)
         );
     }
 
     public ShelterPetUpdateResponse updateShelterPet(String id, Map<String, Object> request) {
+        ShelterPet shelterPet = getOrCreateShelterPet(id);
+        if (request.containsKey("title")) {
+            shelterPet.setTitle(toNullableString(request.get("title")));
+        }
+        if (request.containsKey("description")) {
+            shelterPet.setDescription(toNullableString(request.get("description")));
+        }
+        if (request.containsKey("rewardAmount")) {
+            shelterPet.setRewardAmount(request.get("rewardAmount") instanceof Number number ? number.intValue() : null);
+        }
+        if (request.containsKey("contactPhone")) {
+            shelterPet.setContactPhone(toNullableString(request.get("contactPhone")));
+        }
+        if (request.containsKey("imageUrls")) {
+            shelterPet.setImages(request.get("imageUrls") instanceof List<?> imageUrls
+                    ? imageUrls.stream().map(String::valueOf).toList()
+                    : new ArrayList<>());
+        }
+        ShelterPet saved = shelterPetRepository.save(shelterPet);
         return new ShelterPetUpdateResponse(
                 id,
                 true,
-                request.get("title") == null ? null : String.valueOf(request.get("title")),
-                request.get("description") == null ? null : String.valueOf(request.get("description")),
-                request.get("rewardAmount") instanceof Number number ? number.intValue() : null,
-                request.get("contactPhone") == null ? null : String.valueOf(request.get("contactPhone")),
-                request.get("imageUrls") instanceof List<?> imageUrls ? imageUrls.stream().map(String::valueOf).toList() : null
+                saved.getTitle(),
+                saved.getDescription(),
+                saved.getRewardAmount(),
+                saved.getContactPhone(),
+                saved.getImages()
         );
     }
 
     public ShelterPetStatusResponse changeShelterPetStatus(String id, String status) {
-        return new ShelterPetStatusResponse(id, status);
+        ShelterPet shelterPet = getOrCreateShelterPet(id);
+        shelterPet.setStatus(status);
+        shelterPetRepository.save(shelterPet);
+        return new ShelterPetStatusResponse(id, shelterPet.getStatus());
     }
 
     public ShelterPetViewResponse increaseShelterPetView(String id) {
-        return new ShelterPetViewResponse(id, 101);
+        ShelterPet shelterPet = getOrCreateShelterPet(id);
+        shelterPet.setViewCount((shelterPet.getViewCount() == null ? 0 : shelterPet.getViewCount()) + 1);
+        ShelterPet saved = shelterPetRepository.save(shelterPet);
+        return new ShelterPetViewResponse(id, saved.getViewCount());
     }
 
-    // 이미지 분석 결과도 현재는 보호소 상세 화면 계약을 위한 placeholder 로 유지된다.
     public ShelterPetImageAnalysisResponse analyzeShelterPetImage(String id) {
+        ShelterPet shelterPet = getOrCreateShelterPet(id);
+        if (!StringUtils.hasText(shelterPet.getAnalysisStatus())) {
+            shelterPet.setAnalysisStatus("MOCKED");
+        }
+        if (shelterPet.getAnalysisFeatures() == null || shelterPet.getAnalysisFeatures().isEmpty()) {
+            shelterPet.setAnalysisFeatures(List.of("mock-analysis", "external-shelter-image", "ai-pending"));
+        }
+        if (shelterPet.getSimilarNoticeIds() == null || shelterPet.getSimilarNoticeIds().isEmpty()) {
+            shelterPet.setSimilarNoticeIds(List.of(id));
+        }
+        ShelterPet saved = shelterPetRepository.save(shelterPet);
         return new ShelterPetImageAnalysisResponse(
                 new ShelterPetImageAnalysisDetailResponse(
                         id,
-                        "SUCCESS",
-                        List.of("흰색", "소형견", "귀가 접힘"),
-                        List.of("notice-3", "notice-4")
+                        saved.getAnalysisStatus(),
+                        saved.getAnalysisFeatures(),
+                        saved.getSimilarNoticeIds()
                 )
         );
+    }
+
+    public ShelterReferenceListResponse getSidoList() {
+        return new ShelterReferenceListResponse(
+                "KOREA_ANIMAL_PROTECTION_API",
+                "SIDO",
+                null,
+                shelterPublicApiClient.fetchSido().stream()
+                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
+                        .toList()
+        );
+    }
+
+    public ShelterReferenceListResponse getSigunguList(String uprCd) {
+        return new ShelterReferenceListResponse(
+                "KOREA_ANIMAL_PROTECTION_API",
+                "SIGUNGU",
+                uprCd,
+                shelterPublicApiClient.fetchSigungu(uprCd).stream()
+                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
+                        .toList()
+        );
+    }
+
+    public ShelterReferenceListResponse getShelterList(String uprCd, String orgCd) {
+        return new ShelterReferenceListResponse(
+                "KOREA_ANIMAL_PROTECTION_API",
+                "SHELTER",
+                orgCd,
+                shelterPublicApiClient.fetchShelters(uprCd, orgCd).stream()
+                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
+                        .toList()
+        );
+    }
+
+    public ShelterReferenceListResponse getBreedList(String upKindCd) {
+        return new ShelterReferenceListResponse(
+                "KOREA_ANIMAL_PROTECTION_API",
+                "KIND",
+                upKindCd,
+                shelterPublicApiClient.fetchKinds(upKindCd).stream()
+                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
+                        .toList()
+        );
+    }
+
+    private ShelterPet getOrCreateShelterPet(String id) {
+        return shelterPetRepository.findById(id)
+                .orElseGet(() -> {
+                    ShelterPublicApiClient.ShelterPublicApiAnimal external = shelterPublicApiClient.fetchShelterPet(id);
+                    ShelterPet shelterPet = ShelterPet.builder()
+                            .id(id)
+                            .source(external.source())
+                            .region(extractRegion(external))
+                            .breed(firstNonBlank(external.kindName(), external.kindFullName(), "미상"))
+                            .status(firstNonBlank(external.processState(), "UNKNOWN"))
+                            .title(buildDefaultTitle(external))
+                            .description(buildDefaultDescription(external))
+                            .contactPhone(external.careTel())
+                            .images(new ArrayList<>(external.imageUrls()))
+                            .build();
+                    return shelterPetRepository.save(shelterPet);
+                });
+    }
+
+    private String resolveTitle(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        return firstNonBlank(local == null ? null : local.getTitle(), buildDefaultTitle(external));
+    }
+
+    private String resolveDescription(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        return firstNonBlank(local == null ? null : local.getDescription(), buildDefaultDescription(external));
+    }
+
+    private List<String> resolveImages(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        if (local != null && local.getImages() != null && !local.getImages().isEmpty()) {
+            return local.getImages();
+        }
+        return external.imageUrls();
+    }
+
+    private String resolveRegionLabel(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        return firstNonBlank(local == null ? null : local.getRegion(), extractRegion(external));
+    }
+
+    private String resolveBreedLabel(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        return firstNonBlank(local == null ? null : local.getBreed(), external.kindName(), external.kindFullName(), "미상");
+    }
+
+    private String resolveStatusLabel(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        return firstNonBlank(local == null ? null : local.getStatus(), external.processState(), "UNKNOWN");
+    }
+
+    private String extractRegion(ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        String region = firstNonBlank(external.organizationName(), external.careAddress());
+        if (!StringUtils.hasText(region)) {
+            return "미상";
+        }
+        return region;
+    }
+
+    private String buildDefaultTitle(ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        String breed = firstNonBlank(external.kindFullName(), external.kindName(), "반려동물");
+        String state = firstNonBlank(external.processState(), "보호");
+        return breed + " " + state + " 공고";
+    }
+
+    private String buildDefaultDescription(ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        List<String> lines = new ArrayList<>();
+        addLine(lines, "공고번호", external.noticeNo());
+        addLine(lines, "발견장소", external.happenPlace());
+        addLine(lines, "특징", external.specialMark());
+        addLine(lines, "보호소", external.careName());
+        addLine(lines, "주소", external.careAddress());
+        addLine(lines, "공고기간", joinDateRange(external.noticeStartDate(), external.noticeEndDate()));
+        return String.join("\n", lines);
+    }
+
+    private String joinDateRange(String start, String end) {
+        if (!StringUtils.hasText(start) && !StringUtils.hasText(end)) {
+            return null;
+        }
+        if (!StringUtils.hasText(start)) {
+            return end;
+        }
+        if (!StringUtils.hasText(end)) {
+            return start;
+        }
+        return start + " ~ " + end;
+    }
+
+    private void addLine(List<String> lines, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            lines.add(label + ": " + value);
+        }
+    }
+
+    private String toNullableString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String firstNonBlank(String... candidates) {
+        for (String candidate : candidates) {
+            if (StringUtils.hasText(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 }

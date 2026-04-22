@@ -1,11 +1,11 @@
 package com.example.pogun.config;
 
 import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.config.web.WebMvcConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -24,7 +24,7 @@ public class ApiErrorResponseWriter {
         // 필터나 시큐리티 계층에서도 컨트롤러와 동일한 ApiResponse 포맷을 재사용하기 위한 공용 writer 다.
         response.setStatus(status.value());
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setContentType(WebMvcConfig.APPLICATION_JSON_UTF8.toString());
         objectMapper.writeValue(response.getWriter(), ApiResponse.fail(status, code, message, detail));
     }
 }
