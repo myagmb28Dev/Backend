@@ -9,6 +9,7 @@ import com.example.pogun.dto.shelterpet.ShelterPetStatusUpdateRequest;
 import com.example.pogun.dto.shelterpet.ShelterPetUpdateRequest;
 import com.example.pogun.dto.shelterpet.ShelterPetUpdateResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetViewResponse;
+import com.example.pogun.dto.shelterpet.ShelterReferenceListResponse;
 import com.example.pogun.service.shelterpet.ShelterPetService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,35 +52,66 @@ public class ShelterPetController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "전국 유기 동물 공고 조회 성공", data));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/sidos")
+    @Operation(summary = "시도 목록 조회", description = "전국 시도 코드와 이름 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<ShelterReferenceListResponse>> sidos() {
+        ShelterReferenceListResponse data = shelterPetService.getSidoList();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "시도 목록 조회 성공", data));
+    }
+
+    @GetMapping("/sigungus")
+    @Operation(summary = "시군구 목록 조회", description = "선택한 시도에 속한 시군구 코드와 이름 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<ShelterReferenceListResponse>> sigungus(@RequestParam String uprCd) {
+        ShelterReferenceListResponse data = shelterPetService.getSigunguList(uprCd);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "시군구 목록 조회 성공", data));
+    }
+
+    @GetMapping("/shelters")
+    @Operation(summary = "보호소 목록 조회", description = "선택한 시도와 시군구에 속한 보호소 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<ShelterReferenceListResponse>> shelters(
+            @RequestParam String uprCd,
+            @RequestParam String orgCd
+    ) {
+        ShelterReferenceListResponse data = shelterPetService.getShelterList(uprCd, orgCd);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "보호소 목록 조회 성공", data));
+    }
+
+    @GetMapping("/breeds")
+    @Operation(summary = "품종 목록 조회", description = "선택한 축종에 속한 품종 코드와 이름 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<ShelterReferenceListResponse>> breeds(@RequestParam String upKindCd) {
+        ShelterReferenceListResponse data = shelterPetService.getBreedList(upKindCd);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "품종 목록 조회 성공", data));
+    }
+
+    @GetMapping("/{id:\\d+}")
     @Operation(summary = "유기동물 공고 상세 조회", description = "외부 공고의 상세 정보를 조회합니다.")
     public ResponseEntity<ApiResponse<ShelterPetDetailResponse>> detail(@PathVariable String id) {
         ShelterPetDetailResponse data = shelterPetService.getShelterPetDetail(id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "유기 동물 공고 상세 조회 성공", data));
     }
 
-    @PatchMapping("/{id}")
+    @PatchMapping("/{id:\\d+}")
     @Operation(summary = "외부 공고 수정", description = "외부 공고 정보를 수정합니다. (관리자 전용)")
     public ResponseEntity<ApiResponse<ShelterPetUpdateResponse>> update(@PathVariable String id, @Valid @RequestBody ShelterPetUpdateRequest request) {
         ShelterPetUpdateResponse data = shelterPetService.updateShelterPet(id, request.toRequestMap());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 공고 수정 성공", data));
     }
 
-    @PatchMapping("/{id}/status")
+    @PatchMapping("/{id:\\d+}/status")
     @Operation(summary = "외부 공고 상태 변경", description = "외부 공고의 상태를 변경합니다. (관리자 전용)")
     public ResponseEntity<ApiResponse<ShelterPetStatusResponse>> changeStatus(@PathVariable String id, @Valid @RequestBody ShelterPetStatusUpdateRequest request) {
         ShelterPetStatusResponse data = shelterPetService.changeShelterPetStatus(id, request.getStatus());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 공고 상태 변경 성공", data));
     }
 
-    @PostMapping("/{id}/views")
+    @PostMapping("/{id:\\d+}/views")
     @Operation(summary = "외부 공고 조회수 증가", description = "외부 공고의 조회수를 증가시킵니다.")
     public ResponseEntity<ApiResponse<ShelterPetViewResponse>> increaseView(@PathVariable String id) {
         ShelterPetViewResponse data = shelterPetService.increaseShelterPetView(id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "조회수 증가 처리 완료", data));
     }
 
-    @PostMapping("/{id}/analyze-image")
+    @PostMapping("/{id:\\d+}/analyze-image")
     @Operation(summary = "외부 공고 사진 분석 요청", description = "공고에 첨부된 사진의 특징 분석을 요청합니다.")
     public ResponseEntity<ApiResponse<ShelterPetImageAnalysisResponse>> analyzeImage(@PathVariable String id) {
         // 분석 결과는 해당 외부 공고 레코드에 저장해 이후 상세 화면이나 추천 로직에서 재사용한다.

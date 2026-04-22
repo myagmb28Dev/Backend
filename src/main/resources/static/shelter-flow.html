@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pogun Shelter Flow</title>
+  <style>
+    :root { --bg:#f6f1e8; --card:#fffaf0; --ink:#1f2933; --muted:#6b7280; --line:#dac9b2; --accent:#c05f2c; --accent2:#176b75; --good:#1f8a4c; --bad:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:radial-gradient(circle at 0 0, rgba(192,95,44,.14), transparent 24%),radial-gradient(circle at 100% 0, rgba(23,107,117,.12), transparent 22%),var(--bg); color:var(--ink); }
+    main { width:min(1160px,calc(100% - 28px)); margin:20px auto 32px; display:grid; gap:14px; }
+    .card,.hero { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 10px 26px rgba(31,41,51,.06); }
+    h1,h2,h3,p { margin:0; }
+    .hero,.section-head,.split { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .status { min-height:40px; min-width:280px; padding:10px 12px; border-radius:12px; background:rgba(31,41,51,.06); color:var(--muted); font-size:13px; font-weight:700; }
+    .status.good { background:rgba(31,138,76,.12); color:var(--good); }
+    .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
+    .muted { color:var(--muted); font-size:12px; line-height:1.5; }
+    .hero strong { display:inline-flex; margin-bottom:8px; color:var(--accent); font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+    .nav-links,.actions,.quick-links { display:flex; flex-wrap:wrap; gap:8px; }
+    .nav-link,button { border:0; border-radius:12px; padding:11px 14px; font:inherit; font-weight:800; cursor:pointer; text-decoration:none; }
+    .nav-link { background:rgba(31,41,51,.08); color:var(--ink); }
+    button { background:var(--accent); color:#fff; }
+    button.secondary { background:rgba(31,41,51,.11); color:var(--ink); }
+    button.accent2 { background:var(--accent2); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .layout { display:grid; grid-template-columns:340px minmax(0,1fr); gap:14px; }
+    .stack { display:grid; gap:12px; }
+    .grid { display:grid; gap:10px; }
+    .filters-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:800; }
+    select,input,textarea { width:100%; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fffdf7; color:var(--ink); font:inherit; }
+    textarea { min-height:84px; resize:vertical; }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border-radius:999px; background:rgba(31,41,51,.07); color:var(--muted); font-size:12px; font-weight:800; }
+    .summary-grid,.detail-grid { display:grid; gap:10px; }
+    .summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .summary-box,.detail-block,.helper-box { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fffdf7; }
+    .helper-box { max-height:180px; overflow:auto; }
+    .helper-item { display:flex; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:10px; background:rgba(31,41,51,.04); font-size:12px; }
+    .helper-item + .helper-item { margin-top:6px; }
+    .list { display:grid; gap:8px; }
+    .list-item { width:100%; display:grid; gap:8px; text-align:left; border:1px solid var(--line); border-radius:16px; padding:13px; background:#fffdf7; color:var(--ink); }
+    .list-item.active { border-color:rgba(192,95,44,.55); box-shadow:0 0 0 3px rgba(192,95,44,.12); }
+    .list-top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+    .list-id { color:var(--accent); font-size:12px; font-weight:900; }
+    .list-item strong { font-size:16px; }
+    .detail-grid { grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr); }
+    .detail-pane { display:grid; gap:10px; }
+    .detail-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
+    .detail-images img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:12px; border:1px solid rgba(31,41,51,.1); background:#f4ecdf; }
+    .analysis-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .analysis-tags span { display:inline-flex; padding:6px 10px; border-radius:999px; background:rgba(23,107,117,.12); color:var(--accent2); font-size:12px; font-weight:800; }
+    .empty { padding:22px; border:1px dashed rgba(31,41,51,.16); border-radius:14px; text-align:center; color:var(--muted); }
+    pre { margin:0; white-space:pre-wrap; word-break:break-word; color:var(--muted); font-family:inherit; line-height:1.6; }
+    code { font-family:Consolas,monospace; }
+    @media (max-width:940px){ .layout,.detail-grid,.summary-grid,.filters-grid{grid-template-columns:1fr;} .hero,.section-head,.split{display:grid;} .status{min-width:0;} }
+    @media (max-width:640px){ html,body{width:100%;max-width:100%;overflow-x:hidden;} main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;} .card,.hero{padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(31,41,51,.06);} .nav-links,.actions,.quick-links{display:grid;grid-template-columns:1fr;gap:7px;} .nav-link,button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;} .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div>
+      <strong>Shelter Flow</strong>
+      <h1>보호 공고 탐색</h1>
+      <p class="muted" style="margin-top:8px">login-flow에서 로그인한 같은 세션으로 보호 공고 목록, 상세, 조회수 증가, 이미지 분석 목업을 바로 점검한다.</p>
+    </div>
+    <div class="stack" style="justify-items:end">
+      <div id="notificationBellMount"></div>
+      <div id="status" class="status">준비 중</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-head">
+      <div>
+        <h2>공유 세션</h2>
+        <p id="accountHint" class="muted" style="margin-top:8px">login-flow.html에서 로그인 후 진입해 주세요.</p>
+      </div>
+      <div id="sessionBadge" class="pill">로그인 전</div>
+    </div>
+    <div class="nav-links" style="margin-top:10px">
+      <a class="nav-link" href="/login-flow.html?redirect=/shelter-flow.html">Login Flow</a>
+      <a class="nav-link" href="/notice-flow.html">Notice Flow</a>
+      <a class="nav-link" href="/dm-flow.html">DM Flow</a>
+      <a class="nav-link" href="/notification-flow.html">Notification Flow</a>
+    </div>
+  </section>
+
+  <section class="layout">
+    <aside class="stack">
+      <section class="card">
+        <h2>조회 조건</h2>
+        <div class="filters-grid" style="margin-top:10px">
+          <label>시도
+            <select id="sidoSelect"><option value="">전체</option></select>
+          </label>
+          <label>시군구 참고
+            <select id="sigunguSelect" disabled><option value="">시도 먼저 선택</option></select>
+          </label>
+          <label>보호소 참고
+            <select id="shelterSelect" disabled><option value="">시군구 먼저 선택</option></select>
+          </label>
+          <label>축종
+            <select id="upKindSelect">
+              <option value="417000">개</option>
+              <option value="422400">고양이</option>
+              <option value="429900">기타</option>
+            </select>
+          </label>
+          <label>품종
+            <select id="breedSelect"><option value="">전체</option></select>
+          </label>
+          <label>상태
+            <select id="statusSelect">
+              <option value="">전체</option>
+              <option value="OPEN">공고중</option>
+              <option value="RESOLVED">보호중</option>
+            </select>
+          </label>
+          <label>정렬
+            <select id="sortSelect">
+              <option value="LATEST">최신순</option>
+              <option value="OLDEST">오래된순</option>
+            </select>
+          </label>
+          <label>페이지 크기
+            <select id="sizeSelect">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <label>페이지
+            <input id="pageInput" type="number" min="0" value="0">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="searchButton">공고 조회</button>
+          <button id="resetButton" class="secondary">조건 초기화</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>참조 데이터</h2>
+        <p class="muted" style="margin-top:8px">목록 API는 시도 코드와 품종 코드 중심이야. 시군구와 보호소는 필터 참고용으로 표시한다.</p>
+        <div class="summary-box" id="referenceSummaryBox" style="margin-top:10px">참조 데이터 대기 중</div>
+        <div class="grid" style="margin-top:10px">
+          <div>
+            <div class="muted" style="margin-bottom:6px">시군구</div>
+            <div id="sigunguBox" class="helper-box"><div class="muted">시도를 고르면 여기에 채워진다.</div></div>
+          </div>
+          <div>
+            <div class="muted" style="margin-bottom:6px">보호소</div>
+            <div id="shelterBox" class="helper-box"><div class="muted">시군구를 고르면 여기에 채워진다.</div></div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="stack">
+      <section class="card">
+        <div class="split">
+          <div>
+            <h2>공고 목록</h2>
+            <p class="muted" style="margin-top:8px">현재 shelter DTO가 주는 값은 <code>id</code>, <code>region</code>, <code>breed</code>, <code>status</code>까지만 사용한다.</p>
+          </div>
+          <div id="listMeta" class="pill">미조회</div>
+        </div>
+        <div class="summary-grid" style="margin-top:10px">
+          <div class="summary-box" id="activeFiltersBox">필터 없음</div>
+          <div class="summary-box" id="selectionSummaryBox">선택된 공고 없음</div>
+        </div>
+        <div id="listContainer" class="list" style="margin-top:10px">
+          <div class="empty">로그인 후 공고를 조회하면 여기 리스트가 나온다.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>공고 상세</h2>
+        <div id="detailContainer" style="margin-top:10px">
+          <div class="empty">목록에서 공고를 선택하면 상세와 분석 결과가 열린다.</div>
+        </div>
+      </section>
+    </section>
+  </section>
+</main>
+
+<script type="module">
+import {
+  ACTIVE_ROLE_KEY,
+  REAL_SESSION_KEY,
+  clearStoredSession,
+  mountNotificationBell,
+  refreshNotificationBell
+} from "./notification-web.js";
+
+const BACKEND_BASE = window.location.origin;
+const query = new URLSearchParams(window.location.search);
+const requestedId = (query.get("id") || "").trim() || null;
+
+const state = {
+  token: null,
+  user: null,
+  list: [],
+  activeId: requestedId,
+  detail: null,
+  analysis: null,
+  helper: { sidos: [], sigungus: [], shelters: [], breeds: [] }
+};
+
+const el = (id) => document.getElementById(id);
+
+function setStatus(message, tone = "") {
+  const node = el("status");
+  node.textContent = message;
+  node.className = `status${tone ? ` ${tone}` : ""}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function readJson(response) {
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+async function request(url, init = {}) {
+  const response = await fetch(url, init);
+  return { status: response.status, body: await readJson(response) };
+}
+
+function getStoredSession() {
+  try {
+    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.firebaseIdToken ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function redirectToLoginFlow() {
+  const redirect = `/shelter-flow.html${window.location.search || ""}`;
+  window.location.href = `${window.location.origin}/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
+}
+
+async function authApi(path, init = {}) {
+  if (!state.token) throw new Error("로그인이 필요합니다.");
+  const headers = { Authorization: `Bearer ${state.token}`, ...(init.headers || {}) };
+  if (!(init.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  return request(`${BACKEND_BASE}${path}`, { ...init, headers });
+}
+
+function renderSessionInfo() {
+  const session = state.user;
+  el("accountHint").textContent = session
+    ? `${session.nickname || session.email || "사용자"} 로그인됨 · ${session.email || "이메일 없음"}${session.id ? ` · ${session.id}` : ""}`
+    : "login-flow.html에서 로그인 후 진입해 주세요.";
+  el("sessionBadge").textContent = session ? `${session.nickname || session.email || "공유 세션"} 활성` : "로그인 전";
+}
+
+async function login() {
+  const session = getStoredSession();
+  if (!session?.firebaseIdToken) {
+    redirectToLoginFlow();
+    return;
+  }
+
+  setStatus("공유 세션 확인 중...");
+  const response = await request(`${BACKEND_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ firebaseIdToken: session.firebaseIdToken })
+  });
+
+  if (response.status !== 200) {
+    clearStoredSession();
+    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    redirectToLoginFlow();
+    return;
+  }
+
+  const data = response.body?.data || {};
+  if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
+    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    redirectToLoginFlow();
+    return;
+  }
+
+  state.token = session.firebaseIdToken;
+  state.user = data;
+
+  try {
+    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify({
+      ...session,
+      firebaseIdToken: state.token,
+      firebaseUid: data.firebaseUid || session.firebaseUid || "",
+      email: data.email || session.email || "",
+      nickname: data.nickname || session.nickname || "",
+      profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+      userId: data.id,
+      registrationStatus: data.registrationStatus
+    }));
+    window.localStorage.setItem(ACTIVE_ROLE_KEY, "google");
+  } catch {
+  }
+
+  renderSessionInfo();
+  setStatus(`${data.nickname || data.email || "사용자"} 로그인 완료`, "good");
+  await bootstrapReferences();
+  await searchShelters(false);
+}
+
+function updateReferenceSummary() {
+  el("referenceSummaryBox").innerHTML = `
+    시도 <strong>${state.helper.sidos.length}</strong>건 ·
+    시군구 <strong>${state.helper.sigungus.length}</strong>건 ·
+    보호소 <strong>${state.helper.shelters.length}</strong>건 ·
+    품종 <strong>${state.helper.breeds.length}</strong>건
+  `;
+}
+
+function fillSelect(selectId, items, placeholder) {
+  const node = el(selectId);
+  node.innerHTML = `<option value="">${placeholder}</option>` + items
+    .map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`)
+    .join("");
+}
+
+function renderHelperBox(targetId, items, emptyText) {
+  const node = el(targetId);
+  if (!items.length) {
+    node.innerHTML = `<div class="muted">${escapeHtml(emptyText)}</div>`;
+    return;
+  }
+  node.innerHTML = items.map((item) => `
+    <div class="helper-item">
+      <span>${escapeHtml(item.name)}</span>
+      <code>${escapeHtml(item.code)}</code>
+    </div>
+  `).join("");
+}
+
+async function bootstrapReferences() {
+  const [sidosResponse, breedsResponse] = await Promise.all([
+    authApi("/api/shelter/sidos"),
+    authApi(`/api/shelter/breeds?upKindCd=${encodeURIComponent(el("upKindSelect").value)}`)
+  ]);
+  if (sidosResponse.status !== 200) throw new Error("시도 목록 조회 실패");
+  if (breedsResponse.status !== 200) throw new Error("품종 목록 조회 실패");
+  state.helper.sidos = sidosResponse.body?.data?.items || [];
+  state.helper.breeds = breedsResponse.body?.data?.items || [];
+  fillSelect("sidoSelect", state.helper.sidos, "전체");
+  fillSelect("breedSelect", state.helper.breeds, "전체");
+  updateReferenceSummary();
+}
+
+async function loadSigungus() {
+  const uprCd = el("sidoSelect").value;
+  el("sigunguSelect").disabled = !uprCd;
+  el("shelterSelect").disabled = true;
+  state.helper.shelters = [];
+  fillSelect("shelterSelect", [], "시군구 먼저 선택");
+  renderHelperBox("shelterBox", [], "시군구를 고르면 여기에 채워진다.");
+  if (!uprCd) {
+    state.helper.sigungus = [];
+    fillSelect("sigunguSelect", [], "시도 먼저 선택");
+    renderHelperBox("sigunguBox", [], "시도를 고르면 여기에 채워진다.");
+    updateReferenceSummary();
+    return;
+  }
+  const response = await authApi(`/api/shelter/sigungus?uprCd=${encodeURIComponent(uprCd)}`);
+  if (response.status !== 200) throw new Error(`시군구 목록 조회 실패: ${JSON.stringify(response.body)}`);
+  state.helper.sigungus = response.body?.data?.items || [];
+  fillSelect("sigunguSelect", state.helper.sigungus, "선택 안 함");
+  renderHelperBox("sigunguBox", state.helper.sigungus, "시군구 데이터가 없다.");
+  updateReferenceSummary();
+}
+
+async function loadShelters() {
+  const uprCd = el("sidoSelect").value;
+  const orgCd = el("sigunguSelect").value;
+  el("shelterSelect").disabled = !(uprCd && orgCd);
+  if (!(uprCd && orgCd)) {
+    state.helper.shelters = [];
+    fillSelect("shelterSelect", [], "시군구 먼저 선택");
+    renderHelperBox("shelterBox", [], "시군구를 고르면 여기에 채워진다.");
+    updateReferenceSummary();
+    return;
+  }
+  const response = await authApi(`/api/shelter/shelters?uprCd=${encodeURIComponent(uprCd)}&orgCd=${encodeURIComponent(orgCd)}`);
+  if (response.status !== 200) throw new Error(`보호소 목록 조회 실패: ${JSON.stringify(response.body)}`);
+  state.helper.shelters = response.body?.data?.items || [];
+  fillSelect("shelterSelect", state.helper.shelters, "선택 안 함");
+  renderHelperBox("shelterBox", state.helper.shelters, "보호소 데이터가 없다.");
+  updateReferenceSummary();
+}
+
+async function loadBreeds() {
+  const response = await authApi(`/api/shelter/breeds?upKindCd=${encodeURIComponent(el("upKindSelect").value)}`);
+  if (response.status !== 200) throw new Error(`품종 목록 조회 실패: ${JSON.stringify(response.body)}`);
+  state.helper.breeds = response.body?.data?.items || [];
+  fillSelect("breedSelect", state.helper.breeds, "전체");
+  updateReferenceSummary();
+}
+
+function buildListQuery() {
+  const params = new URLSearchParams();
+  const region = el("sidoSelect").value;
+  const breed = el("breedSelect").value;
+  const status = el("statusSelect").value;
+  const sort = el("sortSelect").value;
+  const page = String(Math.max(0, Number(el("pageInput").value || 0)));
+  const size = el("sizeSelect").value;
+  if (region) params.set("region", region);
+  if (breed) params.set("breed", breed);
+  if (status) params.set("status", status);
+  params.set("sort", sort);
+  params.set("page", page);
+  params.set("size", size);
+  return params.toString();
+}
+
+function renderActiveFilters(filters = {}) {
+  const labels = [];
+  if (filters.region) labels.push(`시도코드 ${escapeHtml(filters.region)}`);
+  if (el("sigunguSelect").value) labels.push(`시군구 참고 ${escapeHtml(el("sigunguSelect").selectedOptions[0]?.textContent || "")}`);
+  if (el("shelterSelect").value) labels.push(`보호소 참고 ${escapeHtml(el("shelterSelect").selectedOptions[0]?.textContent || "")}`);
+  if (filters.breed) labels.push(`품종코드 ${escapeHtml(filters.breed)}`);
+  if (filters.status) labels.push(`상태 ${escapeHtml(filters.status)}`);
+  labels.push(`정렬 ${escapeHtml(filters.sort || "LATEST")}`);
+  labels.push(`page ${escapeHtml(String(filters.page ?? 0))}`);
+  labels.push(`size ${escapeHtml(String(filters.size ?? 20))}`);
+  el("activeFiltersBox").textContent = labels.join(" · ");
+}
+
+function renderSelectionSummary() {
+  if (!state.detail) {
+    el("selectionSummaryBox").textContent = "선택된 공고 없음";
+    return;
+  }
+  el("selectionSummaryBox").textContent = `${state.detail.id} · ${state.detail.title || "제목 없음"}`;
+}
+
+function renderList() {
+  const container = el("listContainer");
+  if (!state.list.length) {
+    container.innerHTML = `<div class="empty">조회 결과가 없거나 아직 공고를 불러오지 않았다.</div>`;
+    return;
+  }
+  container.innerHTML = state.list.map((item) => `
+    <button type="button" class="list-item${state.activeId === item.id ? " active" : ""}" data-id="${escapeHtml(item.id)}">
+      <div class="list-top">
+        <div>
+          <div class="list-id">${escapeHtml(item.id)}</div>
+          <strong>${escapeHtml(item.breed || "품종 미상")}</strong>
+        </div>
+        <span class="pill">${escapeHtml(item.status || "UNKNOWN")}</span>
+      </div>
+      <div class="quick-links">
+        <span class="pill">${escapeHtml(item.region || "지역 미상")}</span>
+      </div>
+    </button>
+  `).join("");
+
+  [...container.querySelectorAll("[data-id]")].forEach((button) => {
+    button.addEventListener("click", () => run(() => loadDetail(button.dataset.id))());
+  });
+}
+
+async function searchShelters(forceFirst = true) {
+  setStatus("보호 공고 목록 조회 중...");
+  const response = await authApi(`/api/shelter?${buildListQuery()}`);
+  if (response.status !== 200) throw new Error(`공고 조회 실패: ${JSON.stringify(response.body)}`);
+  const data = response.body?.data || {};
+  state.list = data.items || [];
+  renderActiveFilters(data.filters || {});
+  renderList();
+  el("listMeta").textContent = `${data.source || "SOURCE"} · ${state.list.length}건`;
+
+  if (requestedId && state.list.some((item) => item.id === requestedId)) {
+    state.activeId = requestedId;
+  }
+
+  if (state.list.length > 0) {
+    const targetId = forceFirst
+      ? (state.activeId && state.list.some((item) => item.id === state.activeId) ? state.activeId : state.list[0].id)
+      : state.activeId;
+    if (targetId) {
+      await loadDetail(targetId);
+    }
+  } else {
+    state.activeId = null;
+    state.detail = null;
+    state.analysis = null;
+    renderSelectionSummary();
+    renderDetail();
+  }
+
+  setStatus(`공고 ${state.list.length}건 조회 완료`, "good");
+}
+
+function renderDetail() {
+  const container = el("detailContainer");
+  if (!state.detail) {
+    container.innerHTML = `<div class="empty">목록에서 공고를 선택하면 상세와 분석 결과가 열린다.</div>`;
+    return;
+  }
+  const detail = state.detail;
+  const analysis = state.analysis;
+  const images = detail.images || [];
+
+  container.innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-pane">
+        <div class="detail-block">
+          <div class="list-id">NOTICE ${escapeHtml(detail.id)}</div>
+          <h3 style="margin-top:6px">${escapeHtml(detail.title || "제목 없음")}</h3>
+          <div class="actions" style="margin-top:10px">
+            <button id="refreshDetailButton" class="secondary">상세 새로고침</button>
+            <button id="increaseViewButton" class="secondary">조회수 증가</button>
+            <button id="analyzeImageButton" class="accent2">이미지 분석 목업</button>
+          </div>
+        </div>
+        <div class="detail-block">
+          <div class="muted" style="margin-bottom:8px">설명</div>
+          <pre>${escapeHtml(detail.description || "설명 없음")}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="muted" style="margin-bottom:8px">이미지</div>
+          ${images.length
+            ? `<div class="detail-images">${images.map((url) => `<img src="${escapeHtml(url)}" alt="shelter image">`).join("")}</div>`
+            : `<div class="muted">이미지 없음</div>`}
+        </div>
+      </div>
+      <div class="detail-pane">
+        <div class="detail-block">
+          <div class="muted" style="margin-bottom:8px">연락 / 보상</div>
+          <div class="summary-box">
+            연락처: <strong>${escapeHtml(detail.contactPhone || "-")}</strong><br>
+            사례금: <strong>${detail.rewardAmount == null ? "-" : escapeHtml(String(detail.rewardAmount))}</strong>
+          </div>
+        </div>
+        <div class="detail-block">
+          <div class="muted" style="margin-bottom:8px">이미지 분석 결과</div>
+          ${analysis ? `
+            <div class="summary-box">
+              상태: <strong>${escapeHtml(analysis.analysisStatus || "-")}</strong><br>
+              noticeId: <strong>${escapeHtml(analysis.noticeId || "-")}</strong>
+            </div>
+            <div class="analysis-tags" style="margin-top:10px">
+              ${(analysis.features || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("") || "<span>특징 없음</span>"}
+            </div>
+            <div class="summary-box" style="margin-top:10px">
+              유사 공고: ${(analysis.similarNotices || []).map((item) => escapeHtml(item)).join(", ") || "-"}
+            </div>
+          ` : `<div class="muted">아직 분석을 돌리지 않았다.</div>`}
+        </div>
+      </div>
+    </div>
+  `;
+
+  el("refreshDetailButton").addEventListener("click", () => run(() => loadDetail(detail.id))());
+  el("increaseViewButton").addEventListener("click", () => run(() => increaseView(detail.id))());
+  el("analyzeImageButton").addEventListener("click", () => run(() => analyzeImage(detail.id))());
+}
+
+async function loadDetail(id) {
+  state.activeId = id;
+  renderList();
+  const response = await authApi(`/api/shelter/${encodeURIComponent(id)}`);
+  if (response.status !== 200) throw new Error(`상세 조회 실패: ${JSON.stringify(response.body)}`);
+  state.detail = response.body?.data || null;
+  state.analysis = null;
+  renderSelectionSummary();
+  renderDetail();
+  setStatus(`${id} 상세 조회 완료`, "good");
+}
+
+async function increaseView(id) {
+  const response = await authApi(`/api/shelter/${encodeURIComponent(id)}/views`, { method: "POST" });
+  if (response.status !== 200) throw new Error(`조회수 증가 실패: ${JSON.stringify(response.body)}`);
+  const viewCount = response.body?.data?.viewCount;
+  setStatus(`조회수 증가 완료${viewCount == null ? "" : ` · ${viewCount}`}`, "good");
+}
+
+async function analyzeImage(id) {
+  const response = await authApi(`/api/shelter/${encodeURIComponent(id)}/analyze-image`, { method: "POST" });
+  if (response.status !== 200) throw new Error(`이미지 분석 실패: ${JSON.stringify(response.body)}`);
+  state.analysis = response.body?.data?.analysis || null;
+  renderDetail();
+  setStatus(`이미지 분석 완료: ${state.analysis?.analysisStatus || "UNKNOWN"}`, "good");
+}
+
+function resetFilters() {
+  el("sidoSelect").value = "";
+  el("sigunguSelect").innerHTML = `<option value="">시도 먼저 선택</option>`;
+  el("sigunguSelect").disabled = true;
+  el("shelterSelect").innerHTML = `<option value="">시군구 먼저 선택</option>`;
+  el("shelterSelect").disabled = true;
+  el("upKindSelect").value = "417000";
+  el("breedSelect").innerHTML = `<option value="">전체</option>`;
+  el("statusSelect").value = "";
+  el("sortSelect").value = "LATEST";
+  el("sizeSelect").value = "20";
+  el("pageInput").value = "0";
+  state.helper.sigungus = [];
+  state.helper.shelters = [];
+  renderHelperBox("sigunguBox", [], "시도를 고르면 여기에 채워진다.");
+  renderHelperBox("shelterBox", [], "시군구를 고르면 여기에 채워진다.");
+}
+
+function run(handler) {
+  return async () => {
+    try {
+      await handler();
+    } catch (error) {
+      console.error(error);
+      const message = error.message || String(error);
+      if (message.includes("401") || message.includes("로그인이 필요")) {
+        clearStoredSession();
+        try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+        redirectToLoginFlow();
+        return;
+      }
+      setStatus(message, "bad");
+    }
+  };
+}
+
+mountNotificationBell("notificationBellMount");
+refreshNotificationBell("notificationBellMount").catch(() => {});
+window.addEventListener("focus", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
+window.addEventListener("notification-web:message", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
+
+el("searchButton").addEventListener("click", run(() => searchShelters(true)));
+el("resetButton").addEventListener("click", run(async () => {
+  resetFilters();
+  await bootstrapReferences();
+  renderActiveFilters({});
+  renderSelectionSummary();
+  setStatus("조회 조건 초기화 완료", "good");
+}));
+el("sidoSelect").addEventListener("change", run(loadSigungus));
+el("sigunguSelect").addEventListener("change", run(loadShelters));
+el("upKindSelect").addEventListener("change", run(loadBreeds));
+
+renderSessionInfo();
+renderHelperBox("sigunguBox", [], "시도를 고르면 여기에 채워진다.");
+renderHelperBox("shelterBox", [], "시군구를 고르면 여기에 채워진다.");
+renderActiveFilters({});
+renderSelectionSummary();
+updateReferenceSummary();
+setStatus("login-flow에서 로그인한 같은 세션으로 보호 공고를 불러온다.");
+
+if (getStoredSession()?.firebaseIdToken) {
+  run(login)();
+} else {
+  redirectToLoginFlow();
+}
+</script>
+</body>
+</html>

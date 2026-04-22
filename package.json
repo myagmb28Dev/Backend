@@ -5,7 +5,8 @@
   "scripts": {
     "playwright:test": "bunx playwright test --config=playwright/playwright.config.ts",
     "playwright:report": "bunx playwright show-report playwright/artifacts",
-    "playwright:install": "bunx playwright install"
+    "playwright:install": "bunx playwright install",
+    "test:local-user-flow": "playwright test playwright/tests/local-user1.flowthrough.spec.js --project=chromium --config=playwright/playwright.config.ts"
   },
   "repository": {
     "type": "git",

@@ -43,6 +43,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/notice-flow.html")
                         .permitAll()
+                        .requestMatchers("/shelter-flow.html")
+                        .permitAll()
                         .requestMatchers("/login-flow.html")
                         .permitAll()
                         .requestMatchers("/notification-flow.html")

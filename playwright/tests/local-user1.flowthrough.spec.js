@@ -349,6 +349,30 @@ test.describe.serial('local user1 service flows', () => {
     await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname);
   });
 
+  test('shelter flow reuses login session and loads shelter detail tools', async ({ page }) => {
+    const user1Session = await ensureReadySession(loadToken(1));
+    await seedSession(page, user1Session);
+
+    await page.goto(`${baseURL}/shelter-flow.html`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#accountHint')).toContainText(user1Session.email);
+    await expect(page.locator('#sessionBadge')).toContainText(user1Session.nickname);
+    await expect(page.locator('#referenceSummaryBox')).toContainText('시도');
+    await expect(page.locator('#listMeta')).not.toHaveText('미조회', { timeout: 30000 });
+
+    const firstNotice = page.locator('#listContainer [data-id]').first();
+    await expect(firstNotice).toBeVisible({ timeout: 30000 });
+    await firstNotice.click();
+
+    await expect(page.locator('#selectionSummaryBox')).not.toHaveText('선택된 공고 없음', { timeout: 30000 });
+    await expect(page.locator('#detailContainer')).toContainText('이미지 분석 결과', { timeout: 30000 });
+
+    await page.click('#increaseViewButton');
+    await expect(page.locator('#status')).toContainText('조회수 증가 완료', { timeout: 10000 });
+
+    await page.click('#analyzeImageButton');
+    await expect(page.locator('#detailContainer')).toContainText('MOCKED', { timeout: 10000 });
+  });
+
   test('notice flow creates a notice and redirects to dm flow', async ({ page }) => {
     const user1Session = await ensureReadySession(loadToken(1));
     await seedSession(page, user1Session);

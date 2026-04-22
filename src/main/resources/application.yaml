@@ -11,8 +11,6 @@ spring:
       - optional:file:.env[.properties]
   application:
     name: demo
-
-
   datasource:
     driver-class-name: org.postgresql.Driver
     url: ${DB_URL}
@@ -42,13 +40,20 @@ app:
       project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
       emulator-host:
       allow-emulator: false
+  shelter:
+    api:
+      base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}
+      service-key: ${SHELTER_API_SERVICE_KEY:}
+      abandonment-path: ${SHELTER_API_ABANDONMENT_PATH:/abandonmentPublic_v2}
+      sido-path: ${SHELTER_API_SIDO_PATH:/sido_v2}
+      sigungu-path: ${SHELTER_API_SIGUNGU_PATH:/sigungu_v2}
+      shelter-path: ${SHELTER_API_SHELTER_PATH:/shelter_v2}
+      kind-path: ${SHELTER_API_KIND_PATH:/kind_v2}
 
 decorator:
   datasource:
     p6spy:
       enable-logging: ${P6SPY_ENABLE_LOGGING:false}
-
-  # ----------------------------------
 
 springdoc:
   swagger-ui:
@@ -57,3 +62,8 @@ springdoc:
 
 server:
   port: ${PORT:8080}
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true

@@ -99,7 +99,6 @@ public class Notification {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
     private Map<String, String> metadata = new LinkedHashMap<>();
-
     @Builder.Default
     @Column(name = "is_read", nullable = false)
     private Boolean isRead = false;
