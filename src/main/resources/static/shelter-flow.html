@@ -48,8 +48,6 @@
     .detail-pane { display:grid; gap:10px; }
     .detail-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
     .detail-images img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:12px; border:1px solid rgba(31,41,51,.1); background:#f4ecdf; }
-    .analysis-tags { display:flex; flex-wrap:wrap; gap:6px; }
-    .analysis-tags span { display:inline-flex; padding:6px 10px; border-radius:999px; background:rgba(23,107,117,.12); color:var(--accent2); font-size:12px; font-weight:800; }
     .empty { padding:22px; border:1px dashed rgba(31,41,51,.16); border-radius:14px; text-align:center; color:var(--muted); }
     pre { margin:0; white-space:pre-wrap; word-break:break-word; color:var(--muted); font-family:inherit; line-height:1.6; }
     code { font-family:Consolas,monospace; }
@@ -63,7 +61,7 @@
     <div>
       <strong>Shelter Flow</strong>
       <h1>보호 공고 탐색</h1>
-      <p class="muted" style="margin-top:8px">login-flow에서 로그인한 같은 세션으로 보호 공고 목록, 상세, 조회수 증가, 이미지 분석 목업을 바로 점검한다.</p>
+      <p class="muted" style="margin-top:8px">login-flow에서 로그인한 같은 세션으로 보호 공고 목록, 상세, 조회수 증가를 바로 점검한다.</p>
     </div>
     <div class="stack" style="justify-items:end">
       <div id="notificationBellMount"></div>
@@ -206,7 +204,6 @@ const state = {
   list: [],
   activeId: requestedId,
   detail: null,
-  analysis: null,
   helper: { sidos: [], sigungus: [], shelters: [], breeds: [] }
 };
 
@@ -502,7 +499,6 @@ async function searchShelters(forceFirst = true) {
   } else {
     state.activeId = null;
     state.detail = null;
-    state.analysis = null;
     renderSelectionSummary();
     renderDetail();
   }
@@ -513,11 +509,10 @@ async function searchShelters(forceFirst = true) {
 function renderDetail() {
   const container = el("detailContainer");
   if (!state.detail) {
-    container.innerHTML = `<div class="empty">목록에서 공고를 선택하면 상세와 분석 결과가 열린다.</div>`;
+    container.innerHTML = `<div class="empty">목록에서 공고를 선택하면 상세가 열린다.</div>`;
     return;
   }
   const detail = state.detail;
-  const analysis = state.analysis;
   const images = detail.images || [];
 
   container.innerHTML = `
@@ -529,7 +524,6 @@ function renderDetail() {
           <div class="actions" style="margin-top:10px">
             <button id="refreshDetailButton" class="secondary">상세 새로고침</button>
             <button id="increaseViewButton" class="secondary">조회수 증가</button>
-            <button id="analyzeImageButton" class="accent2">이미지 분석 목업</button>
           </div>
         </div>
         <div class="detail-block">
@@ -551,28 +545,12 @@ function renderDetail() {
             사례금: <strong>${detail.rewardAmount == null ? "-" : escapeHtml(String(detail.rewardAmount))}</strong>
           </div>
         </div>
-        <div class="detail-block">
-          <div class="muted" style="margin-bottom:8px">이미지 분석 결과</div>
-          ${analysis ? `
-            <div class="summary-box">
-              상태: <strong>${escapeHtml(analysis.analysisStatus || "-")}</strong><br>
-              noticeId: <strong>${escapeHtml(analysis.noticeId || "-")}</strong>
-            </div>
-            <div class="analysis-tags" style="margin-top:10px">
-              ${(analysis.features || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("") || "<span>특징 없음</span>"}
-            </div>
-            <div class="summary-box" style="margin-top:10px">
-              유사 공고: ${(analysis.similarNotices || []).map((item) => escapeHtml(item)).join(", ") || "-"}
-            </div>
-          ` : `<div class="muted">아직 분석을 돌리지 않았다.</div>`}
-        </div>
       </div>
     </div>
   `;
 
   el("refreshDetailButton").addEventListener("click", () => run(() => loadDetail(detail.id))());
   el("increaseViewButton").addEventListener("click", () => run(() => increaseView(detail.id))());
-  el("analyzeImageButton").addEventListener("click", () => run(() => analyzeImage(detail.id))());
 }
 
 async function loadDetail(id) {
@@ -581,7 +559,6 @@ async function loadDetail(id) {
   const response = await authApi(`/api/shelter/${encodeURIComponent(id)}`);
   if (response.status !== 200) throw new Error(`상세 조회 실패: ${JSON.stringify(response.body)}`);
   state.detail = response.body?.data || null;
-  state.analysis = null;
   renderSelectionSummary();
   renderDetail();
   setStatus(`${id} 상세 조회 완료`, "good");
@@ -592,14 +569,6 @@ async function increaseView(id) {
   if (response.status !== 200) throw new Error(`조회수 증가 실패: ${JSON.stringify(response.body)}`);
   const viewCount = response.body?.data?.viewCount;
   setStatus(`조회수 증가 완료${viewCount == null ? "" : ` · ${viewCount}`}`, "good");
-}
-
-async function analyzeImage(id) {
-  const response = await authApi(`/api/shelter/${encodeURIComponent(id)}/analyze-image`, { method: "POST" });
-  if (response.status !== 200) throw new Error(`이미지 분석 실패: ${JSON.stringify(response.body)}`);
-  state.analysis = response.body?.data?.analysis || null;
-  renderDetail();
-  setStatus(`이미지 분석 완료: ${state.analysis?.analysisStatus || "UNKNOWN"}`, "good");
 }
 
 function resetFilters() {

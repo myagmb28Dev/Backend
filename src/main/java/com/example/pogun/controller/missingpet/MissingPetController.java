@@ -1,5 +1,6 @@
 package com.example.pogun.controller.missingpet;
-
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.missingpet.MissingPetCreateRequest;
 import com.example.pogun.dto.missingpet.MissingPetDetailResponse;
@@ -8,6 +9,7 @@ import com.example.pogun.dto.missingpet.MissingPetStatusUpdateRequest;
 import com.example.pogun.dto.missingpet.MissingPetUpdateRequest;
 import com.example.pogun.dto.missingpet.MissingPetViewResponse;
 import com.example.pogun.service.missingpet.MissingPetService;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,6 +58,24 @@ public class MissingPetController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 동물 공고 목록 조회 성공", result));
     }
 
+    @GetMapping("/ai-source")
+    @Operation(summary = "실종 동물 공고 AI 목록 조회", description = "AI 서버가 API 키 헤더로 조회하는 실종 동물 공고 목록입니다.")
+    public ResponseEntity<ApiResponse<MissingPetListResponse>> aiSourceList(
+            @Parameter(name = "X-AI-API-KEY", description = "AI 서버 인증용 API 키 헤더", required = true, example = "your-ai-api-key")
+            @RequestHeader(name = "X-AI-API-KEY", required = false) String apiKey,
+            @RequestParam(required = false) String region,
+            @RequestParam(required = false) String breed,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false, defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        MissingPetListResponse result = missingPetService.getAiSourceList(apiKey, region, breed, status, from, to, sort, page, size);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 동물 공고 AI 목록 조회 성공", result));
+    }
+
     @PostMapping
     @Operation(summary = "실종 공고 생성", description = "사용자가 새로운 실종 동물 공고를 생성합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> create(@Valid @RequestBody MissingPetCreateRequest request) {
@@ -79,6 +100,30 @@ public class MissingPetController {
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> detail(@PathVariable String missingPetId) {
         MissingPetDetailResponse data = missingPetService.getMissingPetDetail(missingPetId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 상세 조회 성공", data));
+    }
+
+    @GetMapping("/{missingPetId}/ai-source")
+    @Operation(summary = "실종 공고 AI 상세 조회", description = "AI 서버가 API 키 헤더로 조회하는 실종 공고 상세 정보입니다.")
+    public ResponseEntity<ApiResponse<MissingPetDetailResponse>> aiSourceDetail(
+            @PathVariable String missingPetId,
+            @Parameter(name = "X-AI-API-KEY", description = "AI 서버 인증용 API 키 헤더", required = true, example = "your-ai-api-key")
+            @RequestHeader(name = "X-AI-API-KEY", required = false) String apiKey
+    ) {
+        MissingPetDetailResponse data = missingPetService.getAiSourceDetail(apiKey, missingPetId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 AI 상세 조회 성공", data));
+    }
+
+    @PostMapping("/{missingPetId}/analysis-result")
+    @Operation(summary = "실종 공고 AI 분석 결과 수신", description = "FastAPI가 실종 공고 분석 결과를 콜백으로 전송합니다.")
+    public ResponseEntity<ApiResponse<AiAnalysisResultCallbackResponse>> receiveAnalysisResult(
+            @PathVariable String missingPetId,
+            @Parameter(name = "X-AI-API-KEY", description = "AI 서버 인증용 API 키 헤더", required = true, example = "your-ai-api-key")
+            @RequestHeader(name = "X-AI-API-KEY", required = false) String apiKey,
+            @Valid @RequestBody AiAnalysisResultCallbackRequest request
+    ) {
+        AiAnalysisResultCallbackResponse data = missingPetService.receiveAnalysisResult(missingPetId, apiKey, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED, "실종 공고 AI 분석 결과 수신 성공", data));
     }
 
     @PatchMapping("/{missingPetId}")
@@ -119,4 +164,5 @@ public class MissingPetController {
         MissingPetViewResponse data = missingPetService.increaseMissingPetView(missingPetId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "조회수 증가 처리 완료", data));
     }
+
 }

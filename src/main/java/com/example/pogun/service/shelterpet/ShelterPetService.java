@@ -1,8 +1,8 @@
 package com.example.pogun.service.shelterpet;
 
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetDetailResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetImageAnalysisDetailResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetImageAnalysisResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListFiltersResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
 import com.example.pogun.dto.shelterpet.ShelterReferenceItemResponse;
@@ -13,6 +13,7 @@ import com.example.pogun.dto.shelterpet.ShelterPetUpdateResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetViewResponse;
 import com.example.pogun.entity.shelterpet.ShelterPet;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
+import com.example.pogun.service.ai.AiService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,7 @@ public class ShelterPetService {
 
     private final ShelterPublicApiClient shelterPublicApiClient;
     private final ShelterPetRepository shelterPetRepository;
+    private final AiService aiService;
 
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
         ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, page, size);
@@ -110,26 +112,18 @@ public class ShelterPetService {
         return new ShelterPetViewResponse(id, saved.getViewCount());
     }
 
-    public ShelterPetImageAnalysisResponse analyzeShelterPetImage(String id) {
-        ShelterPet shelterPet = getOrCreateShelterPet(id);
-        if (!StringUtils.hasText(shelterPet.getAnalysisStatus())) {
-            shelterPet.setAnalysisStatus("MOCKED");
-        }
-        if (shelterPet.getAnalysisFeatures() == null || shelterPet.getAnalysisFeatures().isEmpty()) {
-            shelterPet.setAnalysisFeatures(List.of("mock-analysis", "external-shelter-image", "ai-pending"));
-        }
-        if (shelterPet.getSimilarNoticeIds() == null || shelterPet.getSimilarNoticeIds().isEmpty()) {
-            shelterPet.setSimilarNoticeIds(List.of(id));
-        }
-        ShelterPet saved = shelterPetRepository.save(shelterPet);
-        return new ShelterPetImageAnalysisResponse(
-                new ShelterPetImageAnalysisDetailResponse(
-                        id,
-                        saved.getAnalysisStatus(),
-                        saved.getAnalysisFeatures(),
-                        saved.getSimilarNoticeIds()
-                )
-        );
+    public ShelterPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String sort, int page, int size) {
+        aiService.verifyAiApiKey(apiKey);
+        return getShelterPetList(region, breed, status, sort, page, size);
+    }
+
+    public ShelterPetDetailResponse getAiSourceDetail(String apiKey, String id) {
+        aiService.verifyAiApiKey(apiKey);
+        return getShelterPetDetail(id);
+    }
+
+    public AiAnalysisResultCallbackResponse receiveAnalysisResult(String id, String apiKey, AiAnalysisResultCallbackRequest request) {
+        return aiService.saveShelterAnalysisResult(id, apiKey, request);
     }
 
     public ShelterReferenceListResponse getSidoList() {

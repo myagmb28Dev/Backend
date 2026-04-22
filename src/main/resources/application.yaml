@@ -49,6 +49,8 @@ app:
       sigungu-path: ${SHELTER_API_SIGUNGU_PATH:/sigungu_v2}
       shelter-path: ${SHELTER_API_SHELTER_PATH:/shelter_v2}
       kind-path: ${SHELTER_API_KIND_PATH:/kind_v2}
+  ai:
+    api-key: ${AI_API_KEY:}
 
 decorator:
   datasource:

@@ -68,6 +68,12 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/onboarding/map-config").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/missing-pets/ai-source").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/missing-pets/*/ai-source").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/shelter/ai-source").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/shelter/*/ai-source").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/missing-pets/*/analysis-result").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/shelter/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers("/ws/chat").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

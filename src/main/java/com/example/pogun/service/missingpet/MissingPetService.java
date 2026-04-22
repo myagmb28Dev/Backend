@@ -1,5 +1,7 @@
 package com.example.pogun.service.missingpet;
 
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
+import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.missingpet.MissingPetDetailResponse;
 import com.example.pogun.dto.missingpet.MissingPetListFiltersResponse;
 import com.example.pogun.dto.missingpet.MissingPetListResponse;
@@ -10,6 +12,7 @@ import com.example.pogun.entity.bookmark.NoticeBookmark;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.service.ai.AiService;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.LocalImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
@@ -49,6 +52,7 @@ public class MissingPetService {
     private final NotificationService notificationService;
     private final LocalImageStorageService localImageStorageService;
     private final SimpMessagingTemplate simpMessagingTemplate;
+    private final AiService aiService;
 
     @Transactional(readOnly = true)
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
@@ -187,6 +191,23 @@ public class MissingPetService {
         notice.setViewCount(notice.getViewCount() + 1);
         PetNotice saved = petNoticeRepository.save(notice);
         return new MissingPetViewResponse(saved.getId(), saved.getViewCount());
+    }
+
+    @Transactional(readOnly = true)
+    public MissingPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String from, String to, String sort, int page, int size) {
+        aiService.verifyAiApiKey(apiKey);
+        return getMissingPetList(region, breed, status, from, to, sort, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public MissingPetDetailResponse getAiSourceDetail(String apiKey, String missingPetId) {
+        aiService.verifyAiApiKey(apiKey);
+        return getMissingPetDetail(missingPetId);
+    }
+
+    @Transactional
+    public AiAnalysisResultCallbackResponse receiveAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
+        return aiService.saveMissingPetAnalysisResult(missingPetId, apiKey, request);
     }
 
     private User getCurrentUser() {

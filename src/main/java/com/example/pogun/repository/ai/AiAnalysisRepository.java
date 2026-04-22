@@ -14,4 +14,5 @@ import java.util.UUID;
 @Repository
 public interface AiAnalysisRepository extends JpaRepository<AiAnalysis, UUID> {
     Optional<AiAnalysis> findByIdAndAuthor(UUID id, User author);
+    Optional<AiAnalysis> findTopByTargetTypeAndTargetIdOrderByCreatedAtDesc(com.example.pogun.entity.ai.enums.AiAnalysisTargetType targetType, String targetId);
 }
