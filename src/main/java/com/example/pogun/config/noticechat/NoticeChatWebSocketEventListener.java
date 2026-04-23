@@ -2,8 +2,7 @@ package com.example.pogun.config;
 
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
@@ -11,11 +10,17 @@ import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 @Component
-@RequiredArgsConstructor
 public class NoticeChatWebSocketEventListener {
-    @Lazy
-    private final NoticeChatService noticeChatService;
+    private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
     private final UserPresenceService userPresenceService;
+
+    public NoticeChatWebSocketEventListener(
+            ObjectProvider<NoticeChatService> noticeChatServiceProvider,
+            UserPresenceService userPresenceService
+    ) {
+        this.noticeChatServiceProvider = noticeChatServiceProvider;
+        this.userPresenceService = userPresenceService;
+    }
 
     @EventListener
     public void handleConnected(SessionConnectedEvent event) {
@@ -25,7 +30,7 @@ public class NoticeChatWebSocketEventListener {
             return;
         }
         userPresenceService.markWebSocketConnected(firebaseUid, accessor.getSessionId());
-        noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
     }
 
     @EventListener
@@ -36,7 +41,7 @@ public class NoticeChatWebSocketEventListener {
             return;
         }
         userPresenceService.markWebSocketDisconnected(firebaseUid, accessor.getSessionId());
-        noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
     }
 
     private String resolveFirebaseUid(StompHeaderAccessor accessor) {
