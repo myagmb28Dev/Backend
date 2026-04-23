@@ -5,11 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
-import com.example.pogun.config.AiProtectedUploadAccessInterceptor;
-import com.example.pogun.config.NoticeChatUploadAccessInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -22,7 +19,6 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.IOException;
@@ -32,25 +28,13 @@ import java.nio.charset.StandardCharsets;
  * 정적 리소스와 로컬 업로드 파일 서빙을 담당하는 WebMvcConfig이다.
  */
 @Configuration
-@RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
-    private final AiProtectedUploadAccessInterceptor aiProtectedUploadAccessInterceptor;
-    private final NoticeChatUploadAccessInterceptor noticeChatUploadAccessInterceptor;
-
     public static final MediaType APPLICATION_JSON_UTF8 = new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8);
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations("file:uploads/");
-    }
-
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(aiProtectedUploadAccessInterceptor)
-                .addPathPatterns("/uploads/missing-pets/**", "/uploads/shelter/**");
-        registry.addInterceptor(noticeChatUploadAccessInterceptor)
-                .addPathPatterns("/uploads/notice-chat/**");
     }
 
     @Bean
