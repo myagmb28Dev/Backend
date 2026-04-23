@@ -411,12 +411,28 @@ function cancelEdit() {
 }
 
 async function loadAuthenticatedImages() {
-  if (!activeRole || !users[activeRole].token) return;
+  const hasToken = Boolean(activeRole && users[activeRole].token);
   const nodes = [...document.querySelectorAll("img[data-auth-src]")];
   for (const node of nodes) {
     const url = node.getAttribute("data-auth-src");
     if (!url || node.dataset.loaded === "true") continue;
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${users[activeRole].token}` } });
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(url, window.location.origin);
+    } catch {
+      node.remove();
+      continue;
+    }
+    const isCrossOrigin = resolvedUrl.origin !== window.location.origin;
+
+    if (isCrossOrigin) {
+      node.src = resolvedUrl.toString();
+      node.dataset.loaded = "true";
+      continue;
+    }
+
+    if (!hasToken) continue;
+    const response = await fetch(resolvedUrl.toString(), { headers: { Authorization: `Bearer ${users[activeRole].token}` } });
     if (!response.ok) {
       node.remove();
       continue;

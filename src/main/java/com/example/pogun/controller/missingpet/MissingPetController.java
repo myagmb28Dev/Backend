@@ -86,7 +86,7 @@ public class MissingPetController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "실종 공고 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 로컬 이미지를 저장합니다.")
+    @Operation(summary = "실종 공고 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 S3 이미지를 저장합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> createWithFiles(
             @Valid @RequestPart("request") MissingPetCreateRequest request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images
@@ -138,7 +138,7 @@ public class MissingPetController {
     }
 
     @PatchMapping(value = "/{missingPetId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "실종 공고 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 로컬 이미지를 수정합니다.")
+    @Operation(summary = "실종 공고 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 S3 이미지를 수정합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> updateWithFiles(
             @PathVariable String missingPetId,
             @Valid @RequestPart("request") MissingPetUpdateRequest request,

@@ -6,6 +6,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const baseURL = process.env.BASE_URL || 'http://localhost:8081';
+const s3BaseUrl = (process.env.AWS_S3_PUBLIC_BASE_URL || 'https://2026capstone-ktw.s3.ap-northeast-2.amazonaws.com').replace(/\/$/, '');
 const repoRoot = path.resolve(__dirname, '..', '..');
 
 function parseDotEnv() {
@@ -524,8 +525,8 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   roomThumbnailForm.append('image', createTinyPngBlob(), 'room-thumbnail.png');
   const roomThumbnailSettings = await multipartApi(`/api/chat/rooms/${roomId}/settings/thumbnail`, userTwoToken, roomThumbnailForm);
   expect(roomThumbnailSettings.status, JSON.stringify(roomThumbnailSettings.body)).toBe(200);
-  expect(roomThumbnailSettings.body.data.customThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
-  expect(roomThumbnailSettings.body.data.displayThumbnailUrl).toContain('/uploads/notice-chat/rooms/');
+  expect(roomThumbnailSettings.body.data.customThumbnailUrl).toContain(`${s3BaseUrl}/uploads/notice-chat/rooms/`);
+  expect(roomThumbnailSettings.body.data.displayThumbnailUrl).toContain(`${s3BaseUrl}/uploads/notice-chat/rooms/`);
 
   const roomSettingsClear = await api(`/api/chat/rooms/${roomId}/settings`, userTwoToken, {
     method: 'PATCH',

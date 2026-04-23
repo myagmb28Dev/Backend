@@ -72,7 +72,7 @@ public class UserController {
     }
 
     @PatchMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "프로필 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `profileImage` 파일을 함께 받아 로그인한 사용자의 프로필과 로컬 이미지를 수정합니다.")
+    @Operation(summary = "프로필 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `profileImage` 파일을 함께 받아 로그인한 사용자의 프로필과 S3 이미지를 수정합니다.")
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfileWithFile(
             @Valid @RequestPart("request") UpdateProfileRequest request,
             @RequestPart(value = "profileImage", required = false) MultipartFile profileImage

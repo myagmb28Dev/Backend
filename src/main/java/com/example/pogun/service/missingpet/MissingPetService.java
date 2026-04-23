@@ -14,7 +14,7 @@ import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.service.ai.AiService;
 import com.example.pogun.service.notification.NotificationService;
-import com.example.pogun.service.storage.LocalImageStorageService;
+import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.missingpet.enums.PetGender;
@@ -51,7 +51,7 @@ public class MissingPetService {
     private final UserRepository userRepository;
     private final NoticeBookmarkRepository noticeBookmarkRepository;
     private final NotificationService notificationService;
-    private final LocalImageStorageService localImageStorageService;
+    private final S3ImageStorageService s3ImageStorageService;
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final AiService aiService;
     private final NoticeChatService noticeChatService;
@@ -346,7 +346,7 @@ public class MissingPetService {
         notice.getImages().clear();
         List<String> resolvedImageUrls = new ArrayList<>();
         if (imageFiles != null && !imageFiles.isEmpty()) {
-            resolvedImageUrls.addAll(localImageStorageService.storeImages("missing-pets", "notices", ownerId, imageFiles));
+            resolvedImageUrls.addAll(s3ImageStorageService.storeImages("missing-pets", "notices", ownerId, imageFiles));
         }
 
         for (int i = 0; i < resolvedImageUrls.size(); i++) {

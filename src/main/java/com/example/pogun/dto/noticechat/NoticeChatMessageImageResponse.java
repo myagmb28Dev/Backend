@@ -11,6 +11,7 @@ import java.util.UUID;
 public record NoticeChatMessageImageResponse(
         @Schema(description = "이미지 ID") UUID id,
         @Schema(description = "대표 이미지 URL") String imageUrl,
+        @Schema(description = "원본 URL") String originalUrl,
         @Schema(description = "WEBP 원본 표시 URL") String webpUrl,
         @Schema(description = "중간 크기 URL") String mediumUrl,
         @Schema(description = "썸네일 URL") String thumbnailUrl,

@@ -4,8 +4,8 @@ spring:
     time-zone: UTC
   servlet:
     multipart:
-      max-file-size: 31MB
-      max-request-size: 31MB
+      max-file-size: 30MB
+      max-request-size: 320MB
   config:
     import:
       - optional:file:.env[.properties]
@@ -27,8 +27,11 @@ spring:
     show-sql: ${JPA_SHOW_SQL:false}
 
 app:
-  upload:
-    root: uploads
+  storage:
+    s3:
+      bucket: ${AWS_S3_BUCKET:}
+      region: ${AWS_REGION:ap-northeast-2}
+      public-base-url: ${AWS_S3_PUBLIC_BASE_URL:}
   kakao:
     local:
       rest-api-key: ${KAKAO_REST_API_KEY:}
@@ -36,10 +39,9 @@ app:
       base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
   firebase:
     auth:
-      mode: PRODUCTION
+      mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}
       project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
-      emulator-host:
-      allow-emulator: false
+      allow-emulator: ${APP_FIREBASE_AUTH_ALLOW_EMULATOR:${FIREBASE_ALLOW_AUTH_EMULATOR:false}}
   shelter:
     api:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}

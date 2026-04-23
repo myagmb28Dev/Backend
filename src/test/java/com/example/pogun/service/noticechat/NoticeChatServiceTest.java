@@ -24,8 +24,8 @@ import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
+import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.service.user.UserPresenceService;
-import com.example.pogun.service.storage.LocalImageStorageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,6 +58,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class NoticeChatServiceTest {
 
+    private static final String S3_BASE_URL = "https://2026capstone-ktw.s3.ap-northeast-2.amazonaws.com";
+
     @Mock
     private NoticeChatRoomRepository noticeChatRoomRepository;
     @Mock
@@ -77,11 +79,11 @@ class NoticeChatServiceTest {
     @Mock
     private SimpMessagingTemplate simpMessagingTemplate;
     @Mock
-    private LocalImageStorageService localImageStorageService;
-        @Mock
-        private NotificationService notificationService;
-        @Mock
-        private UserPresenceService userPresenceService;
+    private S3ImageStorageService s3ImageStorageService;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private UserPresenceService userPresenceService;
 
     @InjectMocks
     private NoticeChatService noticeChatService;
@@ -276,8 +278,8 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
-        when(localImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), file))
-                .thenReturn(variant("/uploads/notice-chat/rooms/test/room.webp"));
+        when(s3ImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), file))
+                .thenReturn(variant(s3Url("uploads/notice-chat/rooms/test/room.webp")));
 
         var response = noticeChatService.updateRoomThumbnail(roomId.toString(), file);
 
@@ -306,10 +308,10 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
                 .thenReturn(List.of(
-                        variant("/uploads/notice-chat/messages/test/one.webp"),
-                        variant("/uploads/notice-chat/messages/test/two.webp")
+                        variant(s3Url("uploads/notice-chat/messages/test/one.webp")),
+                        variant(s3Url("uploads/notice-chat/messages/test/two.webp"))
                 ));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
@@ -318,7 +320,7 @@ class NoticeChatServiceTest {
 
         assertThat(response.messageType()).isEqualTo("IMAGE");
         assertThat(response.message()).isEqualTo("이미지와 함께 보낸 글");
-        verify(localImageStorageService).storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class));
+        verify(s3ImageStorageService).storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class));
     }
 
     @Test
@@ -339,8 +341,8 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
-                .thenReturn(List.of(variant("/uploads/notice-chat/messages/test/one.webp")));
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+                .thenReturn(List.of(variant(s3Url("uploads/notice-chat/messages/test/one.webp"))));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
@@ -363,7 +365,7 @@ class NoticeChatServiceTest {
         assertThatThrownBy(() -> noticeChatService.sendImages(roomId.toString(), null, "a".repeat(2001), List.of(file)))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("MESSAGE_TOO_LONG"));
-        verify(localImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
+        verify(s3ImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
     }
 
     @Test
@@ -380,7 +382,7 @@ class NoticeChatServiceTest {
         assertThatThrownBy(() -> noticeChatService.sendImages(roomId.toString(), null, null, List.of(file)))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("TOTAL_MEDIA_SIZE_EXCEEDED"));
-        verify(localImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
+        verify(s3ImageStorageService, never()).storeImageVariants(any(), any(), any(), any());
     }
 
     @Test
@@ -390,7 +392,7 @@ class NoticeChatServiceTest {
         MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn(1024L);
-        when(localImageStorageService.isVideoFile(file)).thenReturn(true);
+        when(s3ImageStorageService.isVideoFile(file)).thenReturn(true);
         NoticeChatMessage savedMessage = NoticeChatMessage.builder()
                 .id(UUID.randomUUID())
                 .room(room)
@@ -403,10 +405,10 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(localImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
                 .thenReturn(List.of(new StoredImageVariant(
-                        "/uploads/notice-chat/messages/test/video.mp4",
-                        "/uploads/notice-chat/messages/test/video.mp4",
+                        s3Url("uploads/notice-chat/messages/test/video.mp4"),
+                        s3Url("uploads/notice-chat/messages/test/video.mp4"),
                         null,
                         null,
                         null
@@ -703,5 +705,9 @@ class NoticeChatServiceTest {
 
     private StoredImageVariant variant(String webpUrl) {
         return new StoredImageVariant(webpUrl.replace(".webp", ".jpg"), webpUrl, webpUrl.replace(".webp", "-medium.webp"), webpUrl.replace(".webp", "-thumbnail.webp"), webpUrl.replace(".webp", "-preview.webp"));
+    }
+
+    private String s3Url(String objectKey) {
+        return S3_BASE_URL + "/" + objectKey;
     }
 }

@@ -13,6 +13,7 @@ docs/
 .local/
 firebase-debug.log
 .playwright-cli/
+/uploads/
 node_modules/
 playwright/artifacts/
 
