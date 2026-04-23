@@ -5,8 +5,6 @@ import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetDetailResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListFiltersResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
-import com.example.pogun.dto.shelterpet.ShelterReferenceItemResponse;
-import com.example.pogun.dto.shelterpet.ShelterReferenceListResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetSummaryResponse;
 import com.example.pogun.entity.shelterpet.ShelterPet;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
@@ -17,10 +15,10 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+
 /**
  * 도메인 비즈니스 로직을 담당하는 ShelterPetService이다.
  */
-
 @Service
 @RequiredArgsConstructor
 public class ShelterPetService {
@@ -36,9 +34,16 @@ public class ShelterPetService {
                     ShelterPet local = shelterPetRepository.findById(item.desertionNo()).orElse(null);
                     return new ShelterPetSummaryResponse(
                             item.desertionNo(),
+                            item.noticeNo(),
+                            resolveTitle(local, item),
                             resolveRegionLabel(local, item),
                             resolveBreedLabel(local, item),
-                            resolveStatusLabel(local, item)
+                            resolveStatusLabel(local, item),
+                            item.happenPlace(),
+                            item.careName(),
+                            item.noticeStartDate(),
+                            item.noticeEndDate(),
+                            resolveImages(local, item)
                     );
                 })
                 .toList();
@@ -46,6 +51,7 @@ public class ShelterPetService {
         return new ShelterPetListResponse(
                 "KOREA_ANIMAL_PROTECTION_API",
                 new ShelterPetListFiltersResponse(region, breed, status, sort, page, size),
+                result.totalCount(),
                 items
         );
     }
@@ -55,10 +61,22 @@ public class ShelterPetService {
         ShelterPet local = shelterPetRepository.findById(id).orElse(null);
         return new ShelterPetDetailResponse(
                 id,
+                external.noticeNo(),
                 resolveTitle(local, external),
+                firstNonBlank(local == null ? null : local.getStatus(), external.processState(), "UNKNOWN"),
+                firstNonBlank(local == null ? null : local.getBreed(), external.kindFullName(), external.kindName(), "미상"),
                 resolveDescription(local, external),
+                external.specialMark(),
                 local == null ? null : local.getRewardAmount(),
                 firstNonBlank(local == null ? null : local.getContactPhone(), external.careTel()),
+                external.happenPlace(),
+                external.happenDate(),
+                external.careName(),
+                external.careAddress(),
+                external.organizationName(),
+                external.noticeStartDate(),
+                external.noticeEndDate(),
+                external.updatedAt(),
                 resolveImages(local, external)
         );
     }
@@ -77,48 +95,23 @@ public class ShelterPetService {
         return aiService.saveShelterAnalysisResult(id, apiKey, request);
     }
 
-    public ShelterReferenceListResponse getSidoList() {
-        return new ShelterReferenceListResponse(
-                "KOREA_ANIMAL_PROTECTION_API",
-                "SIDO",
-                null,
-                shelterPublicApiClient.fetchSido().stream()
-                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
-                        .toList()
-        );
-    }
-
-    public ShelterReferenceListResponse getSigunguList(String uprCd) {
-        return new ShelterReferenceListResponse(
-                "KOREA_ANIMAL_PROTECTION_API",
-                "SIGUNGU",
-                uprCd,
-                shelterPublicApiClient.fetchSigungu(uprCd).stream()
-                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
-                        .toList()
-        );
-    }
-
-    public ShelterReferenceListResponse getShelterList(String uprCd, String orgCd) {
-        return new ShelterReferenceListResponse(
-                "KOREA_ANIMAL_PROTECTION_API",
-                "SHELTER",
-                orgCd,
-                shelterPublicApiClient.fetchShelters(uprCd, orgCd).stream()
-                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
-                        .toList()
-        );
-    }
-
-    public ShelterReferenceListResponse getBreedList(String upKindCd) {
-        return new ShelterReferenceListResponse(
-                "KOREA_ANIMAL_PROTECTION_API",
-                "KIND",
-                upKindCd,
-                shelterPublicApiClient.fetchKinds(upKindCd).stream()
-                        .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
-                        .toList()
-        );
+    private ShelterPet getOrCreateShelterPet(String id) {
+        return shelterPetRepository.findById(id)
+                .orElseGet(() -> {
+                    ShelterPublicApiClient.ShelterPublicApiAnimal external = shelterPublicApiClient.fetchShelterPet(id);
+                    ShelterPet shelterPet = ShelterPet.builder()
+                            .id(id)
+                            .source(external.source())
+                            .region(extractRegion(external))
+                            .breed(firstNonBlank(external.kindName(), external.kindFullName(), "미상"))
+                            .status(firstNonBlank(external.processState(), "UNKNOWN"))
+                            .title(buildDefaultTitle(external))
+                            .description(buildDefaultDescription(external))
+                            .contactPhone(external.careTel())
+                            .images(new ArrayList<>(external.imageUrls()))
+                            .build();
+                    return shelterPetRepository.save(shelterPet);
+                });
     }
 
     private String resolveTitle(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
