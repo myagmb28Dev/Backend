@@ -37,7 +37,7 @@ import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.user.UserFollowRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
-import com.example.pogun.service.storage.LocalImageStorageService;
+import com.example.pogun.service.storage.S3ImageStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -69,7 +69,7 @@ public class CommunityService {
     private final CommunityCommentRepository communityCommentRepository;
     private final CommunityPostVoteRepository communityPostVoteRepository;
     private final CommunityPostReactionRepository communityPostReactionRepository;
-    private final LocalImageStorageService localImageStorageService;
+    private final S3ImageStorageService s3ImageStorageService;
     private final UserRepository userRepository;
     private final UserFollowRepository userFollowRepository;
     private final NotificationService notificationService;
@@ -620,7 +620,7 @@ public class CommunityService {
 
         List<String> resolvedImageUrls = new ArrayList<>();
         if (imageFiles != null && !imageFiles.isEmpty()) {
-            resolvedImageUrls.addAll(localImageStorageService.storeImages("community", "posts", ownerId, imageFiles));
+            resolvedImageUrls.addAll(s3ImageStorageService.storeImages("community", "posts", ownerId, imageFiles));
         }
 
         for (int i = 0; i < resolvedImageUrls.size(); i++) {

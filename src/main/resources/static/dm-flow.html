@@ -921,11 +921,28 @@ function renderImagePreview() {
   preview.appendChild(statusItem);
 }
 async function loadAuthenticatedImages(role = activeRole) {
-  if (!role || !users[role].token) return;
+  const hasToken = Boolean(role && users[role].token);
   const mediaNodes = [...document.querySelectorAll("img[data-auth-src],video[data-auth-src]")];
   for (const media of mediaNodes) {
     const imageUrl = media.getAttribute("data-auth-src");
     if (!imageUrl || media.dataset.loaded === "true") continue;
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(imageUrl, window.location.origin);
+    } catch {
+      media.removeAttribute("data-auth-src");
+      media.remove();
+      continue;
+    }
+    const isCrossOrigin = resolvedUrl.origin !== window.location.origin;
+
+    if (isCrossOrigin) {
+      media.src = resolvedUrl.toString();
+      media.dataset.loaded = "true";
+      authenticatedImageUrls.set(imageUrl, resolvedUrl.toString());
+      continue;
+    }
+
     if (blockedMediaUrls.has(imageUrl)) {
       media.removeAttribute("data-auth-src");
       media.remove();
@@ -936,7 +953,9 @@ async function loadAuthenticatedImages(role = activeRole) {
       media.dataset.loaded = "true";
       continue;
     }
-    const response = await fetch(imageUrl, { headers: { Authorization: `Bearer ${users[role].token}` } });
+
+    if (!hasToken) continue;
+    const response = await fetch(resolvedUrl.toString(), { headers: { Authorization: `Bearer ${users[role].token}` } });
     if (response.status === 401) {
       blockMediaUrls([imageUrl]);
       media.removeAttribute("data-auth-src");

@@ -13,7 +13,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 import java.util.List;
 /**
  * 애플리케이션 설정을 담당하는 SecurityConfig이다.
@@ -72,7 +71,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/missing-pets/*/ai-source").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shelter/ai-source").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shelter/*/ai-source").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/missing-pets/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/shelter/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()

@@ -20,7 +20,7 @@ import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.noticechat.NoticeChatService;
-import com.example.pogun.service.storage.LocalImageStorageService;
+import com.example.pogun.service.storage.S3ImageStorageService;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -39,7 +39,7 @@ public class UserService {
     private final PetNoticeRepository petNoticeRepository;
     private final CommunityPostRepository communityPostRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
-    private final LocalImageStorageService localImageStorageService;
+    private final S3ImageStorageService s3ImageStorageService;
     private final NoticeChatService noticeChatService;
 
     private User getCurrentUser() {
@@ -70,7 +70,7 @@ public class UserService {
             user.setRegion(request.getRegion().trim());
         }
         if (profileImage != null && !profileImage.isEmpty()) {
-            user.setProfileImageUrl(localImageStorageService.storeImage("profile", "users", user.getId(), profileImage));
+            user.setProfileImageUrl(s3ImageStorageService.storeImage("profile", "users", user.getId(), profileImage));
         } else if (request.getProfileImageUrl() != null) {
             user.setProfileImageUrl(request.getProfileImageUrl().trim());
         }

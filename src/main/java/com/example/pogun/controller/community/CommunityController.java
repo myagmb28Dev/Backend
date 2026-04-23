@@ -76,7 +76,7 @@ public class CommunityController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "커뮤니티 글 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 로컬 이미지를 저장합니다.")
+    @Operation(summary = "커뮤니티 글 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 S3 이미지를 저장합니다.")
     public ResponseEntity<ApiResponse<CommunityPostCreateResponse>> createWithFiles(
             @RequestPart("request") String request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images
@@ -101,7 +101,7 @@ public class CommunityController {
     }
 
     @PatchMapping(value = "/{postId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "커뮤니티 글 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 로컬 이미지를 수정합니다.")
+    @Operation(summary = "커뮤니티 글 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 커뮤니티 글과 S3 이미지를 수정합니다.")
     public ResponseEntity<ApiResponse<CommunityPostUpdateResponse>> updateWithFiles(
             @PathVariable String postId,
             @RequestPart("request") String request,

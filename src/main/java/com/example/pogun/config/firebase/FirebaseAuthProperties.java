@@ -11,7 +11,6 @@ public class FirebaseAuthProperties {
 
     private Mode mode = Mode.PRODUCTION;
     private String projectId;
-    private String emulatorHost;
     private boolean allowEmulator = false;
 
     public boolean isEmulatorMode() {

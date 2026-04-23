@@ -38,7 +38,7 @@ import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
-import com.example.pogun.service.storage.LocalImageStorageService;
+import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -81,7 +81,7 @@ public class NoticeChatService {
     private final UserRepository userRepository;
     private final UserBlockRepository userBlockRepository;
     private final SimpMessagingTemplate simpMessagingTemplate;
-    private final LocalImageStorageService localImageStorageService;
+    private final S3ImageStorageService s3ImageStorageService;
     private final NotificationService notificationService;
     private final UserPresenceService userPresenceService;
 
@@ -329,10 +329,10 @@ public class NoticeChatService {
         }
 
         NoticeChatMessage replyToMessage = resolveReplyTarget(parseNullableUuid(replyToMessageId, "INVALID_REPLY_MESSAGE_ID", "올바르지 않은 답장 메시지 ID 형식입니다."), room);
-        NoticeChatMessageType mediaType = nonEmptyImages.stream().anyMatch(localImageStorageService::isVideoFile)
+        NoticeChatMessageType mediaType = nonEmptyImages.stream().anyMatch(s3ImageStorageService::isVideoFile)
                 ? NoticeChatMessageType.VIDEO
                 : NoticeChatMessageType.IMAGE;
-        List<StoredImageVariant> imageVariants = localImageStorageService.storeImageVariants("notice-chat", "messages", sender.getId(), nonEmptyImages);
+        List<StoredImageVariant> imageVariants = s3ImageStorageService.storeImageVariants("notice-chat", "messages", sender.getId(), nonEmptyImages);
         NoticeChatMessage saved = saveMessage(
                 room,
                 sender,
@@ -500,10 +500,10 @@ public class NoticeChatService {
         if (image == null || image.isEmpty()) {
             throw ApiException.badRequest("EMPTY_ROOM_THUMBNAIL", "채팅방 썸네일 이미지는 필수입니다.");
         }
-        if (localImageStorageService.isVideoFile(image)) {
+        if (s3ImageStorageService.isVideoFile(image)) {
             throw ApiException.badRequest("INVALID_ROOM_THUMBNAIL", "채팅방 썸네일에는 영상 파일을 사용할 수 없습니다.");
         }
-        StoredImageVariant variant = localImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), image);
+        StoredImageVariant variant = s3ImageStorageService.storeImageVariant("notice-chat", "rooms", currentUser.getId(), image);
         state.setCustomThumbnailUrl(variant.thumbnailUrl() != null ? variant.thumbnailUrl() : variant.webpUrl());
         participantStateRepository.save(state);
         return toRoomResponse(room, currentUser);
@@ -667,6 +667,7 @@ public class NoticeChatService {
                         .map(image -> new NoticeChatMessageImageResponse(
                                 image.getId(),
                                 image.getImageUrl(),
+                                image.getOriginalUrl() != null ? image.getOriginalUrl() : image.getImageUrl(),
                                 image.getWebpUrl() != null ? image.getWebpUrl() : image.getImageUrl(),
                                 image.getMediumUrl(),
                                 image.getThumbnailUrl(),
