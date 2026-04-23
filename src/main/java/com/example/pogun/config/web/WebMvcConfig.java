@@ -1,5 +1,6 @@
 package com.example.pogun.config.web;
 
+import com.example.pogun.config.NoticeChatUploadAccessInterceptor;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +18,7 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -28,13 +30,22 @@ import java.nio.charset.StandardCharsets;
  * 정적 리소스와 로컬 업로드 파일 서빙을 담당하는 WebMvcConfig이다.
  */
 @Configuration
+@lombok.RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
+    private final NoticeChatUploadAccessInterceptor noticeChatUploadAccessInterceptor;
+
     public static final MediaType APPLICATION_JSON_UTF8 = new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8);
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations("file:uploads/");
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(noticeChatUploadAccessInterceptor)
+                .addPathPatterns("/uploads/notice-chat/**");
     }
 
     @Bean
