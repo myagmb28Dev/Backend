@@ -3,6 +3,7 @@ package com.example.pogun.config;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 @Component
 @RequiredArgsConstructor
 public class NoticeChatWebSocketEventListener {
+    @Lazy
     private final NoticeChatService noticeChatService;
     private final UserPresenceService userPresenceService;
 
