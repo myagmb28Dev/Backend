@@ -66,7 +66,6 @@ public class ShelterPetService {
                 firstNonBlank(local == null ? null : local.getStatus(), external.processState(), "UNKNOWN"),
                 firstNonBlank(local == null ? null : local.getBreed(), external.kindFullName(), external.kindName(), "미상"),
                 resolveDescription(local, external),
-                external.specialMark(),
                 local == null ? null : local.getRewardAmount(),
                 firstNonBlank(local == null ? null : local.getContactPhone(), external.careTel()),
                 external.happenPlace(),
@@ -119,14 +118,7 @@ public class ShelterPetService {
     }
 
     private String resolveDescription(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
-        return firstNonBlank(local == null ? null : local.getDescription(), buildDefaultDescription(external));
-    }
-
-    private List<String> resolveImages(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
-        if (local != null && local.getImages() != null && !local.getImages().isEmpty()) {
-            return local.getImages();
-        }
-        return external.imageUrls();
+        return firstNonBlank(local == null ? null : local.getDescription(), external.specialMark());
     }
 
     private String resolveRegionLabel(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
@@ -156,33 +148,14 @@ public class ShelterPetService {
     }
 
     private String buildDefaultDescription(ShelterPublicApiClient.ShelterPublicApiAnimal external) {
-        List<String> lines = new ArrayList<>();
-        addLine(lines, "공고번호", external.noticeNo());
-        addLine(lines, "발견장소", external.happenPlace());
-        addLine(lines, "특징", external.specialMark());
-        addLine(lines, "보호소", external.careName());
-        addLine(lines, "주소", external.careAddress());
-        addLine(lines, "공고기간", joinDateRange(external.noticeStartDate(), external.noticeEndDate()));
-        return String.join("\n", lines);
+        return external.specialMark();
     }
 
-    private String joinDateRange(String start, String end) {
-        if (!StringUtils.hasText(start) && !StringUtils.hasText(end)) {
-            return null;
+    private List<String> resolveImages(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
+        if (local != null && local.getImages() != null && !local.getImages().isEmpty()) {
+            return local.getImages();
         }
-        if (!StringUtils.hasText(start)) {
-            return end;
-        }
-        if (!StringUtils.hasText(end)) {
-            return start;
-        }
-        return start + " ~ " + end;
-    }
-
-    private void addLine(List<String> lines, String label, String value) {
-        if (StringUtils.hasText(value)) {
-            lines.add(label + ": " + value);
-        }
+        return external.imageUrls();
     }
 
     private String firstNonBlank(String... candidates) {
