@@ -340,7 +340,6 @@ function buildVisibleDescription(detail) {
   const duplicateLines = new Set([
     detail.noticeNo ? `공고번호: ${detail.noticeNo}` : "",
     detail.happenPlace ? `발견장소: ${detail.happenPlace}` : "",
-    detail.specialMark ? `특징: ${detail.specialMark}` : "",
     detail.careName ? `보호소: ${detail.careName}` : "",
     detail.careAddress ? `주소: ${detail.careAddress}` : "",
     detail.noticeStartDate || detail.noticeEndDate
@@ -446,7 +445,6 @@ function renderDetail() {
             공고번호: <strong>${escapeHtml(detail.noticeNo || "-")}</strong><br>
             상태: <strong>${escapeHtml(detail.status || "-")}</strong><br>
             품종: <strong>${escapeHtml(detail.breed || "-")}</strong><br>
-            특징: <strong>${escapeHtml(detail.specialMark || "-")}</strong><br>
             공고기간: <strong>${escapeHtml([detail.noticeStartDate, detail.noticeEndDate].filter(Boolean).join(" ~ ") || "-")}</strong><br>
             갱신시각: <strong>${escapeHtml(detail.updatedAt || "-")}</strong>
           </div>

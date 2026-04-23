@@ -15,7 +15,6 @@ public record ShelterPetDetailResponse(
         String status,
         String breed,
         String description,
-        String specialMark,
         Integer rewardAmount,
         String contactPhone,
         String happenPlace,
