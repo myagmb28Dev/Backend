@@ -11,6 +11,7 @@ import java.util.List;
 public record ShelterPetListResponse(
         String source,
         ShelterPetListFiltersResponse filters,
+        int totalElements,
         List<ShelterPetSummaryResponse> items
 ) {
 }
