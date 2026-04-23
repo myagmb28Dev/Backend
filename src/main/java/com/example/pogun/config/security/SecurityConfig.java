@@ -72,6 +72,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/missing-pets/*/ai-source").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shelter/ai-source").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shelter/*/ai-source").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/uploads/missing-pets/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/uploads/shelter/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/missing-pets/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/shelter/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()

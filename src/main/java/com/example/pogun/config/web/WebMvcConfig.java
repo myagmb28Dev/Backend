@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
+import com.example.pogun.config.AiProtectedUploadAccessInterceptor;
 import com.example.pogun.config.NoticeChatUploadAccessInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 @Configuration
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
+    private final AiProtectedUploadAccessInterceptor aiProtectedUploadAccessInterceptor;
     private final NoticeChatUploadAccessInterceptor noticeChatUploadAccessInterceptor;
 
     public static final MediaType APPLICATION_JSON_UTF8 = new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8);
@@ -45,6 +47,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(aiProtectedUploadAccessInterceptor)
+                .addPathPatterns("/uploads/missing-pets/**", "/uploads/shelter/**");
         registry.addInterceptor(noticeChatUploadAccessInterceptor)
                 .addPathPatterns("/uploads/notice-chat/**");
     }
