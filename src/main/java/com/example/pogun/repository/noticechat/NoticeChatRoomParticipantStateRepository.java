@@ -18,6 +18,8 @@ public interface NoticeChatRoomParticipantStateRepository extends JpaRepository<
 
     List<NoticeChatRoomParticipantState> findByUser(User user);
 
+    void deleteByRoomIn(List<NoticeChatRoom> rooms);
+
     @Query("""
             SELECT state
             FROM NoticeChatRoomParticipantState state

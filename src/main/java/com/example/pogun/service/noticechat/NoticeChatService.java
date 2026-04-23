@@ -146,6 +146,40 @@ public class NoticeChatService {
     }
 
     @Transactional
+    public void syncNoticeRooms(UUID noticeId) {
+        if (noticeId == null) {
+            return;
+        }
+        List<RoomUpdatePayload> roomUpdates = noticeChatRoomRepository.findByNoticeId(noticeId).stream()
+                .map(this::buildRoomUpdatePayload)
+                .toList();
+        afterCommitOrNow(() -> roomUpdates.forEach(this::broadcastRoomUpdate));
+    }
+
+    @Transactional
+    public void deleteRoomsByNotice(PetNotice notice) {
+        if (notice == null || notice.getId() == null) {
+            return;
+        }
+        List<NoticeChatRoom> rooms = noticeChatRoomRepository.findByNotice(notice);
+        if (rooms.isEmpty()) {
+            return;
+        }
+
+        List<RoomDeletionPayload> deletionPayloads = rooms.stream()
+                .map(room -> new RoomDeletionPayload(room.getId(), room.getOwnerUser().getId(), room.getGuestUser().getId()))
+                .toList();
+
+        participantStateRepository.deleteByRoomIn(rooms);
+        noticeChatReadReceiptRepository.deleteByRoomIn(rooms);
+        noticeChatMessageImageRepository.deleteByMessageRoomIn(rooms);
+        noticeChatMessageRepository.deleteByRoomIn(rooms);
+        noticeChatRoomRepository.deleteAll(rooms);
+
+        afterCommitOrNow(() -> deletionPayloads.forEach(this::broadcastRoomDeletion));
+    }
+
+    @Transactional
     public NoticeChatRoomResponse getRoom(String roomId) {
         User currentUser = getCurrentUser();
         assertChatAvailableUser(currentUser, "채팅방 상세를 조회할 수 없습니다.");
@@ -777,6 +811,14 @@ public class NoticeChatService {
         simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.guestUserId()), roomUpdatePayload.guestPayload());
     }
 
+    private void broadcastRoomDeletion(RoomDeletionPayload roomDeletionPayload) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "ROOM_DELETED");
+        payload.put("roomId", roomDeletionPayload.roomId());
+        simpMessagingTemplate.convertAndSend(userRoomsTopic(roomDeletionPayload.ownerUserId()), (Object) payload);
+        simpMessagingTemplate.convertAndSend(userRoomsTopic(roomDeletionPayload.guestUserId()), (Object) payload);
+    }
+
     private void sendMessageEvent(UUID userId, UUID roomId, String type, NoticeChatMessageResponse message) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", type);
@@ -1182,6 +1224,13 @@ public class NoticeChatService {
             NoticeChatRoomResponse ownerPayload,
             UUID guestUserId,
             NoticeChatRoomResponse guestPayload
+    ) {
+    }
+
+    private record RoomDeletionPayload(
+            UUID roomId,
+            UUID ownerUserId,
+            UUID guestUserId
     ) {
     }
 }

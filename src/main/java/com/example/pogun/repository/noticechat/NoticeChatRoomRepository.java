@@ -35,4 +35,12 @@ public interface NoticeChatRoomRepository extends JpaRepository<NoticeChatRoom, 
     List<NoticeChatRoom> findVisibleRoomsForUser(@org.springframework.data.repository.query.Param("userId") UUID userId);
 
     List<NoticeChatRoom> findByNotice(PetNotice notice);
+
+    @Query("""
+            SELECT r
+            FROM NoticeChatRoom r
+            JOIN FETCH r.notice n
+            WHERE n.id = :noticeId
+            """)
+    List<NoticeChatRoom> findByNoticeId(@Param("noticeId") UUID noticeId);
 }
