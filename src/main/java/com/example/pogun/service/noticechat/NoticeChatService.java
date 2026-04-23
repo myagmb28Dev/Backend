@@ -426,8 +426,6 @@ public class NoticeChatService {
         User user = getEventUser(principal, "채팅방에 입장할 수 없습니다.");
         NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), user);
         NoticeChatRoomParticipantState state = ensureParticipantState(room, user);
-        state.setOnline(true);
-        state.setLastActiveAt(Instant.now());
         participantStateRepository.save(state);
         markRoomAsReadByWatermark(room, user, latestVisibleOpponentMessage(room, user));
         sendRoomLifecycleEvent(room, user, "ROOM_ENTERED");
@@ -439,8 +437,6 @@ public class NoticeChatService {
         User user = getEventUser(principal, "채팅방에서 퇴장할 수 없습니다.");
         NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), user);
         NoticeChatRoomParticipantState state = ensureParticipantState(room, user);
-        state.setOnline(false);
-        state.setLastActiveAt(Instant.now());
         participantStateRepository.save(state);
         sendRoomLifecycleEvent(room, user, "ROOM_LEFT");
         return toRoomResponse(room, user);
@@ -453,8 +449,6 @@ public class NoticeChatService {
         NoticeChatRoom room = getAccessibleRoom(roomId, currentUser);
         NoticeChatRoomParticipantState state = ensureParticipantState(room, currentUser);
         state.setLeftAt(Instant.now());
-        state.setOnline(false);
-        state.setLastActiveAt(state.getLeftAt());
         participantStateRepository.save(state);
         sendRoomLifecycleEvent(room, currentUser, "ROOM_LEFT");
         return toRoomResponse(room, currentUser);
@@ -1020,11 +1014,10 @@ public class NoticeChatService {
                 .orElseGet(() -> participantStateRepository.save(NoticeChatRoomParticipantState.builder()
                         .room(room)
                         .user(user)
-                        .notificationEnabled(true)
-                        .favorite(false)
-                        .pinned(false)
-                        .online(false)
-                        .build()));
+                .notificationEnabled(true)
+                .favorite(false)
+                .pinned(false)
+                .build()));
     }
 
     private Comparator<NoticeChatRoom> roomComparator(User currentUser) {

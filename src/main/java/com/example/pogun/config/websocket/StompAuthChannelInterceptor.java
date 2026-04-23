@@ -57,6 +57,13 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             restoreUserFromSession(accessor);
         }
 
+        if (!StompCommand.DISCONNECT.equals(accessor.getCommand())
+                && accessor.getUser() != null
+                && accessor.getUser().getName() != null
+                && !accessor.getUser().getName().isBlank()) {
+            userPresenceService.refreshWebSocketSession(accessor.getUser().getName(), accessor.getSessionId());
+        }
+
         if (StompCommand.SUBSCRIBE.equals(accessor.getCommand()) || SimpMessageType.SUBSCRIBE.equals(accessor.getMessageType())) {
             validateSubscription(accessor);
         }

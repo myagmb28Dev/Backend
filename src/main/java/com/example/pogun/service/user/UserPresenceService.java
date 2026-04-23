@@ -9,9 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Service
 @RequiredArgsConstructor
@@ -19,10 +19,11 @@ public class UserPresenceService {
 
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(2);
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
+    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(45);
 
     private final UserRepository userRepository;
 
-    private final ConcurrentHashMap<String, Set<String>> activeWebSocketSessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ConcurrentMap<String, Instant>> activeWebSocketSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> lastTouchedAtCache = new ConcurrentHashMap<>();
 
     @Transactional
@@ -45,10 +46,15 @@ public class UserPresenceService {
         if (firebaseUid == null || firebaseUid.isBlank() || sessionId == null || sessionId.isBlank()) {
             return;
         }
-        activeWebSocketSessions
-                .computeIfAbsent(firebaseUid, ignored -> ConcurrentHashMap.newKeySet())
-                .add(sessionId);
+        rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         touch(firebaseUid);
+    }
+
+    public void refreshWebSocketSession(String firebaseUid, String sessionId) {
+        if (firebaseUid == null || firebaseUid.isBlank() || sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
     }
 
     @Transactional
@@ -57,9 +63,9 @@ public class UserPresenceService {
             return;
         }
         if (sessionId != null && !sessionId.isBlank()) {
-            activeWebSocketSessions.computeIfPresent(firebaseUid, (ignored, sessionIds) -> {
-                sessionIds.remove(sessionId);
-                return sessionIds.isEmpty() ? null : sessionIds;
+            activeWebSocketSessions.computeIfPresent(firebaseUid, (ignored, sessions) -> {
+                sessions.remove(sessionId);
+                return sessions.isEmpty() ? null : sessions;
             });
         }
         touch(firebaseUid);
@@ -86,8 +92,12 @@ public class UserPresenceService {
     }
 
     private boolean hasActiveWebSocketSession(String firebaseUid) {
-        Set<String> sessionIds = activeWebSocketSessions.get(firebaseUid);
-        return sessionIds != null && !sessionIds.isEmpty();
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return false;
+        }
+        pruneStaleWebSocketSessions(firebaseUid, Instant.now());
+        ConcurrentMap<String, Instant> sessions = activeWebSocketSessions.get(firebaseUid);
+        return sessions != null && !sessions.isEmpty();
     }
 
     private Instant resolveLastActiveAt(String firebaseUid, Instant persistedLastActiveAt) {
@@ -99,6 +109,21 @@ public class UserPresenceService {
             return cached;
         }
         return persistedLastActiveAt;
+    }
+
+    private void rememberWebSocketActivity(String firebaseUid, String sessionId, Instant now) {
+        activeWebSocketSessions
+                .computeIfAbsent(firebaseUid, ignored -> new ConcurrentHashMap<>())
+                .put(sessionId, now);
+        pruneStaleWebSocketSessions(firebaseUid, now);
+    }
+
+    private void pruneStaleWebSocketSessions(String firebaseUid, Instant now) {
+        activeWebSocketSessions.computeIfPresent(firebaseUid, (ignored, sessions) -> {
+            sessions.entrySet().removeIf(entry ->
+                    Duration.between(entry.getValue(), now).compareTo(WEBSOCKET_SESSION_STALE_AFTER) > 0);
+            return sessions.isEmpty() ? null : sessions;
+        });
     }
 
     public record PresenceSnapshot(UserAvailabilityStatus availabilityStatus, Instant lastActiveAt) {

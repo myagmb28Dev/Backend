@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.context.annotation.Bean;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -15,13 +18,18 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+    private static final long[] BROKER_HEARTBEAT = new long[]{10000, 10000};
+
     private final StompAuthChannelInterceptor stompAuthChannelInterceptor;
     private final WebSocketApiErrorHandler webSocketApiErrorHandler;
+    private final TaskScheduler webSocketHeartbeatTaskScheduler;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         // 단일 서버 MVP 단계라 외부 브로커 없이 simple broker 로 사용자별 queue 와 topic fan-out 을 처리한다.
-        registry.enableSimpleBroker("/topic", "/queue");
+        registry.enableSimpleBroker("/topic", "/queue")
+                .setTaskScheduler(webSocketHeartbeatTaskScheduler)
+                .setHeartbeatValue(BROKER_HEARTBEAT);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }
@@ -46,6 +54,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureClientInboundChannel(ChannelRegistration registration) {
         // 모든 클라이언트 SEND/SUBSCRIBE 전에 토큰 기반 Principal 을 심어주는 핵심 지점이다.
         registration.interceptors(stompAuthChannelInterceptor);
+    }
+
+    @Bean
+    public TaskScheduler webSocketHeartbeatTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        scheduler.initialize();
+        return scheduler;
     }
 }
 

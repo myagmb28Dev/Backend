@@ -31,6 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,7 +48,7 @@ class StompAuthChannelInterceptorTest {
 
     @Test
     void preSend_setsPrincipalOnConnect() throws Exception {
-                StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
+        StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
         when(firebaseIdentityService.verifyIdToken("token-value", true))
                 .thenReturn(new FirebaseIdentityService.FirebaseIdentity("firebase-uid", "tester@local.dev", "Tester", null, "password", List.of(), Map.of()));
 
@@ -61,11 +62,13 @@ class StompAuthChannelInterceptorTest {
 
         assertThat(result).isNotNull();
         verify(firebaseIdentityService).verifyIdToken("token-value", true);
+        verify(userPresenceService).touch("firebase-uid");
+        verify(userPresenceService).refreshWebSocketSession("firebase-uid", accessor.getSessionId());
     }
 
     @Test
     void preSend_rejectsSubscriptionForNonParticipant() {
-                StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
+        StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
         User currentUser = user("current-uid", "current@test.dev", UserStatus.ACTIVE);
         User author = user("author-uid", "author@test.dev", UserStatus.ACTIVE);
         User guest = user("guest-uid", "guest@test.dev", UserStatus.ACTIVE);
@@ -98,6 +101,24 @@ class StompAuthChannelInterceptorTest {
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("CHAT_ROOM_FORBIDDEN"));
+
+        verify(userPresenceService).refreshWebSocketSession("current-uid", accessor.getSessionId());
+    }
+
+    @Test
+    void preSend_doesNotRefreshDisconnectedSession() {
+        StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(firebaseIdentityService, userRepository, noticeChatRoomRepository, userPresenceService);
+
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.DISCONNECT);
+        accessor.setUser(new WebSocketPrincipal("current-uid"));
+        accessor.setSessionAttributes(new java.util.HashMap<>());
+        accessor.getSessionAttributes().put(StompAuthChannelInterceptor.SESSION_FIREBASE_UID, "current-uid");
+        accessor.setLeaveMutable(true);
+        Message<byte[]> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        interceptor.preSend(message, null);
+
+        verifyNoMoreInteractions(userPresenceService);
     }
 
     private User user(String firebaseUid, String email, UserStatus status) {

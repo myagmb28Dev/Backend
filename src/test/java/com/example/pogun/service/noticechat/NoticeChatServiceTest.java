@@ -699,7 +699,6 @@ class NoticeChatServiceTest {
                 .notificationEnabled(true)
                 .favorite(false)
                 .pinned(false)
-                .online(false)
                 .build();
     }
 

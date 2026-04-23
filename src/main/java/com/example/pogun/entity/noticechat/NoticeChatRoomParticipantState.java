@@ -95,11 +95,4 @@ public class NoticeChatRoomParticipantState {
 
     @Column(name = "left_at")
     private Instant leftAt;
-
-    @Column(name = "last_active_at")
-    private Instant lastActiveAt;
-
-    @Builder.Default
-    @Column(name = "online", nullable = false)
-    private Boolean online = false;
 }
