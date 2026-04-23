@@ -14,7 +14,7 @@ public record ShelterPetDetailResponse(
         String description,
         Integer rewardAmount,
         String contactPhone,
-        List<String> images
+        List<String> imageUrls
 ) {
 }
 

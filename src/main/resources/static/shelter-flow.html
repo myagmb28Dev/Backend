@@ -513,7 +513,7 @@ function renderDetail() {
     return;
   }
   const detail = state.detail;
-  const images = detail.images || [];
+  const images = detail.imageUrls || [];
 
   container.innerHTML = `
     <div class="detail-grid">
