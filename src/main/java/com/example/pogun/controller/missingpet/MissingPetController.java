@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -156,6 +157,13 @@ public class MissingPetController {
         // 상태 변경은 작성자 권한 검증과 즐겨찾기 사용자 알림까지 함께 연결되는 진입점이다.
         MissingPetDetailResponse data = missingPetService.changeMissingPetStatus(missingPetId, request.getStatus());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 상태 변경 성공", data));
+    }
+
+    @DeleteMapping("/{missingPetId}")
+    @Operation(summary = "실종 공고 삭제", description = "작성자가 실종 공고와 연결된 DM 방을 함께 삭제합니다.")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable String missingPetId) {
+        missingPetService.deleteMissingPet(missingPetId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 삭제 성공", null));
     }
 
     @PostMapping("/{missingPetId}/view")

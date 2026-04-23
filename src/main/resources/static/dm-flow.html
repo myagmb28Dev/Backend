@@ -663,6 +663,28 @@ function renderRoomList() {
     list.appendChild(button);
   }
 }
+
+function removeRoomSummary(targetRoomId) {
+  if (!targetRoomId) return;
+  roomSummaries = roomSummaries.filter((room) => room.roomId !== targetRoomId);
+  if (roomId === targetRoomId) {
+    roomId = null;
+    roomReady = false;
+    messages = [];
+    pendingLatestReadMessageId = null;
+    replyTargetMessageId = null;
+    editingMessageId = null;
+    hardDeletedMessageIds.clear();
+    resetUploadQueue();
+    renderFeed();
+    renderReplyDraft();
+    renderEditDraft();
+    renderImagePreview();
+    updateConversationTitle();
+    updateIds();
+  }
+  renderRoomList();
+}
 function sendRoomLifecycle(role, eventRoomId, action) {
   const user = users[role];
   if (!role || !eventRoomId || !user?.sendFrame) return;
@@ -1545,6 +1567,14 @@ async function handleSocketMessage(role, frame) {
   let payload = frame.body;
   try { payload = JSON.parse(frame.body); } catch {}
   if (frame.headers.subscription === `${role}-rooms`) {
+    if (payload?.type === "ROOM_DELETED") {
+      removeRoomSummary(payload.roomId);
+      await loadNotices(role);
+      if (payload.roomId) {
+        setStatus("연결된 공고가 삭제되어 DM 방이 정리되었습니다.", "good");
+      }
+      return;
+    }
     if (!payload || typeof payload !== "object" || !payload.roomId) return;
     const affectsCurrentRoom = payload.roomId === roomId;
     roomSummaries = upsertRoomSummary(payload, roomSummaries);

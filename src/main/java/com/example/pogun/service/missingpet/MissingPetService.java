@@ -22,6 +22,7 @@ import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.noticechat.NoticeChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,6 +54,7 @@ public class MissingPetService {
     private final LocalImageStorageService localImageStorageService;
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final AiService aiService;
+    private final NoticeChatService noticeChatService;
 
     @Transactional(readOnly = true)
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
@@ -159,7 +161,14 @@ public class MissingPetService {
         if (request.containsKey("status")) notice.setStatus(parseStatusOrDefault(optionalString(request, "status"), notice.getStatus()));
         attachImages(notice.getAuthor().getId(), notice, imageFiles, imageFiles != null && !imageFiles.isEmpty());
 
-        return toNoticeDetail(petNoticeRepository.save(notice));
+        PetNotice saved = petNoticeRepository.saveAndFlush(notice);
+        MissingPetDetailResponse response = toNoticeDetail(saved);
+        UUID savedNoticeId = saved.getId();
+        afterCommitOrNow(() -> {
+            simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
+            noticeChatService.syncNoticeRooms(savedNoticeId);
+        });
+        return response;
     }
 
     // 상태 변경은 작성자 권한 검증뿐 아니라, 북마크한 사용자들에게 팬아웃 알림을 보내는 지점이기도 하다.
@@ -167,7 +176,7 @@ public class MissingPetService {
     public MissingPetDetailResponse changeMissingPetStatus(String missingPetId, String status) {
         PetNotice notice = getOwnedNotice(missingPetId);
         notice.setStatus(parseStatusOrDefault(status, notice.getStatus()));
-        PetNotice saved = petNoticeRepository.save(notice);
+        PetNotice saved = petNoticeRepository.saveAndFlush(notice);
 
         for (NoticeBookmark bookmark : noticeBookmarkRepository.findByNotice(saved)) {
             User bookmarkedUser = bookmark.getUser();
@@ -182,7 +191,26 @@ public class MissingPetService {
             );
         }
 
-        return toNoticeDetail(saved);
+        MissingPetDetailResponse response = toNoticeDetail(saved);
+        UUID savedNoticeId = saved.getId();
+        afterCommitOrNow(() -> {
+            simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
+            noticeChatService.syncNoticeRooms(savedNoticeId);
+        });
+        return response;
+    }
+
+    @Transactional
+    public void deleteMissingPet(String missingPetId) {
+        PetNotice notice = getOwnedNotice(missingPetId);
+        UUID noticeId = notice.getId();
+        noticeChatService.deleteRoomsByNotice(notice);
+        noticeBookmarkRepository.deleteByNotice(notice);
+        petNoticeRepository.delete(notice);
+        afterCommitOrNow(() -> simpMessagingTemplate.convertAndSend("/topic/missing-pets", (Object) Map.of(
+                "type", "NOTICE_DELETED",
+                "noticeId", noticeId.toString()
+        )));
     }
 
     @Transactional
