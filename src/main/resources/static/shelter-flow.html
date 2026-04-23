@@ -523,7 +523,6 @@ function renderDetail() {
           <h3 style="margin-top:6px">${escapeHtml(detail.title || "제목 없음")}</h3>
           <div class="actions" style="margin-top:10px">
             <button id="refreshDetailButton" class="secondary">상세 새로고침</button>
-            <button id="increaseViewButton" class="secondary">조회수 증가</button>
           </div>
         </div>
         <div class="detail-block">
@@ -550,7 +549,6 @@ function renderDetail() {
   `;
 
   el("refreshDetailButton").addEventListener("click", () => run(() => loadDetail(detail.id))());
-  el("increaseViewButton").addEventListener("click", () => run(() => increaseView(detail.id))());
 }
 
 async function loadDetail(id) {
@@ -562,13 +560,6 @@ async function loadDetail(id) {
   renderSelectionSummary();
   renderDetail();
   setStatus(`${id} 상세 조회 완료`, "good");
-}
-
-async function increaseView(id) {
-  const response = await authApi(`/api/shelter/${encodeURIComponent(id)}/views`, { method: "POST" });
-  if (response.status !== 200) throw new Error(`조회수 증가 실패: ${JSON.stringify(response.body)}`);
-  const viewCount = response.body?.data?.viewCount;
-  setStatus(`조회수 증가 완료${viewCount == null ? "" : ` · ${viewCount}`}`, "good");
 }
 
 function resetFilters() {

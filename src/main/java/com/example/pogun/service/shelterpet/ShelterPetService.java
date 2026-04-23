@@ -7,10 +7,7 @@ import com.example.pogun.dto.shelterpet.ShelterPetListFiltersResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
 import com.example.pogun.dto.shelterpet.ShelterReferenceItemResponse;
 import com.example.pogun.dto.shelterpet.ShelterReferenceListResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetStatusResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetSummaryResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetUpdateResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetViewResponse;
 import com.example.pogun.entity.shelterpet.ShelterPet;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
 import com.example.pogun.service.ai.AiService;
@@ -20,7 +17,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 /**
  * 도메인 비즈니스 로직을 담당하는 ShelterPetService이다.
  */
@@ -65,51 +61,6 @@ public class ShelterPetService {
                 firstNonBlank(local == null ? null : local.getContactPhone(), external.careTel()),
                 resolveImages(local, external)
         );
-    }
-
-    public ShelterPetUpdateResponse updateShelterPet(String id, Map<String, Object> request) {
-        ShelterPet shelterPet = getOrCreateShelterPet(id);
-        if (request.containsKey("title")) {
-            shelterPet.setTitle(toNullableString(request.get("title")));
-        }
-        if (request.containsKey("description")) {
-            shelterPet.setDescription(toNullableString(request.get("description")));
-        }
-        if (request.containsKey("rewardAmount")) {
-            shelterPet.setRewardAmount(request.get("rewardAmount") instanceof Number number ? number.intValue() : null);
-        }
-        if (request.containsKey("contactPhone")) {
-            shelterPet.setContactPhone(toNullableString(request.get("contactPhone")));
-        }
-        if (request.containsKey("imageUrls")) {
-            shelterPet.setImages(request.get("imageUrls") instanceof List<?> imageUrls
-                    ? imageUrls.stream().map(String::valueOf).toList()
-                    : new ArrayList<>());
-        }
-        ShelterPet saved = shelterPetRepository.save(shelterPet);
-        return new ShelterPetUpdateResponse(
-                id,
-                true,
-                saved.getTitle(),
-                saved.getDescription(),
-                saved.getRewardAmount(),
-                saved.getContactPhone(),
-                saved.getImages()
-        );
-    }
-
-    public ShelterPetStatusResponse changeShelterPetStatus(String id, String status) {
-        ShelterPet shelterPet = getOrCreateShelterPet(id);
-        shelterPet.setStatus(status);
-        shelterPetRepository.save(shelterPet);
-        return new ShelterPetStatusResponse(id, shelterPet.getStatus());
-    }
-
-    public ShelterPetViewResponse increaseShelterPetView(String id) {
-        ShelterPet shelterPet = getOrCreateShelterPet(id);
-        shelterPet.setViewCount((shelterPet.getViewCount() == null ? 0 : shelterPet.getViewCount()) + 1);
-        ShelterPet saved = shelterPetRepository.save(shelterPet);
-        return new ShelterPetViewResponse(id, saved.getViewCount());
     }
 
     public ShelterPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String sort, int page, int size) {
@@ -168,25 +119,6 @@ public class ShelterPetService {
                         .map(item -> new ShelterReferenceItemResponse(item.code(), item.name()))
                         .toList()
         );
-    }
-
-    private ShelterPet getOrCreateShelterPet(String id) {
-        return shelterPetRepository.findById(id)
-                .orElseGet(() -> {
-                    ShelterPublicApiClient.ShelterPublicApiAnimal external = shelterPublicApiClient.fetchShelterPet(id);
-                    ShelterPet shelterPet = ShelterPet.builder()
-                            .id(id)
-                            .source(external.source())
-                            .region(extractRegion(external))
-                            .breed(firstNonBlank(external.kindName(), external.kindFullName(), "미상"))
-                            .status(firstNonBlank(external.processState(), "UNKNOWN"))
-                            .title(buildDefaultTitle(external))
-                            .description(buildDefaultDescription(external))
-                            .contactPhone(external.careTel())
-                            .images(new ArrayList<>(external.imageUrls()))
-                            .build();
-                    return shelterPetRepository.save(shelterPet);
-                });
     }
 
     private String resolveTitle(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
@@ -258,10 +190,6 @@ public class ShelterPetService {
         if (StringUtils.hasText(value)) {
             lines.add(label + ": " + value);
         }
-    }
-
-    private String toNullableString(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 
     private String firstNonBlank(String... candidates) {

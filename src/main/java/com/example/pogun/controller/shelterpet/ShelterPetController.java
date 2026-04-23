@@ -4,11 +4,6 @@ import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetDetailResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetStatusResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetStatusUpdateRequest;
-import com.example.pogun.dto.shelterpet.ShelterPetUpdateRequest;
-import com.example.pogun.dto.shelterpet.ShelterPetUpdateResponse;
-import com.example.pogun.dto.shelterpet.ShelterPetViewResponse;
 import com.example.pogun.dto.shelterpet.ShelterReferenceListResponse;
 import com.example.pogun.service.shelterpet.ShelterPetService;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -131,26 +125,4 @@ public class ShelterPetController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "보호 공고 AI 분석 결과 수신 성공", data));
     }
-
-    @PatchMapping("/{id:\\d+}")
-    @Operation(summary = "외부 공고 수정", description = "외부 공고 정보를 수정합니다. (관리자 전용)")
-    public ResponseEntity<ApiResponse<ShelterPetUpdateResponse>> update(@PathVariable String id, @Valid @RequestBody ShelterPetUpdateRequest request) {
-        ShelterPetUpdateResponse data = shelterPetService.updateShelterPet(id, request.toRequestMap());
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 공고 수정 성공", data));
-    }
-
-    @PatchMapping("/{id:\\d+}/status")
-    @Operation(summary = "외부 공고 상태 변경", description = "외부 공고의 상태를 변경합니다. (관리자 전용)")
-    public ResponseEntity<ApiResponse<ShelterPetStatusResponse>> changeStatus(@PathVariable String id, @Valid @RequestBody ShelterPetStatusUpdateRequest request) {
-        ShelterPetStatusResponse data = shelterPetService.changeShelterPetStatus(id, request.getStatus());
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 공고 상태 변경 성공", data));
-    }
-
-    @PostMapping("/{id:\\d+}/views")
-    @Operation(summary = "외부 공고 조회수 증가", description = "외부 공고의 조회수를 증가시킵니다.")
-    public ResponseEntity<ApiResponse<ShelterPetViewResponse>> increaseView(@PathVariable String id) {
-        ShelterPetViewResponse data = shelterPetService.increaseShelterPetView(id);
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "조회수 증가 처리 완료", data));
-    }
-
 }
