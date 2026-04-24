@@ -1,5 +1,5 @@
 # Stage 1: Build stage
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
 
 COPY gradlew .
@@ -15,7 +15,7 @@ COPY src src
 RUN ./gradlew bootJar --no-daemon -x test
 
 # Stage 2: Run stage
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # 빌드 결과물을 app.jar로 복사
