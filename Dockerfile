@@ -18,6 +18,10 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 빌드 결과물을 app.jar로 복사
 COPY --from=build /app/build/libs/*.jar app.jar
 

@@ -110,8 +110,27 @@ jobs:
           mkdir -p "\$APP_DIR"
           cd "\$APP_DIR"
 
+          if ! command -v docker >/dev/null 2>&1; then
+            sudo dnf install -y docker
+          fi
+          sudo systemctl enable --now docker
+
+          if ! sudo docker compose version >/dev/null 2>&1; then
+            arch="\$(uname -m)"
+            case "\$arch" in
+              x86_64) compose_arch="x86_64" ;;
+              aarch64) compose_arch="aarch64" ;;
+              *) echo "Unsupported architecture for Docker Compose: \$arch"; exit 1 ;;
+            esac
+            sudo mkdir -p /usr/local/lib/docker/cli-plugins
+            sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-\$compose_arch" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            sudo docker compose version
+          fi
+
           # GitHub Actions secrets are rendered into this heredoc and written to EC2 as .env
-          cat > .env <<ENVEOF
+          cat > .env <<'ENVEOF'
           PORT=${{ secrets.PORT }}
           APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:sha-${{ github.sha }}
           AI_API_KEY=${{ secrets.AI_API_KEY }}
@@ -140,8 +159,33 @@ jobs:
           ENVEOF
 
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          docker compose pull app
-          docker compose up -d --remove-orphans
-          docker image prune -f
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          sudo docker compose pull app
+          sudo docker compose up -d --remove-orphans
+          sudo docker compose ps
+
+          for attempt in {1..30}; do
+            app_status="$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
+            app_health="$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
+
+            if [ "$app_health" = "healthy" ]; then
+              echo "Application healthcheck passed."
+              break
+            fi
+
+            if [ "$app_status" = "exited" ] || [ "$app_status" = "dead" ]; then
+              sudo docker compose logs --tail=200 app
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              sudo docker compose logs --tail=200 app
+              exit 1
+            fi
+
+            echo "Waiting for app healthcheck... status=$app_status health=$app_health attempt=$attempt/30"
+            sleep 5
+          done
+
+          sudo docker image prune -f
           EOF
