@@ -42,6 +42,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         "http://127.0.0.1:3000",
                         "http://localhost:8080",
                         "http://127.0.0.1:8080",
+                        "http://43.201.1.61",
+                        "http://43.201.1.61:8080",
+                        "http://paw.gbsw.hs.kr",
+                        "https://paw.gbsw.hs.kr",
                         "http://192.168.*.*:8080",
                         "http://172.*.*.*:8080",
                         "http://10.*.*.*:8080"
