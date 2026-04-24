@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${APP_IMAGE:-ghcr.io/prjdot/pogun_back:latest}
+    image: ${APP_IMAGE:-docker.io/myagmb28/pawgun:latest}
     container_name: pogun-backend
     restart: unless-stopped
     env_file:

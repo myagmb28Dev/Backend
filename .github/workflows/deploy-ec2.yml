@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: pogun_back
+  IMAGE_NAME: pawgun
 
 jobs:
   build-and-push:
