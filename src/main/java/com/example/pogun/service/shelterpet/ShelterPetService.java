@@ -9,12 +9,15 @@ import com.example.pogun.dto.shelterpet.ShelterPetSummaryResponse;
 import com.example.pogun.entity.shelterpet.ShelterPet;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
 import com.example.pogun.service.ai.AiService;
+import com.example.pogun.service.cache.AiSourceCacheService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Duration;
 
 /**
  * 도메인 비즈니스 로직을 담당하는 ShelterPetService이다.
@@ -26,6 +29,12 @@ public class ShelterPetService {
     private final ShelterPublicApiClient shelterPublicApiClient;
     private final ShelterPetRepository shelterPetRepository;
     private final AiService aiService;
+    private final AiSourceCacheService aiSourceCacheService;
+
+    private static final String AI_CACHE_NAMESPACE = "shelter-pets";
+
+    @Value("${app.ai-source-cache.ttl-seconds:60}")
+    private long aiSourceCacheTtlSeconds;
 
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
         ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, page, size);
@@ -82,16 +91,43 @@ public class ShelterPetService {
 
     public ShelterPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String sort, int page, int size) {
         aiService.verifyAiApiKey(apiKey);
-        return getShelterPetList(region, breed, status, sort, page, size);
+        String cacheKey = String.join(":",
+            "list",
+            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            normalizeCacheValue(region),
+            normalizeCacheValue(breed),
+            normalizeCacheValue(status),
+            normalizeCacheValue(sort),
+            String.valueOf(page),
+            String.valueOf(size)
+        );
+        return aiSourceCacheService.getOrLoad(
+            cacheKey,
+            Duration.ofSeconds(aiSourceCacheTtlSeconds),
+            ShelterPetListResponse.class,
+            () -> getShelterPetList(region, breed, status, sort, page, size)
+        );
     }
 
     public ShelterPetDetailResponse getAiSourceDetail(String apiKey, String id) {
         aiService.verifyAiApiKey(apiKey);
-        return getShelterPetDetail(id);
+        String cacheKey = String.join(":",
+            "detail",
+            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            normalizeCacheValue(id)
+        );
+        return aiSourceCacheService.getOrLoad(
+            cacheKey,
+            Duration.ofSeconds(aiSourceCacheTtlSeconds),
+            ShelterPetDetailResponse.class,
+            () -> getShelterPetDetail(id)
+        );
     }
 
     public AiAnalysisResultCallbackResponse receiveAnalysisResult(String id, String apiKey, AiAnalysisResultCallbackRequest request) {
-        return aiService.saveShelterAnalysisResult(id, apiKey, request);
+        AiAnalysisResultCallbackResponse response = aiService.saveShelterAnalysisResult(id, apiKey, request);
+        aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+        return response;
     }
 
     private ShelterPet getOrCreateShelterPet(String id) {
@@ -165,5 +201,12 @@ public class ShelterPetService {
             }
         }
         return null;
+    }
+
+    private String normalizeCacheValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "_";
+        }
+        return value.trim();
     }
 }

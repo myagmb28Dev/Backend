@@ -296,6 +296,7 @@
 <script>
 const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
+const PRESENCE_PING_INTERVAL_MS = 15000;
 const MAX_UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;
 const SOCKET_CONNECT_TIMEOUT_MS = 15000;
 const KNOWN_USER_LABELS_KEY = "dm-test-known-user-labels-v1";
@@ -306,6 +307,7 @@ const dmQuery = new URLSearchParams(window.location.search);
 const requestedNoticeId = (dmQuery.get("noticeId") || "").trim() || null;
 const requestedRoomId = (dmQuery.get("roomId") || "").trim() || null;
 const requestedAutoOpen = dmQuery.get("autoOpen") === "1";
+const tokenFromQuery = (dmQuery.get("token") || dmQuery.get("firebaseIdToken") || "").trim() || null;
 const ACCOUNT_COLORS = ["#c05f2c","#176b75","#8a5a44","#2c7a5f","#8d4bb3","#b85c7a","#4f6ddf","#7b8f2f","#ad6f1f","#445c8b"];
 const users = {
   [REAL_ROLE]: {
@@ -324,7 +326,8 @@ const users = {
     sendFrame: null,
     socketStatus: "disconnected",
     reconnectAttempts: 0,
-    reconnectTimer: null
+    reconnectTimer: null,
+    presencePingTimer: null
   }
 };
 const messageDateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" });
@@ -553,6 +556,10 @@ function resetOtherRoleForThisTab(role) {
   el("imageInput").value = "";
   for (const [otherRole, other] of Object.entries(users)) {
     if (otherRole === role) continue;
+    clearInterval(other.presencePingTimer);
+    other.presencePingTimer = null;
+    clearTimeout(other.reconnectTimer);
+    other.reconnectTimer = null;
     if (other.socket) { try { other.socket.close(); } catch {} }
     other.socket = null;
     other.buffer = "";
@@ -1010,11 +1017,28 @@ function loadRealSession() {
     return null;
   }
 }
+function adoptTokenFromQuery(existingSession) {
+  if (!tokenFromQuery) return existingSession;
+  const session = { ...(existingSession || {}), firebaseIdToken: tokenFromQuery };
+  try {
+    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify(session));
+    window.localStorage.setItem(ACTIVE_ROLE_KEY, REAL_ROLE);
+  } catch {}
+  try {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("token");
+    nextUrl.searchParams.delete("firebaseIdToken");
+    const nextQuery = nextUrl.searchParams.toString();
+    const nextPath = `${nextUrl.pathname}${nextQuery ? `?${nextQuery}` : ""}${nextUrl.hash || ""}`;
+    window.history.replaceState({}, "", nextPath);
+  } catch {}
+  return session;
+}
 async function login(role) {
   role = REAL_ROLE;
   const user = users[role];
   resetOtherRoleForThisTab(role);
-  const session = loadRealSession();
+  const session = adoptTokenFromQuery(loadRealSession());
   if (!session) {
     redirectToLoginFlow();
     return;
@@ -1359,8 +1383,12 @@ function mergeMessages(nextMessages) {
     if (message.reply) rememberKnownUserLabel(message.reply.senderUserId, message.reply.senderNickname);
     if (message.id && message.id === pendingLatestReadMessageId) { message.isRead = true; pendingLatestReadMessageId = null; }
     if (message.clientMessageId) {
-      const pending = messages.find((item) => item.pending && item.clientMessageId === message.clientMessageId);
-      if (pending) byId.delete(pending.id);
+      const optimistic = messages.find((item) =>
+        item.clientMessageId === message.clientMessageId
+        && typeof item.id === "string"
+        && item.id.startsWith("pending-")
+      );
+      if (optimistic) byId.delete(optimistic.id);
       sendingClientMessageIds.delete(message.clientMessageId);
     }
     const existing = byId.get(message.id);
@@ -1499,10 +1527,30 @@ function scheduleReadAck(role, message) {
     }));
   }, 120);
 }
+function sendPresencePing(role) {
+  const user = users[role];
+  if (!user?.sendFrame || !user.stompConnected) return;
+  try {
+    user.sendFrame("SEND", { destination: "/app/presence/ping" });
+  } catch {}
+}
+function startPresencePing(role) {
+  const user = users[role];
+  if (!user) return;
+  clearInterval(user.presencePingTimer);
+  user.presencePingTimer = setInterval(() => sendPresencePing(role), PRESENCE_PING_INTERVAL_MS);
+}
+function stopPresencePing(role) {
+  const user = users[role];
+  if (!user) return;
+  clearInterval(user.presencePingTimer);
+  user.presencePingTimer = null;
+}
 async function connectSocket(role) {
   const user = users[role];
   if (user.socket && user.socket.readyState === WebSocket.OPEN) return;
   clearTimeout(user.reconnectTimer);
+  stopPresencePing(role);
   setSocketStatus(role, user.reconnectAttempts > 0 ? "reconnecting" : "connecting");
   const socket = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/chat`);
   user.socket = socket; user.buffer = "";
@@ -1532,6 +1580,8 @@ async function connectSocket(role) {
         setSocketStatus(role, "connected");
         sendFrame("SUBSCRIBE", { id: `${role}-rooms`, destination: `/topic/chat/users/${user.userId}/rooms` });
         sendFrame("SUBSCRIBE", { id: `${role}-notices`, destination: "/topic/missing-pets" });
+        sendPresencePing(role);
+        startPresencePing(role);
         if (role === activeRole && roomId) {
           user.subscribedRoomId = null;
           subscribeRoomIfReady(role, roomOpenVersion).catch((error) => setStatus(error.message || String(error), "bad"));
@@ -1544,6 +1594,7 @@ async function connectSocket(role) {
   });
   socket.addEventListener("close", () => {
     if (user.socket !== socket) return;
+    stopPresencePing(role);
     user.stompConnected = false;
     user.sendFrame = null;
     user.subscribedRoomId = null;
@@ -1557,6 +1608,7 @@ async function connectSocket(role) {
   });
   socket.addEventListener("error", () => {
     if (user.socket !== socket) return;
+    stopPresencePing(role);
     setSocketStatus(role, "disconnected");
   });
   await new Promise((resolve, reject) => {
@@ -1905,7 +1957,8 @@ renderAccountGrid();
 setAvailabilityControlsEnabled(false);
 setStatus("Google 로그인 세션으로 DM을 시작하세요.");
 renderNoticeSelectors(); renderRoomList(); renderFeed(); renderReplyDraft(); renderEditDraft(); renderImagePreview(); updateIds();
-if (loadRealSession()) {
+const initialSession = adoptTokenFromQuery(loadRealSession());
+if (initialSession) {
   if (requestedRoomId) {
     pendingRoomSelection = { roomId: requestedRoomId };
   }

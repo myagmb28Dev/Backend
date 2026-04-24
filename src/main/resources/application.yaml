@@ -16,6 +16,11 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   jpa:
     hibernate:
       ddl-auto: update
@@ -47,12 +52,14 @@ app:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}
       service-key: ${SHELTER_API_SERVICE_KEY:}
       abandonment-path: ${SHELTER_API_ABANDONMENT_PATH:/abandonmentPublic_v2}
-      sido-path: ${SHELTER_API_SIDO_PATH:/sido_v2}
-      sigungu-path: ${SHELTER_API_SIGUNGU_PATH:/sigungu_v2}
-      shelter-path: ${SHELTER_API_SHELTER_PATH:/shelter_v2}
-      kind-path: ${SHELTER_API_KIND_PATH:/kind_v2}
   ai:
     api-key: ${AI_API_KEY:}
+  ai-source-cache:
+    enabled: true
+    ttl-seconds: 60
+  presence:
+    store: redis
+    reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS:5000}
 
 decorator:
   datasource:
@@ -62,7 +69,6 @@ decorator:
 springdoc:
   swagger-ui:
     url: /v3/api-docs
-    custom-css-path: /swagger-ui/dark.css
 
 server:
   port: ${PORT:8080}

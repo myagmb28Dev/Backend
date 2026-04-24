@@ -413,6 +413,80 @@ test.describe.serial('local user1 service flows', () => {
     await page.click('#sendMessageButton');
 
     await expect(page.locator('#feed')).toContainText('playwright dm flow message', { timeout: 20000 });
+    await expect(page.locator('#feed')).not.toContainText('재시도', { timeout: 10000 });
+  });
+
+  test('dm flow accepts token query bootstrap without login page redirect', async ({ page }) => {
+    const user1Token = loadToken(1);
+    const user1Session = await ensureReadySession(user1Token);
+    const tokenParam = encodeURIComponent(user1Session.firebaseIdToken);
+
+    await page.goto(`${baseURL}/dm-flow.html?token=${tokenParam}`, { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/dm-flow\.html(?:\?|$)/, { timeout: 20000 });
+    await expect(page).not.toHaveURL(/\/login-flow\.html/, { timeout: 20000 });
+    await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname, { timeout: 20000 });
+  });
+
+  test('dm flow reflects global online and logout offline presence', async ({ browser, page }) => {
+    const user1Token = loadToken(1);
+    const user2Token = loadToken(2);
+    const user1Session = await ensureReadySession(user1Token);
+    const user2Session = await ensureReadySession(user2Token);
+
+    const notice = await createNotice(user2Token, `playwright-user2-presence-${Date.now()}`);
+    const room = await createRoom(user1Token, notice.id);
+
+    await seedSession(page, user1Session);
+    await page.goto(`${baseURL}/dm-flow.html`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname);
+    await expect(page.locator('#roomList')).toContainText(notice.title, { timeout: 20000 });
+    await page.locator('#roomList .room-item').filter({ hasText: notice.title }).first().click();
+    await expect(page.locator('#conversationTitle')).toContainText(notice.title, { timeout: 20000 });
+
+    const user2Context = await browser.newContext();
+    const user2Page = await user2Context.newPage();
+    try {
+      await seedSession(user2Page, user2Session);
+      await user2Page.goto(`${baseURL}/dm-flow.html?roomId=${room.roomId}`, { waitUntil: 'domcontentloaded' });
+      await expect(user2Page.locator('#currentUserState')).toContainText(user2Session.nickname);
+
+      await expect(page.locator('#conversationTitle')).toContainText('온라인', { timeout: 20000 });
+
+      const logout = await api('/api/auth/logout', user2Token, { method: 'POST' });
+      expect(logout.status).toBe(200);
+
+      await expect(page.locator('#conversationTitle')).toContainText('오프라인', { timeout: 20000 });
+    } finally {
+      await user2Context.close();
+    }
+  });
+
+  test('dm flow reflects global offline when user session leaves', async ({ browser, page }) => {
+    const user1Token = loadToken(1);
+    const user2Token = loadToken(2);
+    const user1Session = await ensureReadySession(user1Token);
+    const user2Session = await ensureReadySession(user2Token);
+
+    const notice = await createNotice(user2Token, `playwright-user2-session-leave-${Date.now()}`);
+    const room = await createRoom(user1Token, notice.id);
+
+    await seedSession(page, user1Session);
+    await page.goto(`${baseURL}/dm-flow.html`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname);
+    await expect(page.locator('#roomList')).toContainText(notice.title, { timeout: 20000 });
+    await page.locator('#roomList .room-item').filter({ hasText: notice.title }).first().click();
+    await expect(page.locator('#conversationTitle')).toContainText(notice.title, { timeout: 20000 });
+
+    const user2Context = await browser.newContext();
+    const user2Page = await user2Context.newPage();
+    await seedSession(user2Page, user2Session);
+    await user2Page.goto(`${baseURL}/dm-flow.html?roomId=${room.roomId}`, { waitUntil: 'domcontentloaded' });
+    await expect(user2Page.locator('#currentUserState')).toContainText(user2Session.nickname);
+
+    await expect(page.locator('#conversationTitle')).toContainText('온라인', { timeout: 20000 });
+    await user2Context.close();
+
+    await expect(page.locator('#conversationTitle')).toContainText('오프라인', { timeout: 20000 });
   });
 
   test('notification flow shows user1 unread notification and clears it', async ({ page }) => {

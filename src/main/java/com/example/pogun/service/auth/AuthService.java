@@ -10,16 +10,20 @@ import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
+import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -51,6 +55,8 @@ public class AuthService {
     private final UserSocialAccountRepository userSocialAccountRepository;
     private final PendingSocialSignupRepository pendingSocialSignupRepository;
     private final KakaoLocalService kakaoLocalService;
+    private final UserPresenceService userPresenceService;
+    private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
 
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
@@ -71,6 +77,7 @@ public class AuthService {
                         existingUser.setProfileImageUrl(picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setLastActiveAt(Instant.now());
+                        existingUser.setAvailabilityStatus(UserAvailabilityStatus.ONLINE);
                         existingUser.setStatus(UserStatus.ACTIVE);
                         return userRepository.save(existingUser);
                     })
@@ -82,6 +89,7 @@ public class AuthService {
                                 existingByEmail.setProfileImageUrl(picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
                                 existingByEmail.setLastActiveAt(Instant.now());
+                                existingByEmail.setAvailabilityStatus(UserAvailabilityStatus.ONLINE);
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
                                 return userRepository.save(existingByEmail);
                             })
@@ -95,6 +103,7 @@ public class AuthService {
 
             syncProviders(user, identity);
             pendingSocialSignupRepository.deleteByFirebaseUid(uid);
+            userPresenceService.touchFromAuthentication(uid);
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
@@ -152,6 +161,7 @@ public class AuthService {
         }
 
         pendingSocialSignupRepository.delete(pending);
+        userPresenceService.touchFromAuthentication(saved.getFirebaseUid());
         log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
         return buildAuthResponse(saved);
     }
@@ -183,6 +193,8 @@ public class AuthService {
         try {
             firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
             firebaseIdentityService.revokeTokenLocally(currentIdToken);
+            userPresenceService.forceOffline(user.getFirebaseUid());
+            noticeChatServiceProvider.getObject().publishPresenceUpdates(user);
             return new LogoutResponse(true, "로그아웃 성공. 모든 세션이 만료되었습니다.");
         } catch (FirebaseAuthException e) {
             log.error("Firebase 로그아웃 처리 중 오류 발생: {}", e.getMessage());

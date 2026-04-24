@@ -13,6 +13,7 @@ import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.service.ai.AiService;
+import com.example.pogun.service.cache.AiSourceCacheService;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
@@ -24,6 +25,7 @@ import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +58,12 @@ public class MissingPetService {
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final AiService aiService;
     private final NoticeChatService noticeChatService;
+    private final AiSourceCacheService aiSourceCacheService;
+
+    private static final String AI_CACHE_NAMESPACE = "missing-pets";
+
+    @Value("${app.ai-source-cache.ttl-seconds:60}")
+    private long aiSourceCacheTtlSeconds;
 
     @Transactional(readOnly = true)
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
@@ -127,7 +136,10 @@ public class MissingPetService {
                 Map.of("status", saved.getStatus().name())
         );
         MissingPetDetailResponse response = toNoticeDetail(saved);
-        afterCommitOrNow(() -> simpMessagingTemplate.convertAndSend("/topic/missing-pets", response));
+        afterCommitOrNow(() -> {
+            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
+        });
         return response;
     }
 
@@ -165,6 +177,7 @@ public class MissingPetService {
         MissingPetDetailResponse response = toNoticeDetail(saved);
         UUID savedNoticeId = saved.getId();
         afterCommitOrNow(() -> {
+            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
             noticeChatService.syncNoticeRooms(savedNoticeId);
         });
@@ -194,6 +207,7 @@ public class MissingPetService {
         MissingPetDetailResponse response = toNoticeDetail(saved);
         UUID savedNoticeId = saved.getId();
         afterCommitOrNow(() -> {
+            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
             noticeChatService.syncNoticeRooms(savedNoticeId);
         });
@@ -207,10 +221,13 @@ public class MissingPetService {
         noticeChatService.deleteRoomsByNotice(notice);
         noticeBookmarkRepository.deleteByNotice(notice);
         petNoticeRepository.delete(notice);
-        afterCommitOrNow(() -> simpMessagingTemplate.convertAndSend("/topic/missing-pets", (Object) Map.of(
+        afterCommitOrNow(() -> {
+            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            simpMessagingTemplate.convertAndSend("/topic/missing-pets", (Object) Map.of(
                 "type", "NOTICE_DELETED",
                 "noticeId", noticeId.toString()
-        )));
+            ));
+        });
     }
 
     @Transactional
@@ -224,13 +241,40 @@ public class MissingPetService {
     @Transactional(readOnly = true)
     public MissingPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String from, String to, String sort, int page, int size) {
         aiService.verifyAiApiKey(apiKey);
-        return getMissingPetList(region, breed, status, from, to, sort, page, size);
+        String cacheKey = String.join(":",
+            "list",
+            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            normalizeCacheValue(region),
+            normalizeCacheValue(breed),
+            normalizeCacheValue(status),
+            normalizeCacheValue(from),
+            normalizeCacheValue(to),
+            normalizeCacheValue(sort),
+            String.valueOf(page),
+            String.valueOf(size)
+        );
+        return aiSourceCacheService.getOrLoad(
+            cacheKey,
+            Duration.ofSeconds(aiSourceCacheTtlSeconds),
+            MissingPetListResponse.class,
+            () -> getMissingPetList(region, breed, status, from, to, sort, page, size)
+        );
     }
 
     @Transactional(readOnly = true)
     public MissingPetDetailResponse getAiSourceDetail(String apiKey, String missingPetId) {
         aiService.verifyAiApiKey(apiKey);
-        return getMissingPetDetail(missingPetId);
+        String cacheKey = String.join(":",
+            "detail",
+            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            normalizeCacheValue(missingPetId)
+        );
+        return aiSourceCacheService.getOrLoad(
+            cacheKey,
+            Duration.ofSeconds(aiSourceCacheTtlSeconds),
+            MissingPetDetailResponse.class,
+            () -> getMissingPetDetail(missingPetId)
+        );
     }
 
     @Transactional
@@ -458,6 +502,14 @@ public class MissingPetService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeCacheValue(String value) {
+        if (value == null) {
+            return "_";
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? "_" : normalized;
     }
 
     private UUID parseUuid(String value) {

@@ -69,47 +69,6 @@ public class ShelterPublicApiClient {
         return animal;
     }
 
-    public List<ShelterPublicApiReference> fetchSido() {
-        JsonNode response = callPublicApi(buildReferenceUri(properties.getSidoPath(), null, null));
-        return extractItems(requireSuccessBody(response)).stream()
-                .map(item -> toReference(item, "orgCd", "orgdownNm"))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    public List<ShelterPublicApiReference> fetchSigungu(String uprCd) {
-        requireText(uprCd, "MISSING_UPR_CD", "시도 코드는 필수입니다.");
-        JsonNode response = callPublicApi(buildReferenceUri(properties.getSigunguPath(), "upr_cd", uprCd));
-        return extractItems(requireSuccessBody(response)).stream()
-                .map(item -> toReference(item, "orgCd", "orgdownNm"))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    public List<ShelterPublicApiReference> fetchShelters(String uprCd, String orgCd) {
-        requireText(uprCd, "MISSING_UPR_CD", "시도 코드는 필수입니다.");
-        requireText(orgCd, "MISSING_ORG_CD", "시군구 코드는 필수입니다.");
-        UriComponentsBuilder builder = withCommonQuery(properties.getShelterPath())
-                .queryParam("upr_cd", uprCd)
-                .queryParam("org_cd", orgCd)
-                .queryParam("pageNo", 1)
-                .queryParam("numOfRows", 1000);
-        JsonNode response = callPublicApi(builder.build(true).toUri());
-        return extractItems(requireSuccessBody(response)).stream()
-                .map(item -> toReference(item, "careRegNo", "careNm"))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    public List<ShelterPublicApiReference> fetchKinds(String upKindCd) {
-        requireText(upKindCd, "MISSING_UP_KIND_CD", "축종 코드는 필수입니다.");
-        JsonNode response = callPublicApi(buildReferenceUri(properties.getKindPath(), "up_kind_cd", upKindCd));
-        return extractItems(requireSuccessBody(response)).stream()
-                .map(item -> toReference(item, "kindCd", "kindNm"))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
     private JsonNode callAbandonmentApi(URI uri) {
         return callPublicApi(uri);
     }
@@ -158,16 +117,6 @@ public class ShelterPublicApiClient {
                 .queryParam("numOfRows", 1)
                 .build(true)
                 .toUri();
-    }
-
-    private URI buildReferenceUri(String path, String key, String value) {
-        UriComponentsBuilder builder = withCommonQuery(path)
-                .queryParam("pageNo", 1)
-                .queryParam("numOfRows", 1000);
-        if (StringUtils.hasText(key) && StringUtils.hasText(value)) {
-            builder.queryParam(key, value);
-        }
-        return builder.build(true).toUri();
     }
 
     private UriComponentsBuilder withCommonQuery(String path) {
@@ -245,15 +194,6 @@ public class ShelterPublicApiClient {
         return images;
     }
 
-    private ShelterPublicApiReference toReference(JsonNode item, String codeField, String nameField) {
-        String code = text(item, codeField);
-        String name = text(item, nameField);
-        if (!StringUtils.hasText(code) || !StringUtils.hasText(name)) {
-            return null;
-        }
-        return new ShelterPublicApiReference(code, name);
-    }
-
     private Comparator<ShelterPublicApiAnimal> resolveComparator(String sort) {
         if (!StringUtils.hasText(sort)) {
             return Comparator.comparing(ShelterPublicApiAnimal::updatedAt, Comparator.nullsLast(String::compareTo)).reversed();
@@ -295,12 +235,6 @@ public class ShelterPublicApiClient {
         }
     }
 
-    private void requireText(String value, String code, String message) {
-        if (!StringUtils.hasText(value)) {
-            throw ApiException.badRequest(code, message);
-        }
-    }
-
     private String text(JsonNode node, String fieldName) {
         String value = node.path(fieldName).asText("");
         return StringUtils.hasText(value) ? value : null;
@@ -337,9 +271,4 @@ public class ShelterPublicApiClient {
         }
     }
 
-    public record ShelterPublicApiReference(
-            String code,
-            String name
-    ) {
-    }
 }

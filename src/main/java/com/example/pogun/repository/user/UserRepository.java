@@ -1,6 +1,7 @@
 package com.example.pogun.repository.user;
 
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserStatus;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +24,15 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     long countByStatus(UserStatus status);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("update User u set u.lastActiveAt = :lastActiveAt where u.firebaseUid = :firebaseUid")
-    int touchLastActiveAtByFirebaseUid(@Param("firebaseUid") String firebaseUid, @Param("lastActiveAt") Instant lastActiveAt);
+    @Query("""
+            update User u
+            set u.lastActiveAt = :lastActiveAt,
+                u.availabilityStatus = :availabilityStatus
+            where u.firebaseUid = :firebaseUid
+            """)
+    int updatePresenceByFirebaseUid(
+            @Param("firebaseUid") String firebaseUid,
+            @Param("lastActiveAt") Instant lastActiveAt,
+            @Param("availabilityStatus") UserAvailabilityStatus availabilityStatus
+    );
 }

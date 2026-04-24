@@ -1,15 +1,19 @@
 package com.example.pogun.service.auth;
 
 import com.example.pogun.dto.auth.AuthResponse;
+import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
+import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -52,6 +57,15 @@ class AuthServiceTest {
 
     @Mock
     private KakaoLocalService kakaoLocalService;
+
+    @Mock
+    private UserPresenceService userPresenceService;
+
+    @Mock
+    private ObjectProvider<NoticeChatService> noticeChatServiceProvider;
+
+    @Mock
+    private NoticeChatService noticeChatService;
 
     @InjectMocks
     private AuthService authService;
@@ -142,6 +156,32 @@ class AuthServiceTest {
         assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
         assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
+        verify(userPresenceService).touchFromAuthentication("firebase-uid");
         verify(pendingSocialSignupRepository).delete(pending);
+    }
+
+    @Test
+    void logoutForcesUserOfflineAndPublishesPresence() throws Exception {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("user@example.com")
+                .availabilityStatus(UserAvailabilityStatus.ONLINE)
+                .status(UserStatus.ACTIVE)
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")
+        );
+
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(user));
+        when(noticeChatServiceProvider.getObject()).thenReturn(noticeChatService);
+
+        LogoutResponse response = authService.logout();
+
+        assertThat(response.revoked()).isTrue();
+        verify(firebaseAuth).revokeRefreshTokens("firebase-uid");
+        verify(firebaseIdentityService).revokeTokenLocally("id-token");
+        verify(userPresenceService).forceOffline("firebase-uid");
+        verify(noticeChatService).publishPresenceUpdates(user);
     }
 }
