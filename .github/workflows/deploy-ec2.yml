@@ -67,6 +67,19 @@ jobs:
     environment: production
     if: github.ref == 'refs/heads/dev'
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          password: ${{ secrets.EC2_PASSWORD }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          source: docker-compose.yml
+          target: ${{ secrets.EC2_APP_DIR }}
+
       - name: Deploy on EC2 via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -78,19 +91,8 @@ jobs:
           script: |
             set -e
             APP_DIR="${{ secrets.EC2_APP_DIR }}"
-            APP_PARENT="$(dirname "$APP_DIR")"
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-
-            mkdir -p "$APP_PARENT"
-
-            if [ ! -d "$APP_DIR/.git" ]; then
-              git clone --branch dev "$REPO_URL" "$APP_DIR"
-            fi
-
+            mkdir -p "$APP_DIR"
             cd "$APP_DIR"
-            git fetch origin dev
-            git checkout dev
-            git pull --ff-only origin dev
 
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
