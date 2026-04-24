@@ -296,12 +296,13 @@
 <script>
 const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
-const PRESENCE_PING_INTERVAL_MS = 15000;
+const PRESENCE_PING_INTERVAL_MS = 8000;
 const MAX_UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;
 const SOCKET_CONNECT_TIMEOUT_MS = 15000;
-const SOCKET_STALE_AFTER_MS = 45000;
+const SOCKET_STALE_AFTER_MS = 25000;
 const SOCKET_RECOVERY_COOLDOWN_MS = 1500;
 const SOCKET_ERROR_TOAST_COOLDOWN_MS = 10000;
+const MESSAGE_ACK_TIMEOUT_MS = 7000;
 const KNOWN_USER_LABELS_KEY = "dm-test-known-user-labels-v1";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
 const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
@@ -362,6 +363,7 @@ let isUploadingImages = false;
 let uploadQueueRoomId = null;
 const uploadQueue = [];
 const sendingClientMessageIds = new Set();
+const pendingMessageAckTimers = new Map();
 const deletingMessageIds = new Set();
 const hardDeletedMessageIds = new Set();
 let readAckTimer = null;
@@ -1000,7 +1002,9 @@ async function loadAvailability(role = activeRole) {
   if (!role) return;
   const response = await authApi(role, "/api/users/me/availability");
   if (response.status !== 200) throw new Error(`상태 조회 실패: ${JSON.stringify(response.body)}`);
-  el("availabilitySelect").value = response.body?.data?.availabilityStatus || "ONLINE";
+  const data = response.body?.data || {};
+  const manualStatus = data.manualPresenceStatus || data.availabilityStatus || "ONLINE";
+  el("availabilitySelect").value = manualStatus;
   setAvailabilityControlsEnabled(true);
 }
 async function saveAvailability(role = activeRole) {
@@ -1011,6 +1015,9 @@ async function saveAvailability(role = activeRole) {
     body: JSON.stringify({ availabilityStatus })
   });
   if (response.status !== 200) throw new Error(`상태 변경 실패: ${JSON.stringify(response.body)}`);
+  const data = response.body?.data || {};
+  const manualStatus = data.manualPresenceStatus || availabilityStatus;
+  el("availabilitySelect").value = manualStatus;
   setStatus(`현재 상태를 ${availabilityStatus === "IDLE" ? "자리비움" : availabilityStatus === "OFFLINE" ? "오프라인" : "온라인"}으로 변경`, "good");
   await refreshContext(role);
 }
@@ -1401,7 +1408,7 @@ function mergeMessages(nextMessages) {
         && item.id.startsWith("pending-")
       );
       if (optimistic) byId.delete(optimistic.id);
-      sendingClientMessageIds.delete(message.clientMessageId);
+      markPendingMessageSuccess(message.clientMessageId, "message-payload");
     }
     const existing = byId.get(message.id);
     byId.set(message.id, existing ? { ...existing, ...message, pending: false, failed: false } : { ...message, pending: false, failed: false });
@@ -1484,9 +1491,61 @@ function toReplySummary(messageId) {
   };
 }
 function failPendingMessage(clientMessageId) {
+  if (!clientMessageId || !sendingClientMessageIds.has(clientMessageId)) return;
   const target = messages.find((message) => message.pending && message.clientMessageId === clientMessageId);
-  if (target) { target.failed = true; target.pending = false; renderFeed(); }
+  if (target) {
+    target.failed = true;
+    target.pending = false;
+    console.warn("[dm-message] pending -> failed", { clientMessageId, roomId: target.roomId, reason: "ack-timeout-or-error" });
+    renderFeed();
+  }
+  clearPendingMessageAckTimer(clientMessageId);
   sendingClientMessageIds.delete(clientMessageId);
+}
+function clearPendingMessageAckTimer(clientMessageId) {
+  if (!clientMessageId) return;
+  const timer = pendingMessageAckTimers.get(clientMessageId);
+  if (timer) {
+    clearTimeout(timer);
+  }
+  pendingMessageAckTimers.delete(clientMessageId);
+}
+function schedulePendingMessageAckTimeout(clientMessageId) {
+  if (!clientMessageId) return;
+  clearPendingMessageAckTimer(clientMessageId);
+  const timer = setTimeout(() => {
+    if (!sendingClientMessageIds.has(clientMessageId)) return;
+    failPendingMessage(clientMessageId);
+  }, MESSAGE_ACK_TIMEOUT_MS);
+  pendingMessageAckTimers.set(clientMessageId, timer);
+}
+function markPendingMessageSuccess(clientMessageId, context = "ack") {
+  if (!clientMessageId) return;
+  clearPendingMessageAckTimer(clientMessageId);
+  const target = messages.find((message) => message.clientMessageId === clientMessageId);
+  if (target && (target.pending || target.failed)) {
+    target.pending = false;
+    target.failed = false;
+    console.debug("[dm-message] pending -> sent", { clientMessageId, context, roomId: target.roomId });
+    renderFeed();
+  }
+  sendingClientMessageIds.delete(clientMessageId);
+}
+function markAllPendingMessagesFailed(reason = "socket-closed") {
+  const activeClientIds = [...sendingClientMessageIds];
+  for (const clientMessageId of activeClientIds) {
+    const target = messages.find((message) => message.clientMessageId === clientMessageId);
+    if (target && target.pending) {
+      target.pending = false;
+      target.failed = true;
+      console.warn("[dm-message] pending -> failed", { clientMessageId, reason, roomId: target.roomId });
+    }
+    clearPendingMessageAckTimer(clientMessageId);
+    sendingClientMessageIds.delete(clientMessageId);
+  }
+  if (activeClientIds.length > 0) {
+    renderFeed();
+  }
 }
 function retryPendingTextMessage(clientMessageId) {
   if (!activeRole || !clientMessageId) return;
@@ -1500,6 +1559,7 @@ function retryPendingTextMessage(clientMessageId) {
   target.failed = false;
   target.pending = true;
   sendingClientMessageIds.add(clientMessageId);
+  schedulePendingMessageAckTimeout(clientMessageId);
   renderFeed();
   try {
     users[activeRole].sendFrame("SEND", { destination: "/app/chat/send", "content-type": "application/json" }, JSON.stringify({
@@ -1508,9 +1568,6 @@ function retryPendingTextMessage(clientMessageId) {
       replyToMessageId: target.retryPayload.replyToMessageId,
       clientMessageId
     }));
-    setTimeout(() => {
-      if (sendingClientMessageIds.has(clientMessageId)) failPendingMessage(clientMessageId);
-    }, 5000);
   } catch (error) {
     failPendingMessage(clientMessageId);
     setStatus(error.message || String(error), "bad");
@@ -1583,6 +1640,18 @@ function markSocketActivity(role, reason = "activity") {
     debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
   }
 }
+function requestImmediatePresenceRefresh(role, reason = "manual") {
+  const user = users[role];
+  if (!user?.token) return;
+  if (user.sendFrame && user.stompConnected) {
+    sendPresencePing(role);
+  }
+  if (role === activeRole) {
+    refreshContext(role).catch((error) => reportSocketError(role, error, { silent: true }));
+  }
+  debugFrames.push(`* ${role} presence-refresh ${reason}`);
+  debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
+}
 function isSocketStale(role) {
   const user = users[role];
   if (!user?.socket) return true;
@@ -1640,13 +1709,14 @@ async function recoverSocket(role, reason = "recover", { force = false, silent =
     || !user.socket
     || user.socket.readyState === WebSocket.CLOSING
     || user.socket.readyState === WebSocket.CLOSED;
-  if (!needsRecovery) return;
+  if (!needsRecovery) {
+    requestImmediatePresenceRefresh(role, `no-reconnect:${reason}`);
+    return;
+  }
   user.lastRecoveryAttemptAt = now;
   try {
     await connectSocket(role, { forceReconnect: true, reason, suppressTimeoutStatus: silent });
-    if (role === activeRole) {
-      await refreshContext(role);
-    }
+    requestImmediatePresenceRefresh(role, `reconnected:${reason}`);
   } catch (error) {
     reportSocketError(role, error, { silent });
     scheduleSocketReconnect(role, `recover-failed:${reason}`);
@@ -1735,12 +1805,14 @@ async function connectSocket(role, options = {}) {
         user.intentionalClose = false;
         return;
       }
+      markAllPendingMessagesFailed(`socket-close:${event.code}`);
       scheduleSocketReconnect(role, `close:${event.code}`);
     });
     socket.addEventListener("error", () => {
       if (user.socket !== socket) return;
       stopPresencePing(role);
       setSocketStatus(role, "disconnected");
+      markAllPendingMessagesFailed("socket-error");
       debugFrames.push(`! ${role} error state=${socketReadyStateText(socket)}`);
       debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
     });
@@ -1840,6 +1912,22 @@ async function handleSocketMessage(role, frame) {
     }
     return;
   }
+  if (payload.type === "MESSAGE_ACK") {
+    if (payload.clientMessageId) {
+      markPendingMessageSuccess(payload.clientMessageId, "server-ack");
+    }
+    return;
+  }
+  if (payload.type === "MESSAGE_NACK") {
+    if (payload.clientMessageId) {
+      clearPendingMessageAckTimer(payload.clientMessageId);
+      failPendingMessage(payload.clientMessageId);
+    }
+    if (payload.message) {
+      setStatus(payload.message, "bad");
+    }
+    return;
+  }
   if (payload.type === "MESSAGE_UPDATED") {
     if (payload.roomId === roomId && payload.message) {
       mergeMessages([payload.message]);
@@ -1915,9 +2003,7 @@ async function sendMessage(role = activeRole) {
   stopTyping(role);
   try {
     users[role].sendFrame("SEND", { destination: "/app/chat/send", "content-type": "application/json" }, JSON.stringify({ roomId, message, replyToMessageId, clientMessageId }));
-    setTimeout(() => {
-      if (sendingClientMessageIds.has(clientMessageId)) failPendingMessage(clientMessageId);
-    }, 5000);
+    schedulePendingMessageAckTimeout(clientMessageId);
   } catch (error) {
     failPendingMessage(clientMessageId);
     throw error;
@@ -2061,15 +2147,18 @@ document.addEventListener("visibilitychange", () => {
   if (!activeRole) return;
   if (document.visibilityState === "visible") {
     recoverSocket(activeRole, "visibilitychange:visible", { force: true, silent: true });
+    requestImmediatePresenceRefresh(activeRole, "visibilitychange:visible");
   }
 });
 window.addEventListener("focus", () => {
   if (!activeRole) return;
   recoverSocket(activeRole, "focus", { force: true, silent: true });
+  requestImmediatePresenceRefresh(activeRole, "focus");
 });
 window.addEventListener("online", () => {
   if (!activeRole) return;
   recoverSocket(activeRole, "network-online", { force: true, silent: true });
+  requestImmediatePresenceRefresh(activeRole, "network-online");
 });
 window.addEventListener("offline", () => {
   if (!activeRole) return;

@@ -15,6 +15,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,12 +73,12 @@ class UserPresenceServiceTest {
     @Test
     void touchMarksUserOnline() {
         UserPresenceService service = new UserPresenceService(userRepository, new InMemoryPresenceSessionStore());
-        when(userRepository.updatePresenceByFirebaseUid(eq("active-user"), any(Instant.class), eq(UserAvailabilityStatus.ONLINE)))
+        when(userRepository.updateLastActiveAtByFirebaseUid(eq("active-user"), any(Instant.class)))
                 .thenReturn(1);
 
         service.touch("active-user");
 
-        verify(userRepository).updatePresenceByFirebaseUid(eq("active-user"), any(Instant.class), eq(UserAvailabilityStatus.ONLINE));
+        verify(userRepository).updateLastActiveAtByFirebaseUid(eq("active-user"), any(Instant.class));
     }
 
     @Test
@@ -90,7 +91,7 @@ class UserPresenceServiceTest {
         service.forceOffline(user.getFirebaseUid());
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
-        verify(userRepository).updatePresenceByFirebaseUid(eq("logout-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE));
+        verify(userRepository).updateLastActiveAtByFirebaseUid(eq("logout-user"), any(Instant.class));
         assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
         assertThat(snapshot.online()).isFalse();
     }
@@ -125,16 +126,14 @@ class UserPresenceServiceTest {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("login-revive-user");
-        when(userRepository.updatePresenceByFirebaseUid(eq("login-revive-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE)))
-                .thenReturn(1);
-        when(userRepository.updatePresenceByFirebaseUid(eq("login-revive-user"), any(Instant.class), eq(UserAvailabilityStatus.ONLINE)))
+        when(userRepository.updateLastActiveAtByFirebaseUid(eq("login-revive-user"), any(Instant.class)))
                 .thenReturn(1);
 
         service.forceOffline(user.getFirebaseUid());
         boolean touched = service.touchFromAuthentication(user.getFirebaseUid());
 
         assertThat(touched).isTrue();
-        verify(userRepository).updatePresenceByFirebaseUid(eq("login-revive-user"), any(Instant.class), eq(UserAvailabilityStatus.ONLINE));
+        verify(userRepository, atLeastOnce()).updateLastActiveAtByFirebaseUid(eq("login-revive-user"), any(Instant.class));
     }
 
     @Test
@@ -142,13 +141,60 @@ class UserPresenceServiceTest {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("grace-expired-user");
-        when(userRepository.updatePresenceByFirebaseUid(eq("grace-expired-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE)))
+        when(userRepository.updateLastActiveAtByFirebaseUid(eq("grace-expired-user"), any(Instant.class)))
                 .thenReturn(1);
 
         store.setDisconnectGraceUntil(user.getFirebaseUid(), Instant.now().minusSeconds(1));
 
         assertThat(service.reconcileStaleSessions()).contains(user.getFirebaseUid());
-        verify(userRepository).updatePresenceByFirebaseUid(eq("grace-expired-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE));
+        verify(userRepository).updateLastActiveAtByFirebaseUid(eq("grace-expired-user"), any(Instant.class));
+    }
+
+    @Test
+    void snapshotKeepsManualIdleWhenConnected() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("manual-idle-user");
+        user.setAvailabilityStatus(UserAvailabilityStatus.IDLE);
+
+        store.putSession(user.getFirebaseUid(), "session-1", Instant.now());
+
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(snapshot.manualPresenceStatus()).isEqualTo(UserAvailabilityStatus.IDLE);
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.IDLE);
+        assertThat(snapshot.actualConnectionState()).isEqualTo("connected");
+    }
+
+    @Test
+    void snapshotKeepsManualOfflineEvenWhenConnected() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("manual-offline-user");
+        user.setAvailabilityStatus(UserAvailabilityStatus.OFFLINE);
+
+        store.putSession(user.getFirebaseUid(), "session-1", Instant.now());
+
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(snapshot.manualPresenceStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
+        assertThat(snapshot.online()).isFalse();
+        assertThat(snapshot.actualConnectionState()).isEqualTo("connected");
+    }
+
+    @Test
+    void forceOfflineDoesNotOverwriteManualStatus() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("manual-preserve-user");
+        user.setAvailabilityStatus(UserAvailabilityStatus.IDLE);
+
+        service.forceOffline(user.getFirebaseUid());
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(snapshot.manualPresenceStatus()).isEqualTo(UserAvailabilityStatus.IDLE);
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
     }
 
     private User user(String firebaseUid) {

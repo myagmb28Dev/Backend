@@ -43,6 +43,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -108,6 +110,10 @@ class NoticeChatServiceTest {
                     user != null && user.getStatus() == UserStatus.ACTIVE
                             ? com.example.pogun.entity.user.enums.UserAvailabilityStatus.ONLINE
                             : com.example.pogun.entity.user.enums.UserAvailabilityStatus.OFFLINE,
+                    user != null && user.getStatus() == UserStatus.ACTIVE
+                            ? com.example.pogun.entity.user.enums.UserAvailabilityStatus.ONLINE
+                            : com.example.pogun.entity.user.enums.UserAvailabilityStatus.OFFLINE,
+                    user != null && user.getStatus() == UserStatus.ACTIVE ? "connected" : "disconnected",
                     user != null ? user.getLastActiveAt() : null
             );
         });
@@ -219,6 +225,93 @@ class NoticeChatServiceTest {
         assertThat(response.id()).isEqualTo(existingMessage.getId());
         assertThat(response.clientMessageId()).isEqualTo("client-message-1");
         assertThat(response.roomSequence()).isEqualTo(3L);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(simpMessagingTemplate, atLeastOnce())
+                .convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), payloadCaptor.capture());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ackPayload = payloadCaptor.getAllValues().stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .filter(map -> "MESSAGE_ACK".equals(map.get("type")))
+                .findFirst()
+                .orElse(null);
+
+        assertThat(ackPayload).isNotNull();
+        assertThat(ackPayload.get("clientMessageId")).isEqualTo("client-message-1");
+        assertThat(ackPayload.get("duplicate")).isEqualTo(true);
+    }
+
+    @Test
+    void sendMessage_sendsAckForNewClientMessageId() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessageRequest request = new NoticeChatMessageRequest();
+        request.setRoomId(roomId);
+        request.setMessage("ACK 대상 메시지");
+        request.setClientMessageId("client-message-ack-1");
+
+        NoticeChatMessage savedMessage = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("ACK 대상 메시지")
+                .clientMessageId("client-message-ack-1")
+                .roomSequence(11L)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findByRoomAndSenderUserAndClientMessageId(room, currentUser, "client-message-ack-1"))
+                .thenReturn(Optional.empty());
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+
+        noticeChatService.sendMessage(principal(currentUser), request);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(simpMessagingTemplate, atLeastOnce())
+                .convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), payloadCaptor.capture());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ackPayload = payloadCaptor.getAllValues().stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .filter(map -> "MESSAGE_ACK".equals(map.get("type")))
+                .findFirst()
+                .orElse(null);
+
+        assertThat(ackPayload).isNotNull();
+        assertThat(ackPayload.get("clientMessageId")).isEqualTo("client-message-ack-1");
+        assertThat(ackPayload.get("duplicate")).isEqualTo(false);
+    }
+
+    @Test
+    void publishMessageNack_sendsNackPayloadToUserRoomTopic() {
+        UUID roomId = UUID.randomUUID();
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+
+        noticeChatService.publishMessageNack(
+                currentUser.getFirebaseUid(),
+                roomId,
+                "client-message-nack-1",
+                "MESSAGE_SEND_FAILED",
+                "전송 실패"
+        );
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), payloadCaptor.capture());
+
+        assertThat(payloadCaptor.getValue()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> nackPayload = (Map<String, Object>) payloadCaptor.getValue();
+        assertThat(nackPayload.get("type")).isEqualTo("MESSAGE_NACK");
+        assertThat(nackPayload.get("clientMessageId")).isEqualTo("client-message-nack-1");
+        assertThat(nackPayload.get("errorCode")).isEqualTo("MESSAGE_SEND_FAILED");
     }
 
     @Test

@@ -41,6 +41,7 @@ public class UserService {
     private final UserSocialAccountRepository userSocialAccountRepository;
     private final S3ImageStorageService s3ImageStorageService;
     private final NoticeChatService noticeChatService;
+    private final UserPresenceService userPresenceService;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -81,9 +82,13 @@ public class UserService {
 
     public UserAvailabilityResponse getAvailability() {
         User user = getCurrentUser();
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(user);
         return new UserAvailabilityResponse(
                 resolveAvailabilityStatus(user).name(),
-                user.getLastActiveAt()
+            snapshot.manualPresenceStatus().name(),
+            snapshot.availabilityStatus().name(),
+            snapshot.actualConnectionState(),
+            snapshot.lastActiveAt()
         );
     }
 
@@ -100,8 +105,16 @@ public class UserService {
         }
         user.setAvailabilityStatus(availabilityStatus);
         User saved = userRepository.save(user);
+        userPresenceService.applyManualPresenceStatus(saved.getFirebaseUid(), availabilityStatus);
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(saved);
         noticeChatService.publishPresenceUpdates(saved);
-        return new UserAvailabilityResponse(resolveAvailabilityStatus(saved).name(), saved.getLastActiveAt());
+        return new UserAvailabilityResponse(
+            resolveAvailabilityStatus(saved).name(),
+            snapshot.manualPresenceStatus().name(),
+            snapshot.availabilityStatus().name(),
+            snapshot.actualConnectionState(),
+            snapshot.lastActiveAt()
+        );
     }
 
     public List<UserPetNoticeSummaryResponse> myPetNotices() {

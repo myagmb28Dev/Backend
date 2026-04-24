@@ -1,5 +1,7 @@
 package com.example.pogun.service.presence;
 
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -34,4 +36,22 @@ public interface PresenceSessionStore {
     void clearDisconnectGraceUntil(String firebaseUid);
 
     Set<String> findUsersWithDisconnectGrace();
+
+    UserAvailabilityStatus getManualPresenceStatus(String firebaseUid);
+
+    void setManualPresenceStatus(String firebaseUid, UserAvailabilityStatus manualPresenceStatus);
+
+    void clearManualPresenceStatus(String firebaseUid);
+
+    UserAvailabilityStatus getEffectivePresenceStatus(String firebaseUid);
+
+    void setEffectivePresenceStatus(String firebaseUid, UserAvailabilityStatus effectivePresenceStatus);
+
+    void clearEffectivePresenceStatus(String firebaseUid);
+
+    String getConnectionState(String firebaseUid);
+
+    void setConnectionState(String firebaseUid, String connectionState);
+
+    void clearConnectionState(String firebaseUid);
 }

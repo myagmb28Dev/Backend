@@ -1,5 +1,7 @@
 package com.example.pogun.service.presence;
 
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,6 +16,9 @@ public class InMemoryPresenceSessionStore implements PresenceSessionStore {
     private final ConcurrentHashMap<String, Instant> lastTouchedAtCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> forcedOfflineAtCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> disconnectGraceUntilCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, UserAvailabilityStatus> manualPresenceStatusCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, UserAvailabilityStatus> effectivePresenceStatusCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> connectionStateCache = new ConcurrentHashMap<>();
 
     @Override
     public void putSession(String firebaseUid, String sessionId, Instant touchedAt) {
@@ -97,5 +102,56 @@ public class InMemoryPresenceSessionStore implements PresenceSessionStore {
     @Override
     public Set<String> findUsersWithDisconnectGrace() {
         return new HashSet<>(disconnectGraceUntilCache.keySet());
+    }
+
+    @Override
+    public UserAvailabilityStatus getManualPresenceStatus(String firebaseUid) {
+        return manualPresenceStatusCache.get(firebaseUid);
+    }
+
+    @Override
+    public void setManualPresenceStatus(String firebaseUid, UserAvailabilityStatus manualPresenceStatus) {
+        if (manualPresenceStatus != null) {
+            manualPresenceStatusCache.put(firebaseUid, manualPresenceStatus);
+        }
+    }
+
+    @Override
+    public void clearManualPresenceStatus(String firebaseUid) {
+        manualPresenceStatusCache.remove(firebaseUid);
+    }
+
+    @Override
+    public UserAvailabilityStatus getEffectivePresenceStatus(String firebaseUid) {
+        return effectivePresenceStatusCache.get(firebaseUid);
+    }
+
+    @Override
+    public void setEffectivePresenceStatus(String firebaseUid, UserAvailabilityStatus effectivePresenceStatus) {
+        if (effectivePresenceStatus != null) {
+            effectivePresenceStatusCache.put(firebaseUid, effectivePresenceStatus);
+        }
+    }
+
+    @Override
+    public void clearEffectivePresenceStatus(String firebaseUid) {
+        effectivePresenceStatusCache.remove(firebaseUid);
+    }
+
+    @Override
+    public String getConnectionState(String firebaseUid) {
+        return connectionStateCache.get(firebaseUid);
+    }
+
+    @Override
+    public void setConnectionState(String firebaseUid, String connectionState) {
+        if (connectionState != null && !connectionState.isBlank()) {
+            connectionStateCache.put(firebaseUid, connectionState);
+        }
+    }
+
+    @Override
+    public void clearConnectionState(String firebaseUid) {
+        connectionStateCache.remove(firebaseUid);
     }
 }

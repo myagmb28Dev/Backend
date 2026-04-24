@@ -10,7 +10,6 @@ import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
-import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
@@ -77,7 +76,6 @@ public class AuthService {
                         existingUser.setProfileImageUrl(picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setLastActiveAt(Instant.now());
-                        existingUser.setAvailabilityStatus(UserAvailabilityStatus.ONLINE);
                         existingUser.setStatus(UserStatus.ACTIVE);
                         return userRepository.save(existingUser);
                     })
@@ -89,7 +87,6 @@ public class AuthService {
                                 existingByEmail.setProfileImageUrl(picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
                                 existingByEmail.setLastActiveAt(Instant.now());
-                                existingByEmail.setAvailabilityStatus(UserAvailabilityStatus.ONLINE);
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
                                 return userRepository.save(existingByEmail);
                             })

@@ -276,7 +276,9 @@ public class NoticeChatService {
             NoticeChatMessage existing = noticeChatMessageRepository.findByRoomAndSenderUserAndClientMessageId(room, sender, clientMessageId)
                     .orElse(null);
             if (existing != null) {
-                return toMessageResponse(existing, sender);
+                NoticeChatMessageResponse existingPayload = toMessageResponse(existing, sender);
+                sendMessageAck(sender.getId(), room.getId(), existingPayload, true);
+                return existingPayload;
             }
         }
         String content = trimToNull(request.getMessage());
@@ -301,6 +303,22 @@ public class NoticeChatService {
                 List.of()
         );
         return broadcastMessage(room, sender, saved);
+    }
+
+    @Transactional(readOnly = true)
+    public void publishMessageNack(String firebaseUid, java.util.UUID roomId, String clientMessageId, String errorCode, String message) {
+        if (firebaseUid == null || firebaseUid.isBlank() || roomId == null) {
+            return;
+        }
+        userRepository.findByFirebaseUid(firebaseUid).ifPresent(user -> {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "MESSAGE_NACK");
+            payload.put("roomId", roomId);
+            payload.put("clientMessageId", trimToNull(clientMessageId));
+            payload.put("errorCode", trimToNull(errorCode) != null ? errorCode : "MESSAGE_SEND_FAILED");
+            payload.put("message", trimToNull(message) != null ? message : "메시지 전송에 실패했습니다.");
+            simpMessagingTemplate.convertAndSend(userRoomTopic(user.getId(), roomId), (Object) payload);
+        });
     }
 
     @Transactional
@@ -1043,11 +1061,27 @@ public class NoticeChatService {
         notifyDirectMessage(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
 
         afterCommitOrNow(() -> {
+            sendMessageAck(sender.getId(), savedRoom.getId(), senderPayload, false);
             simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
             simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), savedRoom.getId()), opponentPayload);
             broadcastRoomUpdate(roomUpdatePayload);
         });
         return senderPayload;
+    }
+
+    private void sendMessageAck(java.util.UUID senderUserId, java.util.UUID roomId, NoticeChatMessageResponse senderPayload, boolean duplicate) {
+        if (senderUserId == null || roomId == null || senderPayload == null || trimToNull(senderPayload.clientMessageId()) == null) {
+            return;
+        }
+        Map<String, Object> ackPayload = new LinkedHashMap<>();
+        ackPayload.put("type", "MESSAGE_ACK");
+        ackPayload.put("roomId", roomId);
+        ackPayload.put("messageId", senderPayload.id());
+        ackPayload.put("clientMessageId", senderPayload.clientMessageId());
+        ackPayload.put("roomSequence", senderPayload.roomSequence());
+        ackPayload.put("serverReceivedAt", senderPayload.serverReceivedAt());
+        ackPayload.put("duplicate", duplicate);
+        simpMessagingTemplate.convertAndSend(userRoomTopic(senderUserId, roomId), (Object) ackPayload);
     }
 
     private void notifyDirectMessage(NoticeChatRoom room, NoticeChatMessage message, User sender, User opponent, boolean opponentNotificationEnabled) {

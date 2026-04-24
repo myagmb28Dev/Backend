@@ -1,5 +1,6 @@
 package com.example.pogun.service.presence;
 
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
@@ -14,6 +15,9 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
     private static final String LAST_TOUCHED_PREFIX = "presence:user:lastTouched:";
     private static final String FORCED_OFFLINE_PREFIX = "presence:user:forcedOffline:";
     private static final String DISCONNECT_GRACE_PREFIX = "presence:user:disconnectGraceUntil:";
+    private static final String MANUAL_STATUS_PREFIX = "presence:user:manualStatus:";
+    private static final String EFFECTIVE_STATUS_PREFIX = "presence:user:effectiveStatus:";
+    private static final String CONNECTION_STATE_PREFIX = "presence:user:connectionState:";
     private static final String USERS_WITH_DISCONNECT_GRACE_KEY = "presence:user:disconnectGrace:users";
     private static final Duration USER_META_TTL = Duration.ofDays(7);
 
@@ -127,6 +131,54 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
         return members == null ? Set.of() : members;
     }
 
+    @Override
+    public UserAvailabilityStatus getManualPresenceStatus(String firebaseUid) {
+        return getStatusValue(manualStatusKey(firebaseUid));
+    }
+
+    @Override
+    public void setManualPresenceStatus(String firebaseUid, UserAvailabilityStatus manualPresenceStatus) {
+        setStatusValue(manualStatusKey(firebaseUid), manualPresenceStatus);
+    }
+
+    @Override
+    public void clearManualPresenceStatus(String firebaseUid) {
+        redisTemplate.delete(manualStatusKey(firebaseUid));
+    }
+
+    @Override
+    public UserAvailabilityStatus getEffectivePresenceStatus(String firebaseUid) {
+        return getStatusValue(effectiveStatusKey(firebaseUid));
+    }
+
+    @Override
+    public void setEffectivePresenceStatus(String firebaseUid, UserAvailabilityStatus effectivePresenceStatus) {
+        setStatusValue(effectiveStatusKey(firebaseUid), effectivePresenceStatus);
+    }
+
+    @Override
+    public void clearEffectivePresenceStatus(String firebaseUid) {
+        redisTemplate.delete(effectiveStatusKey(firebaseUid));
+    }
+
+    @Override
+    public String getConnectionState(String firebaseUid) {
+        return redisTemplate.opsForValue().get(connectionStateKey(firebaseUid));
+    }
+
+    @Override
+    public void setConnectionState(String firebaseUid, String connectionState) {
+        if (connectionState == null || connectionState.isBlank()) {
+            return;
+        }
+        redisTemplate.opsForValue().set(connectionStateKey(firebaseUid), connectionState, USER_META_TTL);
+    }
+
+    @Override
+    public void clearConnectionState(String firebaseUid) {
+        redisTemplate.delete(connectionStateKey(firebaseUid));
+    }
+
     private void setInstantValue(String key, Instant value) {
         redisTemplate.opsForValue().set(key, String.valueOf(value.toEpochMilli()), USER_META_TTL);
     }
@@ -139,6 +191,25 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
         try {
             return Instant.ofEpochMilli(Long.parseLong(value));
         } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void setStatusValue(String key, UserAvailabilityStatus status) {
+        if (status == null) {
+            return;
+        }
+        redisTemplate.opsForValue().set(key, status.name(), USER_META_TTL);
+    }
+
+    private UserAvailabilityStatus getStatusValue(String key) {
+        String value = redisTemplate.opsForValue().get(key);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UserAvailabilityStatus.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
             return null;
         }
     }
@@ -157,5 +228,17 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
 
     private String disconnectGraceKey(String firebaseUid) {
         return DISCONNECT_GRACE_PREFIX + firebaseUid;
+    }
+
+    private String manualStatusKey(String firebaseUid) {
+        return MANUAL_STATUS_PREFIX + firebaseUid;
+    }
+
+    private String effectiveStatusKey(String firebaseUid) {
+        return EFFECTIVE_STATUS_PREFIX + firebaseUid;
+    }
+
+    private String connectionStateKey(String firebaseUid) {
+        return CONNECTION_STATE_PREFIX + firebaseUid;
     }
 }

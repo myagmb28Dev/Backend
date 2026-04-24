@@ -20,10 +20,11 @@ import java.util.Set;
 @Slf4j
 public class UserPresenceService {
 
-    private static final Duration ONLINE_WINDOW = Duration.ofMinutes(2);
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
     private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(45);
     private static final Duration DISCONNECT_GRACE_WINDOW = Duration.ofSeconds(40);
+    private static final String CONNECTION_CONNECTED = "connected";
+    private static final String CONNECTION_DISCONNECTED = "disconnected";
 
     private final UserRepository userRepository;
     private final PresenceSessionStore presenceSessionStore;
@@ -51,12 +52,13 @@ public class UserPresenceService {
         if (blockedByForcedOffline) {
             return false;
         }
-        if (userRepository.updatePresenceByFirebaseUid(firebaseUid, now, UserAvailabilityStatus.ONLINE) > 0) {
+        if (userRepository.updateLastActiveAtByFirebaseUid(firebaseUid, now) > 0) {
             presenceSessionStore.setLastTouchedAt(firebaseUid, now);
             presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
             if (allowForcedOfflineRecovery || !presenceSessionStore.getSessions(firebaseUid).isEmpty()) {
                 presenceSessionStore.clearForcedOfflineAt(firebaseUid);
             }
+            syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
             return true;
         }
         return false;
@@ -72,8 +74,9 @@ public class UserPresenceService {
         presenceSessionStore.clearLastTouchedAt(firebaseUid);
         presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
         presenceSessionStore.setForcedOfflineAt(firebaseUid, now);
-        userRepository.updatePresenceByFirebaseUid(firebaseUid, now, UserAvailabilityStatus.OFFLINE);
-        log.info("[presence] forced offline uid={} at={}", firebaseUid, now);
+        userRepository.updateLastActiveAtByFirebaseUid(firebaseUid, now);
+        syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
+        log.info("[presence] forced offline uid={} at={} connectionState={}", firebaseUid, now, CONNECTION_DISCONNECTED);
     }
 
     @Transactional
@@ -84,6 +87,7 @@ public class UserPresenceService {
         log.info("[presence] websocket connected uid={} sessionId={}", firebaseUid, sessionId);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         touch(firebaseUid);
+        syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
     }
 
     public void refreshWebSocketSession(String firebaseUid, String sessionId) {
@@ -96,6 +100,7 @@ public class UserPresenceService {
         }
         presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
+        syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
     }
 
     @Transactional
@@ -116,28 +121,32 @@ public class UserPresenceService {
             presenceSessionStore.setLastTouchedAt(firebaseUid, now);
             log.info("[presence] websocket disconnected uid={} sessionId={} graceUntil={}", firebaseUid, sessionId, now.plus(DISCONNECT_GRACE_WINDOW));
         }
+        syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
     }
 
     @Transactional(readOnly = true)
     public PresenceSnapshot snapshot(User user) {
         if (user == null || user.getFirebaseUid() == null) {
-            return new PresenceSnapshot(UserAvailabilityStatus.OFFLINE, null);
+            return new PresenceSnapshot(UserAvailabilityStatus.ONLINE, UserAvailabilityStatus.OFFLINE, CONNECTION_DISCONNECTED, null);
         }
-        Instant lastActiveAt = resolveLastActiveAt(user.getFirebaseUid(), user.getLastActiveAt());
-        boolean hasActiveWebSocketSession = hasActiveWebSocketSession(user.getFirebaseUid());
-        boolean autoOnline = hasActiveWebSocketSession
-            || isWithinDisconnectGrace(user.getFirebaseUid())
-                || isRecentlyActiveAfterForcedOffline(user.getFirebaseUid(), lastActiveAt);
-        if (!autoOnline) {
-            return new PresenceSnapshot(UserAvailabilityStatus.OFFLINE, lastActiveAt);
+        UserAvailabilityStatus manualStatus = resolveManualPresenceStatus(user.getFirebaseUid(), user.getAvailabilityStatus());
+        PresenceSnapshot snapshot = buildSnapshot(user.getFirebaseUid(), manualStatus, user.getLastActiveAt());
+        log.debug("[presence] snapshot uid={} manual={} connectionState={} effective={}", user.getFirebaseUid(), snapshot.manualPresenceStatus(), snapshot.actualConnectionState(), snapshot.availabilityStatus());
+        return snapshot;
+    }
+
+    @Transactional
+    public void applyManualPresenceStatus(String firebaseUid, UserAvailabilityStatus manualPresenceStatus) {
+        if (firebaseUid == null || firebaseUid.isBlank() || manualPresenceStatus == null) {
+            return;
         }
-        UserAvailabilityStatus configured = user.getAvailabilityStatus() != null
-                ? user.getAvailabilityStatus()
-                : UserAvailabilityStatus.ONLINE;
-        UserAvailabilityStatus effective = configured == UserAvailabilityStatus.OFFLINE
-                ? UserAvailabilityStatus.OFFLINE
-                : configured;
-        return new PresenceSnapshot(effective, lastActiveAt);
+        presenceSessionStore.setManualPresenceStatus(firebaseUid, manualPresenceStatus);
+        syncPresenceCache(firebaseUid, manualPresenceStatus);
+        log.info("[presence] manual status updated uid={} manual={} connectionState={} effective={}",
+                firebaseUid,
+                manualPresenceStatus,
+                resolveActualConnectionState(firebaseUid),
+                resolveEffectivePresenceStatus(resolveIsConnected(firebaseUid), manualPresenceStatus));
     }
 
     @Transactional
@@ -169,12 +178,53 @@ public class UserPresenceService {
         return changedFirebaseUids;
     }
 
+    public UserAvailabilityStatus resolveEffectivePresenceStatus(boolean connected, UserAvailabilityStatus manualPresenceStatus) {
+        UserAvailabilityStatus manual = manualPresenceStatus != null ? manualPresenceStatus : UserAvailabilityStatus.ONLINE;
+        if (!connected) {
+            return UserAvailabilityStatus.OFFLINE;
+        }
+        if (manual == UserAvailabilityStatus.OFFLINE) {
+            return UserAvailabilityStatus.OFFLINE;
+        }
+        if (manual == UserAvailabilityStatus.IDLE) {
+            return UserAvailabilityStatus.IDLE;
+        }
+        return UserAvailabilityStatus.ONLINE;
+    }
+
     private boolean hasActiveWebSocketSession(String firebaseUid) {
         if (firebaseUid == null || firebaseUid.isBlank()) {
             return false;
         }
         pruneStaleWebSocketSessions(firebaseUid, Instant.now());
         return !presenceSessionStore.getSessions(firebaseUid).isEmpty();
+    }
+
+    private PresenceSnapshot buildSnapshot(String firebaseUid, UserAvailabilityStatus manualStatus, Instant persistedLastActiveAt) {
+        Instant lastActiveAt = resolveLastActiveAt(firebaseUid, persistedLastActiveAt);
+        boolean connected = resolveIsConnected(firebaseUid);
+        UserAvailabilityStatus effectiveStatus = resolveEffectivePresenceStatus(connected, manualStatus);
+        presenceSessionStore.setManualPresenceStatus(firebaseUid, manualStatus);
+        presenceSessionStore.setEffectivePresenceStatus(firebaseUid, effectiveStatus);
+        presenceSessionStore.setConnectionState(firebaseUid, connected ? CONNECTION_CONNECTED : CONNECTION_DISCONNECTED);
+        return new PresenceSnapshot(manualStatus, effectiveStatus, connected ? CONNECTION_CONNECTED : CONNECTION_DISCONNECTED, lastActiveAt);
+    }
+
+    private void syncPresenceCache(String firebaseUid, UserAvailabilityStatus manualStatus) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return;
+        }
+        UserAvailabilityStatus resolvedManualStatus = manualStatus != null
+                ? manualStatus
+                : presenceSessionStore.getManualPresenceStatus(firebaseUid);
+        UserAvailabilityStatus effectiveManual = resolvedManualStatus != null ? resolvedManualStatus : UserAvailabilityStatus.ONLINE;
+        boolean connected = resolveIsConnected(firebaseUid);
+        UserAvailabilityStatus effectiveStatus = resolveEffectivePresenceStatus(connected, effectiveManual);
+        if (resolvedManualStatus != null) {
+            presenceSessionStore.setManualPresenceStatus(firebaseUid, resolvedManualStatus);
+        }
+        presenceSessionStore.setEffectivePresenceStatus(firebaseUid, effectiveStatus);
+        presenceSessionStore.setConnectionState(firebaseUid, connected ? CONNECTION_CONNECTED : CONNECTION_DISCONNECTED);
     }
 
     private Instant resolveLastActiveAt(String firebaseUid, Instant persistedLastActiveAt) {
@@ -215,15 +265,25 @@ public class UserPresenceService {
         return graceUntil != null && Instant.now().isBefore(graceUntil);
     }
 
-    private boolean isRecentlyActiveAfterForcedOffline(String firebaseUid, Instant lastActiveAt) {
-        if (lastActiveAt == null) {
+    private boolean resolveIsConnected(String firebaseUid) {
+        if (isForcedOfflineWithoutTrackedSession(firebaseUid)) {
             return false;
         }
-        Instant forcedOfflineAt = presenceSessionStore.getForcedOfflineAt(firebaseUid);
-        if (forcedOfflineAt != null && !lastActiveAt.isAfter(forcedOfflineAt)) {
-            return false;
+        return hasActiveWebSocketSession(firebaseUid) || isWithinDisconnectGrace(firebaseUid);
+    }
+
+    private String resolveActualConnectionState(String firebaseUid) {
+        return resolveIsConnected(firebaseUid) ? CONNECTION_CONNECTED : CONNECTION_DISCONNECTED;
+    }
+
+    private UserAvailabilityStatus resolveManualPresenceStatus(String firebaseUid, UserAvailabilityStatus persistedManualStatus) {
+        UserAvailabilityStatus cached = presenceSessionStore.getManualPresenceStatus(firebaseUid);
+        if (cached != null) {
+            return cached;
         }
-        return Duration.between(lastActiveAt, Instant.now()).compareTo(ONLINE_WINDOW) <= 0;
+        UserAvailabilityStatus resolved = persistedManualStatus != null ? persistedManualStatus : UserAvailabilityStatus.ONLINE;
+        presenceSessionStore.setManualPresenceStatus(firebaseUid, resolved);
+        return resolved;
     }
 
     private boolean isForcedOfflineWithoutTrackedSession(String firebaseUid) {
@@ -231,7 +291,10 @@ public class UserPresenceService {
         return forcedOfflineAt != null && presenceSessionStore.getSessions(firebaseUid).isEmpty();
     }
 
-    public record PresenceSnapshot(UserAvailabilityStatus availabilityStatus, Instant lastActiveAt) {
+    public record PresenceSnapshot(UserAvailabilityStatus manualPresenceStatus,
+                                   UserAvailabilityStatus availabilityStatus,
+                                   String actualConnectionState,
+                                   Instant lastActiveAt) {
         public boolean online() {
             return availabilityStatus == UserAvailabilityStatus.ONLINE || availabilityStatus == UserAvailabilityStatus.IDLE;
         }

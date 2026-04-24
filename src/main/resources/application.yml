@@ -59,7 +59,7 @@ app:
     ttl-seconds: 60
   presence:
     store: redis
-    reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS:5000}
+    reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS:3000}
 
 decorator:
   datasource:

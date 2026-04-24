@@ -36,7 +36,24 @@ public class NoticeChatMessageController {
                 resolvedPrincipal != null ? resolvedPrincipal.getName() : "anonymous",
                 request.getRoomId());
         // STOMP payload는 컨트롤러에서 최소 검증만 하고, 저장과 fan-out은 서비스가 담당한다.
-        noticeChatService.sendMessage(resolvedPrincipal, request);
+        try {
+            noticeChatService.sendMessage(resolvedPrincipal, request);
+        } catch (RuntimeException ex) {
+            if (resolvedPrincipal != null
+                    && resolvedPrincipal.getName() != null
+                    && !resolvedPrincipal.getName().isBlank()
+                    && request != null
+                    && request.getRoomId() != null) {
+                noticeChatService.publishMessageNack(
+                        resolvedPrincipal.getName(),
+                        request.getRoomId(),
+                        request.getClientMessageId(),
+                        "MESSAGE_SEND_FAILED",
+                        ex.getMessage()
+                );
+            }
+            throw ex;
+        }
     }
 
     @MessageMapping("/chat/typing")

@@ -7,6 +7,7 @@ import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.PendingSocialSignupRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -183,5 +184,39 @@ class AuthServiceTest {
         verify(firebaseIdentityService).revokeTokenLocally("id-token");
         verify(userPresenceService).forceOffline("firebase-uid");
         verify(noticeChatService).publishPresenceUpdates(user);
+    }
+
+    @Test
+    void loginOrSignUp_keepsExistingManualAvailabilityStatus() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "firebase-uid",
+                "existing-user@example.com",
+                "Existing User",
+                "https://cdn.example.com/profile.png",
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "existing-user@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("existing-user@example.com")
+                .nickname("기존 유저")
+                .availabilityStatus(UserAvailabilityStatus.IDLE)
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
+        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
+
+        authService.loginOrSignUp("id-token");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getAvailabilityStatus()).isEqualTo(UserAvailabilityStatus.IDLE);
     }
 }
