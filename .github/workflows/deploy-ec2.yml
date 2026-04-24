@@ -165,25 +165,25 @@ jobs:
           sudo docker compose ps
 
           for attempt in {1..30}; do
-            app_status="$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
-            app_health="$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
+            app_status="\$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
+            app_health="\$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
 
-            if [ "$app_health" = "healthy" ]; then
+            if [ "\$app_health" = "healthy" ]; then
               echo "Application healthcheck passed."
               break
             fi
 
-            if [ "$app_status" = "exited" ] || [ "$app_status" = "dead" ]; then
+            if [ "\$app_status" = "exited" ] || [ "\$app_status" = "dead" ]; then
               sudo docker compose logs --tail=200 app
               exit 1
             fi
 
-            if [ "$attempt" -eq 30 ]; then
+            if [ "\$attempt" -eq 30 ]; then
               sudo docker compose logs --tail=200 app
               exit 1
             fi
 
-            echo "Waiting for app healthcheck... status=$app_status health=$app_health attempt=$attempt/30"
+            echo "Waiting for app healthcheck... status=\$app_status health=\$app_health attempt=\$attempt/30"
             sleep 5
           done
 
