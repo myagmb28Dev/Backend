@@ -596,16 +596,53 @@ function formatRoomSummary(room) {
   parts.push(formatPresenceText(room));
   return parts.join(" · ") || "새 공고 문의방";
 }
+function normalizeConnectionState(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "connected" || normalized === "disconnected" ? normalized : "";
+}
+function normalizePresenceStatus(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().toUpperCase();
+  return normalized === "ONLINE" || normalized === "IDLE" || normalized === "OFFLINE" ? normalized : "";
+}
+function resolveEffectivePresenceStatus(connectionState, manualPresenceStatus, fallbackAvailability, fallbackOnline) {
+  const normalizedConnection = normalizeConnectionState(connectionState);
+  const manual = normalizePresenceStatus(manualPresenceStatus);
+  const fallback = normalizePresenceStatus(fallbackAvailability);
+  const connected = normalizedConnection
+    ? normalizedConnection === "connected"
+    : (typeof fallbackOnline === "boolean" ? fallbackOnline : null);
+  if (connected === false) return "OFFLINE";
+  if (connected === true) {
+    if (manual === "OFFLINE") return "OFFLINE";
+    if (manual === "IDLE") return "IDLE";
+    if (manual === "ONLINE") return "ONLINE";
+    return fallback || "ONLINE";
+  }
+  return fallback || "OFFLINE";
+}
 function formatPresenceText(room) {
-  if (room?.opponentAvailability === "IDLE") return "자리비움";
-  if (room?.opponentOnline) return "온라인";
+  const effective = resolveEffectivePresenceStatus(
+    room?.opponentConnectionState,
+    room?.opponentManualPresenceStatus,
+    room?.opponentEffectivePresenceStatus || room?.opponentAvailability,
+    room?.opponentOnline
+  );
+  if (effective === "IDLE") return "자리비움";
+  if (effective === "ONLINE") return "온라인";
   if (room?.opponentLastActiveAt) return `오프라인 · ${formatRelativeActive(room.opponentLastActiveAt)}`;
   return "오프라인";
 }
 function renderPresenceChip(room) {
-  const availability = room?.opponentAvailability || (room?.opponentOnline ? "ONLINE" : "OFFLINE");
-  const label = availability === "IDLE" ? "자리비움" : availability === "OFFLINE" ? "오프라인" : "온라인";
-  const tone = availability === "IDLE" ? "idle" : availability === "OFFLINE" ? "offline" : "online";
+  const effective = resolveEffectivePresenceStatus(
+    room?.opponentConnectionState,
+    room?.opponentManualPresenceStatus,
+    room?.opponentEffectivePresenceStatus || room?.opponentAvailability,
+    room?.opponentOnline
+  );
+  const label = effective === "IDLE" ? "자리비움" : effective === "OFFLINE" ? "오프라인" : "온라인";
+  const tone = effective === "IDLE" ? "idle" : effective === "OFFLINE" ? "offline" : "online";
   return `<span class="presence-chip ${tone}">${label}</span>`;
 }
 function formatRelativeActive(value) {
@@ -1863,6 +1900,67 @@ function isChatMessagePayload(payload) {
   if (typeof payload.messageType !== "string" || !payload.createdAt) return false;
   return true;
 }
+function isKnownRoomTopicEvent(type) {
+  return type === "ROOM_ENTERED"
+    || type === "ROOM_LEFT"
+    || type === "PRESENCE_CHANGED"
+    || type === "USER_OFFLINE";
+}
+function applyRoomEventPresence(room, payload) {
+  if (!room || !payload) return room;
+  const connectionState = normalizeConnectionState(payload.connectionState);
+  const manualStatus = normalizePresenceStatus(payload.manualPresenceStatus);
+  const effectiveStatus = resolveEffectivePresenceStatus(
+    connectionState,
+    manualStatus,
+    payload.effectivePresenceStatus,
+    room.opponentOnline
+  );
+  return {
+    ...room,
+    opponentOnline: effectiveStatus !== "OFFLINE",
+    opponentManualPresenceStatus: manualStatus || room.opponentManualPresenceStatus,
+    opponentConnectionState: connectionState || room.opponentConnectionState,
+    opponentEffectivePresenceStatus: effectiveStatus,
+    opponentAvailability: effectiveStatus,
+    opponentLastActiveAt: payload.lastActiveAt || room.opponentLastActiveAt
+  };
+}
+async function handleRoomTopicLifecycleEvent(role, payload) {
+  if (!payload?.roomId || !payload?.userId) return;
+  if (!isKnownRoomTopicEvent(payload.type)) return;
+  if (payload.userId === users[role].userId) return;
+  let changed = false;
+  roomSummaries = roomSummaries.map((room) => {
+    if (room.roomId !== payload.roomId) return room;
+    if (room.opponentUserId && room.opponentUserId !== payload.userId) return room;
+    changed = true;
+    return applyRoomEventPresence(room, payload);
+  });
+  if (changed) {
+    console.debug("room presence updated", {
+      type: payload.type,
+      roomId: payload.roomId,
+      userId: payload.userId,
+      connectionState: normalizeConnectionState(payload.connectionState) || null,
+      manualPresenceStatus: normalizePresenceStatus(payload.manualPresenceStatus) || null,
+      effectivePresenceStatus: resolveEffectivePresenceStatus(
+        payload.connectionState,
+        payload.manualPresenceStatus,
+        payload.effectivePresenceStatus,
+        null
+      )
+    });
+    renderRoomList();
+    if (payload.roomId === roomId) {
+      updateConversationTitle();
+      renderRoomSettingsPanel();
+    }
+  }
+  if (payload.roomId === roomId) {
+    requestImmediatePresenceRefresh(role, `room-event:${payload.type.toLowerCase()}`);
+  }
+}
 async function handleSocketMessage(role, frame) {
   let payload = frame.body;
   try { payload = JSON.parse(frame.body); } catch {}
@@ -1953,11 +2051,19 @@ async function handleSocketMessage(role, frame) {
     }
     return;
   }
+  if (isKnownRoomTopicEvent(payload.type)) {
+    await handleRoomTopicLifecycleEvent(role, payload);
+    return;
+  }
   if (payload.roomId !== roomId) {
     return;
   }
   if (!isChatMessagePayload(payload)) {
-    console.warn("Ignored non-message payload on room topic", payload);
+    console.debug("unknown room topic event", {
+      type: payload?.type || "UNKNOWN",
+      roomId: payload?.roomId || null,
+      userId: payload?.userId || null
+    });
     return;
   }
   mergeMessages([payload]);
@@ -1967,7 +2073,8 @@ async function handleSocketMessage(role, frame) {
 }
 function upsertRoomSummary(nextRoom, currentRooms) {
   const map = new Map(currentRooms.map((room) => [room.roomId, room]));
-  map.set(nextRoom.roomId, nextRoom);
+  const previous = map.get(nextRoom.roomId) || {};
+  map.set(nextRoom.roomId, { ...previous, ...nextRoom });
   return [...map.values()].sort((a, b) => {
     const aTime = Date.parse(a.lastMessageAt || a.createdAt || 0);
     const bTime = Date.parse(b.lastMessageAt || b.createdAt || 0);

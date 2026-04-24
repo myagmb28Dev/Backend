@@ -59,13 +59,13 @@ import java.util.*;
 public class PogunDmPlaywrightCleanup {
   public static void main(String[] args) throws Exception {
     List<String> statements = List.of(
-      "DELETE FROM reports WHERE target_type = 'NOTICE_CHAT_ROOM' AND target_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
-      "DELETE FROM notice_chat_read_receipts WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
-      "DELETE FROM notice_chat_room_participant_states WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
-      "DELETE FROM notice_chat_message_images WHERE message_id IN (SELECT id FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')))",
-      "UPDATE notice_chat_messages SET reply_to_message_id = NULL WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
-      "DELETE FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%'))",
-      "DELETE FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
+      "DELETE FROM reports WHERE target_type = 'NOTICE_CHAT_ROOM' AND target_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev'))",
+      "DELETE FROM notice_chat_read_receipts WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev'))",
+      "DELETE FROM notice_chat_room_participant_states WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev'))",
+      "DELETE FROM notice_chat_message_images WHERE message_id IN (SELECT id FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev')))",
+      "UPDATE notice_chat_messages SET reply_to_message_id = NULL WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev'))",
+      "DELETE FROM notice_chat_messages WHERE room_id IN (SELECT id FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev'))",
+      "DELETE FROM notice_chat_rooms WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%') OR owner_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev') OR guest_user_id IN (SELECT id FROM users WHERE email LIKE 'playwright-user%@local.dev')",
       "DELETE FROM reports WHERE target_type = 'PET_NOTICE' AND target_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM notice_bookmarks WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
       "DELETE FROM pet_notice_images WHERE notice_id IN (SELECT id FROM pet_notices WHERE title LIKE 'playwright-notice%' OR title LIKE '[DM TEST]%')",
@@ -205,6 +205,27 @@ async function login(token) {
   };
 }
 
+async function ensureReadyAuthSession(token) {
+  let loginRes = await login(token);
+  if (loginRes.status !== 200) {
+    throw new Error(`login failed: ${JSON.stringify(loginRes.body)}`);
+  }
+  if (loginRes.body?.data?.registrationStatus === 'PENDING_ONBOARDING' || !loginRes.body?.data?.id) {
+    const onboardingRes = await api('/api/auth/onboarding/complete', token, {
+      method: 'POST',
+      body: JSON.stringify({ x: 127.1086228, y: 37.4012191 })
+    });
+    if (onboardingRes.status !== 200) {
+      throw new Error(`onboarding failed: ${JSON.stringify(onboardingRes.body)}`);
+    }
+    loginRes = await login(token);
+    if (loginRes.status !== 200 || !loginRes.body?.data?.id) {
+      throw new Error(`login after onboarding failed: ${JSON.stringify(loginRes.body)}`);
+    }
+  }
+  return loginRes;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -244,10 +265,16 @@ async function waitForTypingEvent(client, senderClient, roomId, destination, tim
 
 async function waitForChatMessage(client, destination, predicate, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
+  const seenPayloadTypes = [];
 
   while (Date.now() < deadline) {
     const remainingMs = Math.max(deadline - Date.now(), 1);
     const payload = await client.waitForMessage(destination, remainingMs);
+    seenPayloadTypes.push(
+      typeof payload === 'object' && payload !== null
+        ? payload.type || payload.messageType || payload.message || 'object'
+        : String(payload)
+    );
 
     if (payload && payload.type === 'READ_RECEIPT') {
       continue;
@@ -257,7 +284,22 @@ async function waitForChatMessage(client, destination, predicate, timeoutMs = 50
     }
   }
 
-  throw new Error(`Timed out waiting for chat message on ${destination}`);
+  throw new Error(`Timed out waiting for chat message on ${destination}; seen=${JSON.stringify(seenPayloadTypes)}`);
+}
+
+async function waitForRoomPresenceState(token, roomId, predicate, timeoutMs = 12000, intervalMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const roomsRes = await api('/api/chat/rooms', token);
+    if (roomsRes.status === 200) {
+      const room = (roomsRes.body?.data || []).find((item) => item.roomId === roomId);
+      if (room && predicate(room)) {
+        return room;
+      }
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error(`Timed out waiting for room presence update roomId=${roomId}`);
 }
 
 function parseFrame(rawFrame) {
@@ -563,6 +605,22 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   userTwoClient.subscribe(userTwoRoomDestination, userTwoRoomSubscriptionId);
   userTwoClient.subscribe(userTwoTypingDestination, userTwoTypingSubscriptionId);
   await sleep(500);
+  const userOneEnteredByUserTwoPromise = waitForChatMessage(
+    userOneClient,
+    userOneRoomSubscriptionId,
+    (payload) => payload?.type === 'ROOM_ENTERED' && payload?.userId === userTwoUserId,
+    5000
+  );
+  const userTwoEnteredByUserOnePromise = waitForChatMessage(
+    userTwoClient,
+    userTwoRoomSubscriptionId,
+    (payload) => payload?.type === 'ROOM_ENTERED' && payload?.userId === userOneUserId,
+    5000
+  );
+  userOneClient.sendJson('/app/chat/enter', { roomId });
+  userTwoClient.sendJson('/app/chat/enter', { roomId });
+  await userOneEnteredByUserTwoPromise;
+  await userTwoEnteredByUserOnePromise;
 
   const userOneTypingEvent = await waitForTypingEvent(
     userOneClient,
@@ -757,6 +815,111 @@ test('dm flow covers notice-based 1:1 room reuse, room detail, typing, realtime 
   oversizedForm.append('images', new Blob([Buffer.alloc(30 * 1024 * 1024 + 1)], { type: 'video/mp4' }), 'too-large.mp4');
   const oversizedUpload = await multipartApi(`/api/chat/rooms/${roomId}/messages/images`, userOneToken, oversizedForm);
   expect(oversizedUpload.status).toBe(400);
+
+  userOneClient.close();
+  userTwoClient.close();
+});
+
+test('dm room lifecycle events and disconnect should update effective presence quickly', async () => {
+  test.slow();
+
+  const userOneToken = loadPlaywrightToken(1);
+  const userTwoToken = loadPlaywrightToken(2);
+  expect(userOneToken).toBeTruthy();
+  expect(userTwoToken).toBeTruthy();
+
+  const userOneLogin = await ensureReadyAuthSession(userOneToken);
+  const userTwoLogin = await ensureReadyAuthSession(userTwoToken);
+
+  const userOneUserId = userOneLogin.body?.data?.id;
+  const userTwoUserId = userTwoLogin.body?.data?.id;
+  expect(userOneUserId).toBeTruthy();
+  expect(userTwoUserId).toBeTruthy();
+
+  const noticeCreate = await api('/api/missing-pets', userOneToken, {
+    method: 'POST',
+    body: JSON.stringify(createMissingPetPayload('playwright-notice-presence'))
+  });
+  expect(noticeCreate.status).toBe(201);
+  const noticeId = noticeCreate.body?.data?.id;
+  expect(noticeId).toBeTruthy();
+
+  const roomCreate = await api(`/api/chat/rooms/notice/${noticeId}`, userTwoToken, { method: 'POST' });
+  expect(roomCreate.status === 200 || roomCreate.status === 201).toBeTruthy();
+  const roomId = roomCreate.body?.data?.roomId;
+  expect(roomId).toBeTruthy();
+
+  const userOneClient = await createStompClient(userOneToken);
+  let userTwoClient = await createStompClient(userTwoToken);
+
+  const userOneRoomDestination = `/topic/chat/users/${userOneUserId}/rooms/${roomId}`;
+  const userTwoRoomDestination = `/topic/chat/users/${userTwoUserId}/rooms/${roomId}`;
+  const userOneRoomSubscriptionId = 'presence-user1-room';
+  const userTwoRoomSubscriptionId = 'presence-user2-room';
+  userOneClient.subscribe(userOneRoomDestination, userOneRoomSubscriptionId);
+  userTwoClient.subscribe(userTwoRoomDestination, userTwoRoomSubscriptionId);
+  await sleep(500);
+
+  const enteredEventPromise = waitForChatMessage(
+    userOneClient,
+    userOneRoomSubscriptionId,
+    (payload) => payload?.type === 'ROOM_ENTERED' && payload?.userId === userTwoUserId,
+    5000
+  );
+  userTwoClient.sendJson('/app/chat/enter', { roomId });
+  const enteredEvent = await enteredEventPromise;
+  expect(enteredEvent.type).toBe('ROOM_ENTERED');
+  expect(enteredEvent.roomId).toBe(roomId);
+  expect(enteredEvent.userId).toBe(userTwoUserId);
+
+  const setIdle = await api('/api/users/me/availability', userTwoToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ availabilityStatus: 'IDLE' })
+  });
+  expect(setIdle.status).toBe(200);
+
+  const roomWhenIdle = await waitForRoomPresenceState(
+    userOneToken,
+    roomId,
+    (room) => room.opponentAvailability === 'IDLE'
+  );
+  expect(roomWhenIdle.opponentOnline).toBe(true);
+
+  const offlineRoomEventPromise = userOneClient.waitForMessage(userOneRoomSubscriptionId, 12000);
+  userTwoClient.close();
+
+  const offlineRoomEvent = await offlineRoomEventPromise;
+  expect(['USER_OFFLINE', 'PRESENCE_CHANGED', 'ROOM_LEFT']).toContain(offlineRoomEvent.type);
+
+  const roomWhenOffline = await waitForRoomPresenceState(
+    userOneToken,
+    roomId,
+    (room) => room.opponentAvailability === 'OFFLINE' && room.opponentOnline === false,
+    12000
+  );
+  expect(roomWhenOffline.opponentAvailability).toBe('OFFLINE');
+  expect(roomWhenOffline.opponentOnline).toBe(false);
+
+  userTwoClient = await createStompClient(userTwoToken);
+  userTwoClient.subscribe(userTwoRoomDestination, userTwoRoomSubscriptionId);
+  await sleep(300);
+  const reenteredEventPromise = waitForChatMessage(
+    userOneClient,
+    userOneRoomSubscriptionId,
+    (payload) => payload?.type === 'ROOM_ENTERED' && payload?.userId === userTwoUserId,
+    7000
+  );
+  userTwoClient.sendJson('/app/chat/enter', { roomId });
+  const reenteredEvent = await reenteredEventPromise;
+  expect(reenteredEvent.type).toBe('ROOM_ENTERED');
+  expect(reenteredEvent.userId).toBe(userTwoUserId);
+
+  const roomAfterReenter = await waitForRoomPresenceState(
+    userOneToken,
+    roomId,
+    (room) => room.opponentAvailability === 'IDLE' || room.opponentAvailability === 'ONLINE'
+  );
+  expect(['IDLE', 'ONLINE']).toContain(roomAfterReenter.opponentAvailability);
 
   userOneClient.close();
   userTwoClient.close();

@@ -156,6 +156,34 @@ function Invoke-AuthEmulatorRequest {
     return Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body ($Body | ConvertTo-Json)
 }
 
+function Invoke-BackendRequest {
+    param(
+        [string]$Path,
+        [string]$Method = "Post",
+        [object]$Body = $null,
+        [string]$BearerToken = $null
+    )
+
+    $uri = "http://127.0.0.1:$BackendPort$Path"
+    $headers = @{}
+    if ($BearerToken) {
+        $headers["Authorization"] = "Bearer $BearerToken"
+    }
+
+    $params = @{
+        Method = $Method
+        Uri = $uri
+        Headers = $headers
+    }
+
+    if ($null -ne $Body) {
+        $params["ContentType"] = "application/json"
+        $params["Body"] = ($Body | ConvertTo-Json)
+    }
+
+    return Invoke-RestMethod @params
+}
+
 function Ensure-EmulatorUserAndGetToken {
     param(
         [string]$TargetEmail,
@@ -195,6 +223,32 @@ function Ensure-EmulatorUserAndGetToken {
         -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" `
         -Body $authBody
     return $response.idToken
+}
+
+function Ensure-BackendUserReady {
+    param([string]$Token)
+
+    $loginResponse = Invoke-BackendRequest `
+        -Path "/api/auth/login" `
+        -Method "Post" `
+        -Body @{ firebaseIdToken = $Token }
+
+    $registrationStatus = [string]$loginResponse.data.registrationStatus
+    $userId = $loginResponse.data.id
+    if ($userId -or $registrationStatus -ne "PENDING_ONBOARDING") {
+        return $loginResponse
+    }
+
+    Invoke-BackendRequest `
+        -Path "/api/auth/onboarding/complete" `
+        -Method "Post" `
+        -Body @{ x = 127.1086228; y = 37.4012191 } `
+        -BearerToken $Token | Out-Null
+
+    return Invoke-BackendRequest `
+        -Path "/api/auth/login" `
+        -Method "Post" `
+        -Body @{ firebaseIdToken = $Token }
 }
 
 function Write-TokenArtifacts {
@@ -248,7 +302,9 @@ $idToken = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $P
 
 $playwrightAccounts = @(
     @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" },
-    @{ Index = 2; Email = "playwright-user2@local.dev"; Password = "Test1234!" }
+    @{ Index = 2; Email = "playwright-user2@local.dev"; Password = "Test1234!" },
+    @{ Index = 3; Email = "playwright-user3@local.dev"; Password = "Test1234!" },
+    @{ Index = 4; Email = "playwright-user4@local.dev"; Password = "Test1234!" }
 )
 
 $legacyFiles = @(
@@ -270,6 +326,7 @@ Write-TokenArtifacts `
 
 foreach ($account in $playwrightAccounts) {
     $accountToken = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
+    Ensure-BackendUserReady -Token $accountToken | Out-Null
     Write-TokenArtifacts `
         -Token $accountToken `
         -TokenFileName ("emulator-user{0}-firebase-id-token.txt" -f $account.Index) `

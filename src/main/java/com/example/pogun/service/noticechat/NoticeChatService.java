@@ -28,6 +28,7 @@ import com.example.pogun.entity.noticechat.NoticeChatRoomParticipantState;
 import com.example.pogun.entity.noticechat.enums.NoticeChatMessageType;
 import com.example.pogun.entity.noticechat.enums.NoticeChatRoomStatus;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
@@ -446,7 +447,11 @@ public class NoticeChatService {
         NoticeChatRoomParticipantState state = ensureParticipantState(room, user);
         participantStateRepository.save(state);
         markRoomAsReadByWatermark(room, user, latestVisibleOpponentMessage(room, user));
-        sendRoomLifecycleEvent(room, user, "ROOM_ENTERED");
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        afterCommitOrNow(() -> {
+            sendRoomLifecycleEvent(room, user, "ROOM_ENTERED");
+            broadcastRoomUpdate(roomUpdatePayload);
+        });
         return toRoomResponse(room, user);
     }
 
@@ -456,7 +461,11 @@ public class NoticeChatService {
         NoticeChatRoom room = getAccessibleRoom(request.getRoomId().toString(), user);
         NoticeChatRoomParticipantState state = ensureParticipantState(room, user);
         participantStateRepository.save(state);
-        sendRoomLifecycleEvent(room, user, "ROOM_LEFT");
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        afterCommitOrNow(() -> {
+            sendRoomLifecycleEvent(room, user, "ROOM_LEFT");
+            broadcastRoomUpdate(roomUpdatePayload);
+        });
         return toRoomResponse(room, user);
     }
 
@@ -468,7 +477,11 @@ public class NoticeChatService {
         NoticeChatRoomParticipantState state = ensureParticipantState(room, currentUser);
         state.setLeftAt(Instant.now());
         participantStateRepository.save(state);
-        sendRoomLifecycleEvent(room, currentUser, "ROOM_LEFT");
+        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(room);
+        afterCommitOrNow(() -> {
+            sendRoomLifecycleEvent(room, currentUser, "ROOM_LEFT");
+            broadcastRoomUpdate(roomUpdatePayload);
+        });
         return toRoomResponse(room, currentUser);
     }
 
@@ -561,6 +574,14 @@ public class NoticeChatService {
     }
 
     @Transactional(readOnly = true)
+    public void publishPresenceEventsByFirebaseUid(String firebaseUid) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return;
+        }
+        userRepository.findByFirebaseUid(firebaseUid).ifPresent(this::publishPresenceEvents);
+    }
+
+    @Transactional(readOnly = true)
     public void publishPresenceUpdates(User user) {
         if (user == null || user.getId() == null) {
             return;
@@ -569,7 +590,27 @@ public class NoticeChatService {
                 .map(this::buildRoomUpdatePayload)
                 .toList();
         log.debug("[presence] broadcasting room updates userId={} roomCount={}", user.getId(), payloads.size());
-        afterCommitOrNow(() -> payloads.forEach(this::broadcastRoomUpdate));
+        afterCommitOrNow(() -> {
+            payloads.forEach(this::broadcastRoomUpdate);
+            publishPresenceEvents(user);
+        });
+    }
+
+    private void publishPresenceEvents(User user) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+        List<NoticeChatRoom> rooms = noticeChatRoomRepository.findVisibleRoomsForUser(user.getId());
+        if (rooms.isEmpty()) {
+            return;
+        }
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(user);
+        String eventType = snapshot.availabilityStatus() == UserAvailabilityStatus.OFFLINE
+                ? "USER_OFFLINE"
+                : "PRESENCE_CHANGED";
+        for (NoticeChatRoom room : rooms) {
+            sendRoomLifecycleEvent(room, user, eventType);
+        }
     }
 
     private User getCurrentUser() {
@@ -650,6 +691,9 @@ public class NoticeChatService {
                 currentState.getPinned(),
                 currentState.getLeftAt(),
                 opponentPresence.online(),
+                opponentPresence.manualPresenceStatus().name(),
+                opponentPresence.actualConnectionState(),
+                opponentPresence.availabilityStatus().name(),
                 opponentPresence.availabilityStatus().name(),
                 opponentPresence.lastActiveAt(),
                 currentState.getLastReadMessage() != null ? currentState.getLastReadMessage().getId() : null,
@@ -803,12 +847,16 @@ public class NoticeChatService {
 
     private void sendRoomLifecycleEvent(NoticeChatRoom room, User user, String type) {
         User opponent = getOpponent(room, user);
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(user);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", type);
         payload.put("roomId", room.getId());
         payload.put("userId", user.getId());
         payload.put("nickname", displayUserName(user));
-        payload.put("lastActiveAt", Instant.now());
+        payload.put("lastActiveAt", snapshot.lastActiveAt() != null ? snapshot.lastActiveAt() : Instant.now());
+        payload.put("manualPresenceStatus", snapshot.manualPresenceStatus().name());
+        payload.put("connectionState", snapshot.actualConnectionState());
+        payload.put("effectivePresenceStatus", snapshot.availabilityStatus().name());
         simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), room.getId()), (Object) payload);
     }
 

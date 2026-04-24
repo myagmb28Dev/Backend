@@ -21,8 +21,8 @@ import java.util.Set;
 public class UserPresenceService {
 
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
-    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(45);
-    private static final Duration DISCONNECT_GRACE_WINDOW = Duration.ofSeconds(40);
+    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(18);
+    private static final Duration DISCONNECT_GRACE_WINDOW = Duration.ofSeconds(10);
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
 
@@ -260,16 +260,11 @@ public class UserPresenceService {
         }
     }
 
-    private boolean isWithinDisconnectGrace(String firebaseUid) {
-        Instant graceUntil = presenceSessionStore.getDisconnectGraceUntil(firebaseUid);
-        return graceUntil != null && Instant.now().isBefore(graceUntil);
-    }
-
     private boolean resolveIsConnected(String firebaseUid) {
         if (isForcedOfflineWithoutTrackedSession(firebaseUid)) {
             return false;
         }
-        return hasActiveWebSocketSession(firebaseUid) || isWithinDisconnectGrace(firebaseUid);
+        return hasActiveWebSocketSession(firebaseUid);
     }
 
     private String resolveActualConnectionState(String firebaseUid) {

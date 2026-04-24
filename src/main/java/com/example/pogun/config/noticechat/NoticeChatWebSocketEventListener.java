@@ -35,6 +35,7 @@ public class NoticeChatWebSocketEventListener {
         log.info("[ws-event] connected uid={} sessionId={}", firebaseUid, accessor.getSessionId());
         userPresenceService.markWebSocketConnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        noticeChatServiceProvider.getObject().publishPresenceEventsByFirebaseUid(firebaseUid);
         log.debug("[ws-event] presence broadcast published for connect uid={}", firebaseUid);
     }
 
@@ -49,6 +50,7 @@ public class NoticeChatWebSocketEventListener {
         log.info("[ws-event] disconnected uid={} sessionId={} closeStatus={}", firebaseUid, accessor.getSessionId(), event.getCloseStatus());
         userPresenceService.markWebSocketDisconnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        noticeChatServiceProvider.getObject().publishPresenceEventsByFirebaseUid(firebaseUid);
         log.debug("[ws-event] presence broadcast published for disconnect uid={}", firebaseUid);
     }
 
