@@ -18,4 +18,9 @@ public class HealthController {
     public ResponseEntity<ApiResponse<Map<String, String>>> health() {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스가 정상 동작 중입니다.", Map.of("status", "UP")));
     }
+
+    @GetMapping("/favicon.ico")
+    public ResponseEntity<Void> favicon() {
+        return ResponseEntity.noContent().build();
+    }
 }

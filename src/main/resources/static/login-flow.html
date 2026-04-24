@@ -149,7 +149,7 @@
 </main>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     getAuth,
     GoogleAuthProvider,
@@ -180,6 +180,8 @@ let onboardingMapConfig = null;
 let onboardingMapConfigPromise = null;
 let kakaoMapLoadPromise = null;
 let regionLookupSeq = 0;
+let authStateInitialized = false;
+let sessionResyncPromise = null;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
 const users = { [REAL_ROLE]: { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null } };
 
@@ -299,11 +301,12 @@ async function syncBackendLogin(token, fallbackUser = {}) {
 }
 
   async function loadFirebaseAuth() {
+  if (auth) return auth;
   const config = FIREBASE_WEB_CONFIG;
   for (const key of ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"]) {
     if (!config[key]) throw new Error(`Firebase Web 설정 누락: ${key}`);
   }
-  const app = initializeApp(config);
+  const app = getApps().length > 0 ? getApp() : initializeApp(config);
   auth = getAuth(app);
   await setPersistence(auth, browserLocalPersistence);
   return auth;
@@ -336,7 +339,11 @@ async function startGoogleLogin() {
 
 async function handleFirebaseUser(user, forceRefresh = false) {
   if (!user) {
-    restoreSession();
+    firebaseUser = null;
+    if (!restoreSession()) {
+      clearSession();
+      setStatus("Google로 로그인하세요.");
+    }
     renderSession();
     return;
   }
@@ -350,6 +357,28 @@ async function handleFirebaseUser(user, forceRefresh = false) {
     renderSession();
     throw error;
   }
+}
+
+async function resyncAuthenticatedSession(forceRefresh = false) {
+  if (sessionResyncPromise) return sessionResyncPromise;
+  sessionResyncPromise = (async () => {
+    if (!auth) {
+      await loadFirebaseAuth();
+    }
+    if (auth.currentUser) {
+      await handleFirebaseUser(auth.currentUser, forceRefresh);
+      return;
+    }
+    if (restoreSession()) {
+      renderSession();
+      setStatus("저장된 로그인 세션을 복원했습니다.", "good");
+      return;
+    }
+    renderSession();
+  })().finally(() => {
+    sessionResyncPromise = null;
+  });
+  return sessionResyncPromise;
 }
 
 async function completeOnboarding() {
@@ -551,13 +580,34 @@ run(async () => {
     throw error;
   }
   onAuthStateChanged(auth, (user) => {
-    if (!user) return;
+    authStateInitialized = true;
     handleFirebaseUser(user).catch((error) => {
       console.error(error);
       setStatus(error.message || String(error), "bad");
     });
   });
 })();
+
+window.addEventListener("pageshow", (event) => {
+  resyncAuthenticatedSession(Boolean(event.persisted)).catch((error) => {
+    console.error(error);
+    setStatus(error.message || String(error), "bad");
+  });
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  resyncAuthenticatedSession(false).catch((error) => {
+    console.error(error);
+    setStatus(error.message || String(error), "bad");
+  });
+});
+window.addEventListener("focus", () => {
+  if (!authStateInitialized && !currentSession) return;
+  resyncAuthenticatedSession(false).catch((error) => {
+    console.error(error);
+    setStatus(error.message || String(error), "bad");
+  });
+});
 </script>
 <script type="module">
 import { getStoredSession, maskToken, mountNotificationBell, refreshNotificationBell } from "./notification-web.js";
