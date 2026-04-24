@@ -59,6 +59,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/",
                                 "/health",
+                                "/favicon.ico",
                                 "/error",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -85,8 +86,16 @@ public class SecurityConfig {
     public UrlBasedCorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        // 현재는 로컬 프론트 연동만 허용하고, 배포 환경 origin은 별도 설정으로 확장할 예정이다.
-        config.setAllowedOrigins(List.of("http://localhost:3000", "http://127.0.0.1:3000"));
+        config.setAllowedOrigins(List.of(
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+                "http://43.201.1.61",
+                "http://43.201.1.61:8080",
+                "http://paw.gbsw.hs.kr",
+                "https://paw.gbsw.hs.kr"
+        ));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
 
