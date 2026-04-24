@@ -83,14 +83,38 @@ jobs:
         env:
           SSHPASS: ${{ secrets.EC2_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "mkdir -p '${{ secrets.EC2_APP_DIR }}'"
-          sshpass -e scp -o StrictHostKeyChecking=no -P "${{ secrets.EC2_PORT || 22 }}" docker-compose.yml "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_APP_DIR }}/docker-compose.yml"
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o KbdInteractiveAuthentication=no \
+            -o NumberOfPasswordPrompts=1 \
+            -p "${{ secrets.EC2_PORT || 22 }}" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "mkdir -p '${{ secrets.EC2_APP_DIR }}'"
+
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o KbdInteractiveAuthentication=no \
+            -o NumberOfPasswordPrompts=1 \
+            -p "${{ secrets.EC2_PORT || 22 }}" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "cat > '${{ secrets.EC2_APP_DIR }}/docker-compose.yml'" < docker-compose.yml
 
       - name: Create .env on EC2 from GitHub secrets and deploy
         env:
           SSHPASS: ${{ secrets.EC2_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o KbdInteractiveAuthentication=no \
+            -o NumberOfPasswordPrompts=1 \
+            -p "${{ secrets.EC2_PORT || 22 }}" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
           set -e
           APP_DIR="${{ secrets.EC2_APP_DIR }}"
           mkdir -p "\$APP_DIR"
