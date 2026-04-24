@@ -16,8 +16,6 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      image_uri: ${{ steps.export-image.outputs.image_uri }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,10 +58,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Export image URI for deploy
-        id: export-image
-        run: echo "image_uri=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     runs-on: ubuntu-latest
