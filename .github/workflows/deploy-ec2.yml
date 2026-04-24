@@ -86,7 +86,7 @@ jobs:
           sshpass -e ssh -o StrictHostKeyChecking=no -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "mkdir -p '${{ secrets.EC2_APP_DIR }}'"
           sshpass -e scp -o StrictHostKeyChecking=no -P "${{ secrets.EC2_PORT || 22 }}" docker-compose.yml "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_APP_DIR }}/docker-compose.yml"
 
-      - name: Deploy on EC2 via SSH
+      - name: Create .env on EC2 from GitHub secrets and deploy
         env:
           SSHPASS: ${{ secrets.EC2_PASSWORD }}
         run: |
@@ -96,6 +96,7 @@ jobs:
           mkdir -p "\$APP_DIR"
           cd "\$APP_DIR"
 
+          # GitHub Actions secrets are rendered into this heredoc and written to EC2 as .env
           cat > .env <<ENVEOF
           PORT=${{ secrets.PORT }}
           APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:sha-${{ github.sha }}
@@ -124,6 +125,7 @@ jobs:
           SHELTER_API_SERVICE_KEY=${{ secrets.SHELTER_API_SERVICE_KEY }}
           ENVEOF
 
+          # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
           docker compose pull app
           docker compose up -d --remove-orphans
