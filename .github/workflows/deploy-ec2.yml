@@ -68,45 +68,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install sshpass
+      - name: Configure SSH key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/pawgun_ec2_key <<'EOF'
+          ${{ secrets.EC2_SSH_KEY }}
+          EOF
+          chmod 600 ~/.ssh/pawgun_ec2_key
 
       - name: Upload docker-compose.yml to EC2
-        env:
-          SSHPASS: ${{ secrets.EC2_PASSWORD }}
         run: |
-          sshpass -e ssh \
+          ssh \
             -o StrictHostKeyChecking=no \
-            -o PreferredAuthentications=password \
-            -o PubkeyAuthentication=no \
-            -o KbdInteractiveAuthentication=no \
+            -o IdentitiesOnly=yes \
             -o NumberOfPasswordPrompts=1 \
+            -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
             "mkdir -p '${{ secrets.EC2_APP_DIR }}'"
 
-          sshpass -e ssh \
+          ssh \
             -o StrictHostKeyChecking=no \
-            -o PreferredAuthentications=password \
-            -o PubkeyAuthentication=no \
-            -o KbdInteractiveAuthentication=no \
+            -o IdentitiesOnly=yes \
             -o NumberOfPasswordPrompts=1 \
+            -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
             "cat > '${{ secrets.EC2_APP_DIR }}/docker-compose.yml'" < docker-compose.yml
 
       - name: Create .env on EC2 from GitHub secrets and deploy
-        env:
-          SSHPASS: ${{ secrets.EC2_PASSWORD }}
         run: |
-          sshpass -e ssh \
+          ssh \
             -o StrictHostKeyChecking=no \
-            -o PreferredAuthentications=password \
-            -o PubkeyAuthentication=no \
-            -o KbdInteractiveAuthentication=no \
+            -o IdentitiesOnly=yes \
             -o NumberOfPasswordPrompts=1 \
+            -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
           set -e
