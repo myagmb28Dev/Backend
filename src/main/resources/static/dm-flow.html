@@ -299,6 +299,9 @@ const TYPING_IDLE_MS = 1200;
 const PRESENCE_PING_INTERVAL_MS = 15000;
 const MAX_UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;
 const SOCKET_CONNECT_TIMEOUT_MS = 15000;
+const SOCKET_STALE_AFTER_MS = 45000;
+const SOCKET_RECOVERY_COOLDOWN_MS = 1500;
+const SOCKET_ERROR_TOAST_COOLDOWN_MS = 10000;
 const KNOWN_USER_LABELS_KEY = "dm-test-known-user-labels-v1";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
 const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
@@ -327,7 +330,12 @@ const users = {
     socketStatus: "disconnected",
     reconnectAttempts: 0,
     reconnectTimer: null,
-    presencePingTimer: null
+    presencePingTimer: null,
+    connectPromise: null,
+    intentionalClose: false,
+    lastSocketActivityAt: 0,
+    lastRecoveryAttemptAt: 0,
+    lastSocketErrorShownAt: 0
   }
 };
 const messageDateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" });
@@ -568,6 +576,10 @@ function resetOtherRoleForThisTab(role) {
     other.roomSubscriptionId = null;
     other.typingSubscriptionId = null;
     other.typingSent = false;
+    other.connectPromise = null;
+    other.intentionalClose = false;
+    other.lastSocketActivityAt = 0;
+    other.lastRecoveryAttemptAt = 0;
     clearTimeout(other.typingTimer);
   }
   if (activeRole && activeRole !== role) {
@@ -1529,9 +1541,17 @@ function scheduleReadAck(role, message) {
 }
 function sendPresencePing(role) {
   const user = users[role];
-  if (!user?.sendFrame || !user.stompConnected) return;
+  if (!user?.sendFrame || !user.stompConnected) {
+    recoverSocket(role, "presence-ping-missing-frame", { force: true, silent: true });
+    return;
+  }
+  if (isSocketStale(role)) {
+    recoverSocket(role, "presence-ping-stale", { force: true, silent: true });
+    return;
+  }
   try {
     user.sendFrame("SEND", { destination: "/app/presence/ping" });
+    markSocketActivity(role, "presence-ping");
   } catch {}
 }
 function startPresencePing(role) {
@@ -1546,79 +1566,216 @@ function stopPresencePing(role) {
   clearInterval(user.presencePingTimer);
   user.presencePingTimer = null;
 }
-async function connectSocket(role) {
+function socketReadyStateText(socket) {
+  if (!socket) return "NONE";
+  if (socket.readyState === WebSocket.CONNECTING) return "CONNECTING";
+  if (socket.readyState === WebSocket.OPEN) return "OPEN";
+  if (socket.readyState === WebSocket.CLOSING) return "CLOSING";
+  if (socket.readyState === WebSocket.CLOSED) return "CLOSED";
+  return String(socket.readyState);
+}
+function markSocketActivity(role, reason = "activity") {
   const user = users[role];
-  if (user.socket && user.socket.readyState === WebSocket.OPEN) return;
+  if (!user) return;
+  user.lastSocketActivityAt = Date.now();
+  if (reason) {
+    debugFrames.push(`* ${role} ${reason} ${new Date(user.lastSocketActivityAt).toISOString()}`);
+    debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
+  }
+}
+function isSocketStale(role) {
+  const user = users[role];
+  if (!user?.socket) return true;
+  if (!user.stompConnected) {
+    return user.socket.readyState !== WebSocket.CONNECTING;
+  }
+  if (user.socket.readyState !== WebSocket.OPEN) return true;
+  const lastActivityAt = user.lastSocketActivityAt || 0;
+  return Date.now() - lastActivityAt > SOCKET_STALE_AFTER_MS;
+}
+function closeSocket(role, reason = "manual-close") {
+  const user = users[role];
+  if (!user) return;
+  const socket = user.socket;
+  user.intentionalClose = true;
+  user.stompConnected = false;
+  user.sendFrame = null;
+  user.subscribedRoomId = null;
+  user.roomSubscriptionId = null;
+  user.typingSubscriptionId = null;
+  stopPresencePing(role);
+  if (socket) {
+    try { socket.close(1000, reason); } catch {}
+  }
+  user.socket = null;
+}
+function reportSocketError(role, error, { silent = false } = {}) {
+  const user = users[role];
+  const message = error?.message || String(error);
+  console.warn("[dm-ws]", role, message, error);
+  if (silent) return;
+  if (!user) return;
+  const now = Date.now();
+  if (now - (user.lastSocketErrorShownAt || 0) < SOCKET_ERROR_TOAST_COOLDOWN_MS) return;
+  user.lastSocketErrorShownAt = now;
+  setStatus(message, "bad");
+}
+function scheduleSocketReconnect(role, reason = "retry") {
+  const user = users[role];
+  if (!user?.token) return;
+  if (user.reconnectTimer || user.connectPromise) return;
+  const delay = Math.min(10000, 500 * Math.pow(2, user.reconnectAttempts++));
+  setSocketStatus(role, "reconnecting");
+  user.reconnectTimer = setTimeout(() => {
+    user.reconnectTimer = null;
+    recoverSocket(role, `timer:${reason}`, { force: true, silent: true });
+  }, delay);
+}
+async function recoverSocket(role, reason = "recover", { force = false, silent = true } = {}) {
+  const user = users[role];
+  if (!user?.token) return;
+  const now = Date.now();
+  if (!force && now - (user.lastRecoveryAttemptAt || 0) < SOCKET_RECOVERY_COOLDOWN_MS) return;
+  const needsRecovery = force || isSocketStale(role)
+    || !user.socket
+    || user.socket.readyState === WebSocket.CLOSING
+    || user.socket.readyState === WebSocket.CLOSED;
+  if (!needsRecovery) return;
+  user.lastRecoveryAttemptAt = now;
+  try {
+    await connectSocket(role, { forceReconnect: true, reason, suppressTimeoutStatus: silent });
+    if (role === activeRole) {
+      await refreshContext(role);
+    }
+  } catch (error) {
+    reportSocketError(role, error, { silent });
+    scheduleSocketReconnect(role, `recover-failed:${reason}`);
+  }
+}
+async function connectSocket(role, options = {}) {
+  const { forceReconnect = false, reason = "manual", suppressTimeoutStatus = false } = options;
+  const user = users[role];
+  if (!user?.token) throw new Error("웹소켓 연결에 필요한 인증 토큰이 없습니다.");
+  if (!forceReconnect && user.socket && user.socket.readyState === WebSocket.OPEN && user.stompConnected && !isSocketStale(role)) return;
+  if (user.connectPromise) return user.connectPromise;
+  if (forceReconnect || isSocketStale(role) || user.socket?.readyState === WebSocket.CLOSING || user.socket?.readyState === WebSocket.CLOSED) {
+    closeSocket(role, `reconnect:${reason}`);
+  }
   clearTimeout(user.reconnectTimer);
+  user.reconnectTimer = null;
   stopPresencePing(role);
   setSocketStatus(role, user.reconnectAttempts > 0 ? "reconnecting" : "connecting");
-  const socket = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/chat`);
-  user.socket = socket; user.buffer = "";
-  user.stompConnected = false;
-  const sendFrame = (command, headers = {}, body = "") => {
-    if (socket.readyState !== WebSocket.OPEN) throw new Error("웹소켓이 연결되어 있지 않습니다.");
-    const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`);
-    socket.send(`${command}\n${headerLines.join("\n")}\n\n${body}\0`);
-  };
-  user.sendFrame = sendFrame;
-  socket.addEventListener("open", () => {
-    debugFrames.push(`> ${role} CONNECT`);
-    sendFrame("CONNECT", { Authorization: `Bearer ${user.token}`, "accept-version": "1.2,1.1,1.0", host: window.location.host });
-  });
-  socket.addEventListener("message", async (event) => {
-    user.buffer += event.data;
-    const frames = user.buffer.split("\0");
-    user.buffer = frames.pop() || "";
-    for (const rawFrame of frames) {
-      const frame = parseFrame(rawFrame);
-      if (!frame.command) continue;
-      debugFrames.push(`< ${role} ${frame.command} ${frame.headers.destination || frame.headers["message-id"] || ""} ${frame.body || ""}`);
-      debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
-      if (frame.command === "CONNECTED") {
-        user.stompConnected = true;
-        user.reconnectAttempts = 0;
-        setSocketStatus(role, "connected");
-        sendFrame("SUBSCRIBE", { id: `${role}-rooms`, destination: `/topic/chat/users/${user.userId}/rooms` });
-        sendFrame("SUBSCRIBE", { id: `${role}-notices`, destination: "/topic/missing-pets" });
-        sendPresencePing(role);
-        startPresencePing(role);
-        if (role === activeRole && roomId) {
-          user.subscribedRoomId = null;
-          subscribeRoomIfReady(role, roomOpenVersion).catch((error) => setStatus(error.message || String(error), "bad"));
-        }
-        continue;
-      }
-      if (frame.command === "MESSAGE") { await handleSocketMessage(role, frame); continue; }
-      if (frame.command === "ERROR") setStatus(frame.headers.message || frame.body || "웹소켓 오류", "bad");
-    }
-  });
-  socket.addEventListener("close", () => {
-    if (user.socket !== socket) return;
-    stopPresencePing(role);
+  const pendingConnect = (async () => {
+    const socket = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/chat`);
+    user.socket = socket;
+    user.buffer = "";
     user.stompConnected = false;
-    user.sendFrame = null;
-    user.subscribedRoomId = null;
-    user.roomSubscriptionId = null;
-    user.typingSubscriptionId = null;
-    setSocketStatus(role, "disconnected");
-    if (!user.token) return;
-    const delay = Math.min(10000, 500 * Math.pow(2, user.reconnectAttempts++));
-    setSocketStatus(role, "reconnecting");
-    user.reconnectTimer = setTimeout(() => connectSocket(role).catch((error) => setStatus(error.message || String(error), "bad")), delay);
-  });
-  socket.addEventListener("error", () => {
-    if (user.socket !== socket) return;
-    stopPresencePing(role);
-    setSocketStatus(role, "disconnected");
-  });
-  await new Promise((resolve, reject) => {
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      if (user.stompConnected && socket.readyState === WebSocket.OPEN) { clearInterval(timer); resolve(); return; }
-      if (socket.readyState === WebSocket.CLOSED) { clearInterval(timer); reject(new Error("웹소켓 연결이 닫혔습니다. 네트워크 또는 인증 토큰을 확인하세요.")); return; }
-      if (Date.now() - startedAt > SOCKET_CONNECT_TIMEOUT_MS) { clearInterval(timer); reject(new Error(`웹소켓 연결 시간이 초과되었습니다. ${window.location.host}/ws/chat 접속을 확인하세요.`)); }
-    }, 100);
-  });
+    markSocketActivity(role, "socket-created");
+    const sendFrame = (command, headers = {}, body = "") => {
+      if (socket.readyState !== WebSocket.OPEN) throw new Error("웹소켓이 연결되어 있지 않습니다.");
+      const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`);
+      socket.send(`${command}\n${headerLines.join("\n")}\n\n${body}\0`);
+    };
+    user.sendFrame = sendFrame;
+    socket.addEventListener("open", () => {
+      markSocketActivity(role, "socket-open");
+      debugFrames.push(`> ${role} CONNECT (${reason})`);
+      sendFrame("CONNECT", {
+        Authorization: `Bearer ${user.token}`,
+        "accept-version": "1.2,1.1,1.0",
+        "heart-beat": "10000,10000",
+        host: window.location.host
+      });
+    });
+    socket.addEventListener("message", async (event) => {
+      if (user.socket !== socket) return;
+      markSocketActivity(role, "socket-message");
+      user.buffer += event.data;
+      const frames = user.buffer.split("\0");
+      user.buffer = frames.pop() || "";
+      for (const rawFrame of frames) {
+        const frame = parseFrame(rawFrame);
+        if (!frame.command) continue;
+        debugFrames.push(`< ${role} ${frame.command} ${frame.headers.destination || frame.headers["message-id"] || ""} ${frame.body || ""}`);
+        debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
+        if (frame.command === "CONNECTED") {
+          user.stompConnected = true;
+          user.intentionalClose = false;
+          user.reconnectAttempts = 0;
+          setSocketStatus(role, "connected");
+          sendFrame("SUBSCRIBE", { id: `${role}-rooms`, destination: `/topic/chat/users/${user.userId}/rooms` });
+          sendFrame("SUBSCRIBE", { id: `${role}-notices`, destination: "/topic/missing-pets" });
+          sendPresencePing(role);
+          startPresencePing(role);
+          if (role === activeRole && roomId) {
+            user.subscribedRoomId = null;
+            subscribeRoomIfReady(role, roomOpenVersion).catch((error) => reportSocketError(role, error));
+          }
+          continue;
+        }
+        if (frame.command === "MESSAGE") { await handleSocketMessage(role, frame); continue; }
+        if (frame.command === "ERROR") {
+          reportSocketError(role, new Error(frame.headers.message || frame.body || "웹소켓 오류"));
+        }
+      }
+    });
+    socket.addEventListener("close", (event) => {
+      if (user.socket !== socket) return;
+      stopPresencePing(role);
+      user.stompConnected = false;
+      user.sendFrame = null;
+      user.subscribedRoomId = null;
+      user.roomSubscriptionId = null;
+      user.typingSubscriptionId = null;
+      user.socket = null;
+      setSocketStatus(role, "disconnected");
+      debugFrames.push(`! ${role} close code=${event.code} reason=${event.reason || ""}`);
+      debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
+      if (user.intentionalClose) {
+        user.intentionalClose = false;
+        return;
+      }
+      scheduleSocketReconnect(role, `close:${event.code}`);
+    });
+    socket.addEventListener("error", () => {
+      if (user.socket !== socket) return;
+      stopPresencePing(role);
+      setSocketStatus(role, "disconnected");
+      debugFrames.push(`! ${role} error state=${socketReadyStateText(socket)}`);
+      debugFrames.splice(0, Math.max(debugFrames.length - 40, 0));
+    });
+    await new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        if (user.stompConnected && socket.readyState === WebSocket.OPEN) { clearInterval(timer); resolve(); return; }
+        if (socket.readyState === WebSocket.CLOSED) {
+          clearInterval(timer);
+          reject(new Error("웹소켓 연결이 닫혔습니다. 네트워크 또는 인증 토큰을 확인하세요."));
+          return;
+        }
+        if (Date.now() - startedAt > SOCKET_CONNECT_TIMEOUT_MS) {
+          clearInterval(timer);
+          const timeoutError = new Error(`웹소켓 연결 시간이 초과되었습니다. ${window.location.host}/ws/chat 접속을 확인하세요.`);
+          timeoutError.code = "WS_CONNECT_TIMEOUT";
+          closeSocket(role, "connect-timeout");
+          reject(timeoutError);
+        }
+      }, 100);
+    });
+  })();
+  user.connectPromise = pendingConnect;
+  try {
+    await pendingConnect;
+  } catch (error) {
+    if (!suppressTimeoutStatus || error?.code !== "WS_CONNECT_TIMEOUT") {
+      reportSocketError(role, error, { silent: suppressTimeoutStatus });
+    }
+    throw error;
+  } finally {
+    if (user.connectPromise === pendingConnect) {
+      user.connectPromise = null;
+    }
+  }
 }
 function parseFrame(rawFrame) {
   const [headerSection, ...bodyParts] = rawFrame.split("\n\n");
@@ -1899,6 +2056,24 @@ window.addEventListener("storage", (event) => {
     renderReplyDraft();
     updateConversationTitle();
   } catch {}
+});
+document.addEventListener("visibilitychange", () => {
+  if (!activeRole) return;
+  if (document.visibilityState === "visible") {
+    recoverSocket(activeRole, "visibilitychange:visible", { force: true, silent: true });
+  }
+});
+window.addEventListener("focus", () => {
+  if (!activeRole) return;
+  recoverSocket(activeRole, "focus", { force: true, silent: true });
+});
+window.addEventListener("online", () => {
+  if (!activeRole) return;
+  recoverSocket(activeRole, "network-online", { force: true, silent: true });
+});
+window.addEventListener("offline", () => {
+  if (!activeRole) return;
+  setSocketStatus(activeRole, "network-offline");
 });
 function run(handler) { return async () => { try { await handler(); } catch (error) { console.error(error); setStatus(error.message || String(error), "bad"); } }; }
 el("createNoticeButton").addEventListener("click", run(() => createTestNotice(activeRole)));

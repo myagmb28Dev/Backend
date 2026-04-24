@@ -13,6 +13,7 @@ public class InMemoryPresenceSessionStore implements PresenceSessionStore {
     private final ConcurrentHashMap<String, ConcurrentMap<String, Instant>> activeWebSocketSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> lastTouchedAtCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> forcedOfflineAtCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Instant> disconnectGraceUntilCache = new ConcurrentHashMap<>();
 
     @Override
     public void putSession(String firebaseUid, String sessionId, Instant touchedAt) {
@@ -76,5 +77,25 @@ public class InMemoryPresenceSessionStore implements PresenceSessionStore {
     @Override
     public void clearForcedOfflineAt(String firebaseUid) {
         forcedOfflineAtCache.remove(firebaseUid);
+    }
+
+    @Override
+    public Instant getDisconnectGraceUntil(String firebaseUid) {
+        return disconnectGraceUntilCache.get(firebaseUid);
+    }
+
+    @Override
+    public void setDisconnectGraceUntil(String firebaseUid, Instant disconnectGraceUntil) {
+        disconnectGraceUntilCache.put(firebaseUid, disconnectGraceUntil);
+    }
+
+    @Override
+    public void clearDisconnectGraceUntil(String firebaseUid) {
+        disconnectGraceUntilCache.remove(firebaseUid);
+    }
+
+    @Override
+    public Set<String> findUsersWithDisconnectGrace() {
+        return new HashSet<>(disconnectGraceUntilCache.keySet());
     }
 }

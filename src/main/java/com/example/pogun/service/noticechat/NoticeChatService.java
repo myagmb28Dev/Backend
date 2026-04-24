@@ -538,6 +538,7 @@ public class NoticeChatService {
         if (firebaseUid == null || firebaseUid.isBlank()) {
             return;
         }
+        log.debug("[presence] publish update by uid={}", firebaseUid);
         userRepository.findByFirebaseUid(firebaseUid).ifPresent(this::publishPresenceUpdates);
     }
 
@@ -549,6 +550,7 @@ public class NoticeChatService {
         List<RoomUpdatePayload> payloads = noticeChatRoomRepository.findVisibleRoomsForUser(user.getId()).stream()
                 .map(this::buildRoomUpdatePayload)
                 .toList();
+        log.debug("[presence] broadcasting room updates userId={} roomCount={}", user.getId(), payloads.size());
         afterCommitOrNow(() -> payloads.forEach(this::broadcastRoomUpdate));
     }
 

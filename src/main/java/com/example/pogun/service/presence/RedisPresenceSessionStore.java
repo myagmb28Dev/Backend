@@ -13,6 +13,8 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
     private static final String USERS_WITH_SESSIONS_KEY = "presence:user:sessions:users";
     private static final String LAST_TOUCHED_PREFIX = "presence:user:lastTouched:";
     private static final String FORCED_OFFLINE_PREFIX = "presence:user:forcedOffline:";
+    private static final String DISCONNECT_GRACE_PREFIX = "presence:user:disconnectGraceUntil:";
+    private static final String USERS_WITH_DISCONNECT_GRACE_KEY = "presence:user:disconnectGrace:users";
     private static final Duration USER_META_TTL = Duration.ofDays(7);
 
     private final StringRedisTemplate redisTemplate;
@@ -26,6 +28,7 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
         String key = sessionsKey(firebaseUid);
         redisTemplate.opsForHash().put(key, sessionId, String.valueOf(touchedAt.toEpochMilli()));
         redisTemplate.opsForSet().add(USERS_WITH_SESSIONS_KEY, firebaseUid);
+        clearDisconnectGraceUntil(firebaseUid);
     }
 
     @Override
@@ -101,6 +104,29 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
         redisTemplate.delete(forcedOfflineKey(firebaseUid));
     }
 
+    @Override
+    public Instant getDisconnectGraceUntil(String firebaseUid) {
+        return getInstantValue(disconnectGraceKey(firebaseUid));
+    }
+
+    @Override
+    public void setDisconnectGraceUntil(String firebaseUid, Instant disconnectGraceUntil) {
+        setInstantValue(disconnectGraceKey(firebaseUid), disconnectGraceUntil);
+        redisTemplate.opsForSet().add(USERS_WITH_DISCONNECT_GRACE_KEY, firebaseUid);
+    }
+
+    @Override
+    public void clearDisconnectGraceUntil(String firebaseUid) {
+        redisTemplate.delete(disconnectGraceKey(firebaseUid));
+        redisTemplate.opsForSet().remove(USERS_WITH_DISCONNECT_GRACE_KEY, firebaseUid);
+    }
+
+    @Override
+    public Set<String> findUsersWithDisconnectGrace() {
+        Set<String> members = redisTemplate.opsForSet().members(USERS_WITH_DISCONNECT_GRACE_KEY);
+        return members == null ? Set.of() : members;
+    }
+
     private void setInstantValue(String key, Instant value) {
         redisTemplate.opsForValue().set(key, String.valueOf(value.toEpochMilli()), USER_META_TTL);
     }
@@ -127,5 +153,9 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
 
     private String forcedOfflineKey(String firebaseUid) {
         return FORCED_OFFLINE_PREFIX + firebaseUid;
+    }
+
+    private String disconnectGraceKey(String firebaseUid) {
+        return DISCONNECT_GRACE_PREFIX + firebaseUid;
     }
 }

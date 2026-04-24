@@ -25,7 +25,7 @@ class UserPresenceServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void snapshotTreatsStaleWebSocketSessionAsOffline() {
+    void snapshotKeepsRecentlyDisconnectedUserOnlineDuringGrace() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("stale-user");
@@ -35,18 +35,19 @@ class UserPresenceServiceTest {
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
-        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
-        assertThat(snapshot.online()).isFalse();
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
+        assertThat(snapshot.online()).isTrue();
     }
 
     @Test
-    void snapshotDoesNotReviveStaleWebSocketSessionWithRecentLastActiveAt() {
+    void snapshotReturnsOfflineWhenDisconnectGraceExpired() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("stale-recent-user");
-        user.setLastActiveAt(Instant.now());
+        user.setLastActiveAt(Instant.now().minusSeconds(300));
 
-        store.putSession(user.getFirebaseUid(), "session-1", Instant.now().minusSeconds(120));
+        store.setDisconnectGraceUntil(user.getFirebaseUid(), Instant.now().minusSeconds(1));
+        store.setLastTouchedAt(user.getFirebaseUid(), Instant.now().minusSeconds(180));
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
@@ -134,6 +135,20 @@ class UserPresenceServiceTest {
 
         assertThat(touched).isTrue();
         verify(userRepository).updatePresenceByFirebaseUid(eq("login-revive-user"), any(Instant.class), eq(UserAvailabilityStatus.ONLINE));
+    }
+
+    @Test
+    void reconcileStaleSessionsForcesOfflineAfterGrace() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("grace-expired-user");
+        when(userRepository.updatePresenceByFirebaseUid(eq("grace-expired-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE)))
+                .thenReturn(1);
+
+        store.setDisconnectGraceUntil(user.getFirebaseUid(), Instant.now().minusSeconds(1));
+
+        assertThat(service.reconcileStaleSessions()).contains(user.getFirebaseUid());
+        verify(userRepository).updatePresenceByFirebaseUid(eq("grace-expired-user"), any(Instant.class), eq(UserAvailabilityStatus.OFFLINE));
     }
 
     private User user(String firebaseUid) {

@@ -26,4 +26,12 @@ public interface PresenceSessionStore {
     void setForcedOfflineAt(String firebaseUid, Instant forcedOfflineAt);
 
     void clearForcedOfflineAt(String firebaseUid);
+
+    Instant getDisconnectGraceUntil(String firebaseUid);
+
+    void setDisconnectGraceUntil(String firebaseUid, Instant disconnectGraceUntil);
+
+    void clearDisconnectGraceUntil(String firebaseUid);
+
+    Set<String> findUsersWithDisconnectGrace();
 }

@@ -5,6 +5,7 @@ import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.presence.PresenceSessionStore;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +17,13 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserPresenceService {
 
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(2);
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
     private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(45);
+    private static final Duration DISCONNECT_GRACE_WINDOW = Duration.ofSeconds(40);
 
     private final UserRepository userRepository;
     private final PresenceSessionStore presenceSessionStore;
@@ -50,6 +53,7 @@ public class UserPresenceService {
         }
         if (userRepository.updatePresenceByFirebaseUid(firebaseUid, now, UserAvailabilityStatus.ONLINE) > 0) {
             presenceSessionStore.setLastTouchedAt(firebaseUid, now);
+            presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
             if (allowForcedOfflineRecovery || !presenceSessionStore.getSessions(firebaseUid).isEmpty()) {
                 presenceSessionStore.clearForcedOfflineAt(firebaseUid);
             }
@@ -66,8 +70,10 @@ public class UserPresenceService {
         Instant now = Instant.now();
         presenceSessionStore.clearSessions(firebaseUid);
         presenceSessionStore.clearLastTouchedAt(firebaseUid);
+        presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
         presenceSessionStore.setForcedOfflineAt(firebaseUid, now);
         userRepository.updatePresenceByFirebaseUid(firebaseUid, now, UserAvailabilityStatus.OFFLINE);
+        log.info("[presence] forced offline uid={} at={}", firebaseUid, now);
     }
 
     @Transactional
@@ -75,6 +81,7 @@ public class UserPresenceService {
         if (firebaseUid == null || firebaseUid.isBlank() || sessionId == null || sessionId.isBlank()) {
             return;
         }
+        log.info("[presence] websocket connected uid={} sessionId={}", firebaseUid, sessionId);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         touch(firebaseUid);
     }
@@ -84,8 +91,10 @@ public class UserPresenceService {
             return;
         }
         if (presenceSessionStore.getForcedOfflineAt(firebaseUid) != null) {
+            log.debug("[presence] skip refresh for forced-offline uid={} sessionId={}", firebaseUid, sessionId);
             return;
         }
+        presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
     }
 
@@ -97,10 +106,15 @@ public class UserPresenceService {
         if (sessionId != null && !sessionId.isBlank()) {
             presenceSessionStore.removeSession(firebaseUid, sessionId);
         }
+        Instant now = Instant.now();
         if (hasActiveWebSocketSession(firebaseUid)) {
+            presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
             touch(firebaseUid);
+            log.info("[presence] websocket disconnected but still active uid={} sessionId={}", firebaseUid, sessionId);
         } else {
-            forceOffline(firebaseUid);
+            presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
+            presenceSessionStore.setLastTouchedAt(firebaseUid, now);
+            log.info("[presence] websocket disconnected uid={} sessionId={} graceUntil={}", firebaseUid, sessionId, now.plus(DISCONNECT_GRACE_WINDOW));
         }
     }
 
@@ -112,6 +126,7 @@ public class UserPresenceService {
         Instant lastActiveAt = resolveLastActiveAt(user.getFirebaseUid(), user.getLastActiveAt());
         boolean hasActiveWebSocketSession = hasActiveWebSocketSession(user.getFirebaseUid());
         boolean autoOnline = hasActiveWebSocketSession
+            || isWithinDisconnectGrace(user.getFirebaseUid())
                 || isRecentlyActiveAfterForcedOffline(user.getFirebaseUid(), lastActiveAt);
         if (!autoOnline) {
             return new PresenceSnapshot(UserAvailabilityStatus.OFFLINE, lastActiveAt);
@@ -133,6 +148,20 @@ public class UserPresenceService {
             pruneStaleWebSocketSessions(firebaseUid, now);
             if (presenceSessionStore.getSessions(firebaseUid).isEmpty()
                     && presenceSessionStore.getForcedOfflineAt(firebaseUid) == null) {
+                presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
+                log.info("[presence] stale session pruned uid={} graceUntil={}", firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
+            }
+        }
+        for (String firebaseUid : presenceSessionStore.findUsersWithDisconnectGrace()) {
+            if (hasActiveWebSocketSession(firebaseUid)) {
+                presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
+                continue;
+            }
+            Instant graceUntil = presenceSessionStore.getDisconnectGraceUntil(firebaseUid);
+            if (graceUntil == null) {
+                continue;
+            }
+            if (!now.isBefore(graceUntil) && presenceSessionStore.getForcedOfflineAt(firebaseUid) == null) {
                 forceOffline(firebaseUid);
                 changedFirebaseUids.add(firebaseUid);
             }
@@ -177,9 +206,13 @@ public class UserPresenceService {
             }
         }
         if (removedAny && presenceSessionStore.getSessions(firebaseUid).isEmpty()) {
-            presenceSessionStore.setForcedOfflineAt(firebaseUid, now);
-            presenceSessionStore.clearLastTouchedAt(firebaseUid);
+            presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
         }
+    }
+
+    private boolean isWithinDisconnectGrace(String firebaseUid) {
+        Instant graceUntil = presenceSessionStore.getDisconnectGraceUntil(firebaseUid);
+        return graceUntil != null && Instant.now().isBefore(graceUntil);
     }
 
     private boolean isRecentlyActiveAfterForcedOffline(String firebaseUid, Instant lastActiveAt) {

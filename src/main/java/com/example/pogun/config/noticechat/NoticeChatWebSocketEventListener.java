@@ -2,6 +2,7 @@ package com.example.pogun.config;
 
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
@@ -10,6 +11,7 @@ import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 @Component
+@Slf4j
 public class NoticeChatWebSocketEventListener {
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
     private final UserPresenceService userPresenceService;
@@ -27,10 +29,13 @@ public class NoticeChatWebSocketEventListener {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         String firebaseUid = resolveFirebaseUid(accessor);
         if (firebaseUid == null) {
+            log.debug("[ws-event] connected event ignored: missing firebaseUid sessionId={}", accessor.getSessionId());
             return;
         }
+        log.info("[ws-event] connected uid={} sessionId={}", firebaseUid, accessor.getSessionId());
         userPresenceService.markWebSocketConnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        log.debug("[ws-event] presence broadcast published for connect uid={}", firebaseUid);
     }
 
     @EventListener
@@ -38,10 +43,13 @@ public class NoticeChatWebSocketEventListener {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         String firebaseUid = resolveFirebaseUid(accessor);
         if (firebaseUid == null) {
+            log.debug("[ws-event] disconnect event ignored: missing firebaseUid sessionId={}", accessor.getSessionId());
             return;
         }
+        log.info("[ws-event] disconnected uid={} sessionId={} closeStatus={}", firebaseUid, accessor.getSessionId(), event.getCloseStatus());
         userPresenceService.markWebSocketDisconnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        log.debug("[ws-event] presence broadcast published for disconnect uid={}", firebaseUid);
     }
 
     private String resolveFirebaseUid(StompHeaderAccessor accessor) {
