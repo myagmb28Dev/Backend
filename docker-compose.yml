@@ -1,0 +1,45 @@
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/prjdot/pogun_back:latest}
+    container_name: pogun-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-8080}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8080}:8080"
+
+  redis:
+    image: redis:7-alpine
+    container_name: pogun-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: >
+      sh -c '
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+        else
+          exec redis-server --appendonly yes;
+        fi
+      '
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-data:

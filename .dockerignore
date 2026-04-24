@@ -1,0 +1,14 @@
+# Default: ignore everything in repository root/context
+*
+
+# Allow only files needed by Dockerfile build steps
+!.dockerignore
+!Dockerfile
+!gradlew
+!gradle/
+!gradle/**
+!build.gradle
+!settings.gradle
+!src/
+!src/main/
+!src/main/**
