@@ -42,22 +42,44 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=long
-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Delete stale Docker Hub tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+
+          auth_token="$(
+            curl -fsSL \
+              -H "Content-Type: application/json" \
+              -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+              https://hub.docker.com/v2/users/login/ \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"
+          )"
+
+          next_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100"
+          while [ -n "$next_url" ] && [ "$next_url" != "null" ]; do
+            response="$(curl -fsSL -H "Authorization: JWT ${auth_token}" "$next_url")"
+            echo "$response" \
+              | python3 -c "import json,sys; data=json.load(sys.stdin); [print(item['name']) for item in data.get('results', []) if item.get('name') != 'latest']" \
+              | while IFS= read -r tag_name; do
+                  [ -z "$tag_name" ] && continue
+                  echo "Deleting stale Docker Hub tag: $tag_name"
+                  curl -fsSL -X DELETE \
+                    -H "Authorization: JWT ${auth_token}" \
+                    "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags/${tag_name}/" \
+                    >/dev/null
+                done
+            next_url="$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
+          done
 
   deploy:
     runs-on: ubuntu-latest
@@ -132,7 +154,7 @@ jobs:
           # GitHub Actions secrets are rendered into this heredoc and written to EC2 as .env
           cat > .env <<'ENVEOF'
           PORT=${{ secrets.PORT }}
-          APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:sha-${{ github.sha }}
+          APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:latest
           AI_API_KEY=${{ secrets.AI_API_KEY }}
           AWS_REGION=${{ secrets.AWS_REGION }}
           AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
