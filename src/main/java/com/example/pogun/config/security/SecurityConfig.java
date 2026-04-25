@@ -50,6 +50,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/firebase-web-config.js")
                         .permitAll()
+                        .requestMatchers("/global-presence.js")
+                        .permitAll()
                         .requestMatchers("/notification-web.js")
                         .permitAll()
                         .requestMatchers("/notification-push.js")

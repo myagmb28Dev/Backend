@@ -58,17 +58,35 @@ class UserPresenceServiceTest {
     }
 
     @Test
-    void snapshotKeepsFreshWebSocketSessionOnline() {
+    void snapshotKeepsFreshGlobalSessionOnlineWithoutWebSocket() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("fresh-user");
 
-        store.putSession(user.getFirebaseUid(), "session-1", Instant.now());
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now());
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
         assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
         assertThat(snapshot.online()).isTrue();
+        assertThat(snapshot.actualConnectionState()).isEqualTo("connected");
+    }
+
+    @Test
+    void webSocketDisconnectDoesNotForceOfflineWhenGlobalSessionIsFresh() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("global-active-user");
+
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now());
+        store.putSession(user.getFirebaseUid(), "socket-1", Instant.now());
+        service.markWebSocketDisconnected(user.getFirebaseUid(), "socket-1");
+
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
+        assertThat(snapshot.online()).isTrue();
+        assertThat(snapshot.actualConnectionState()).isEqualTo("connected");
     }
 
     @Test
@@ -138,17 +156,15 @@ class UserPresenceServiceTest {
     }
 
     @Test
-    void reconcileStaleSessionsForcesOfflineAfterGrace() {
+    void reconcileStaleGlobalSessionsMarksUserOffline() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("grace-expired-user");
-        when(userRepository.updateLastActiveAtByFirebaseUid(eq("grace-expired-user"), any(Instant.class)))
-                .thenReturn(1);
 
-        store.setDisconnectGraceUntil(user.getFirebaseUid(), Instant.now().minusSeconds(1));
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(60));
 
         assertThat(service.reconcileStaleSessions()).contains(user.getFirebaseUid());
-        verify(userRepository).updateLastActiveAtByFirebaseUid(eq("grace-expired-user"), any(Instant.class));
+        assertThat(service.snapshot(user).availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
     }
 
     @Test
@@ -158,7 +174,7 @@ class UserPresenceServiceTest {
         User user = user("manual-idle-user");
         user.setAvailabilityStatus(UserAvailabilityStatus.IDLE);
 
-        store.putSession(user.getFirebaseUid(), "session-1", Instant.now());
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now());
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
@@ -174,7 +190,7 @@ class UserPresenceServiceTest {
         User user = user("manual-offline-user");
         user.setAvailabilityStatus(UserAvailabilityStatus.OFFLINE);
 
-        store.putSession(user.getFirebaseUid(), "session-1", Instant.now());
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now());
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 

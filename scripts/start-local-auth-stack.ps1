@@ -290,6 +290,8 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
         "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
         "`$env:GCLOUD_PROJECT = '$ProjectId'",
         "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
+        "`$env:APP_PRESENCE_STORE = 'memory'",
+        "`$env:REDIS_HOST = 'localhost'",
         "& '.\\gradlew.bat' bootRun"
     ) -join "; "
 

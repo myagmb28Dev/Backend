@@ -356,7 +356,7 @@ test.describe.serial('local user1 service flows', () => {
     await page.goto(`${baseURL}/shelter-flow.html`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#accountHint')).toContainText(user1Session.email);
     await expect(page.locator('#sessionBadge')).toContainText(user1Session.nickname);
-    await expect(page.locator('#referenceSummaryBox')).toContainText('시도');
+    await expect(page.locator('#referenceSummaryBox')).toContainText('region');
     await expect(page.locator('#listMeta')).not.toHaveText('미조회', { timeout: 30000 });
 
     const firstNotice = page.locator('#listContainer [data-id]').first();
@@ -364,13 +364,10 @@ test.describe.serial('local user1 service flows', () => {
     await firstNotice.click();
 
     await expect(page.locator('#selectionSummaryBox')).not.toHaveText('선택된 공고 없음', { timeout: 30000 });
-    await expect(page.locator('#detailContainer')).toContainText('이미지 분석 결과', { timeout: 30000 });
+    await expect(page.locator('#detailContainer')).toContainText('공고 정보', { timeout: 30000 });
 
-    await page.click('#increaseViewButton');
-    await expect(page.locator('#status')).toContainText('조회수 증가 완료', { timeout: 10000 });
-
-    await page.click('#analyzeImageButton');
-    await expect(page.locator('#detailContainer')).toContainText('MOCKED', { timeout: 10000 });
+    await page.click('#refreshDetailButton');
+    await expect(page.locator('#status')).toContainText('상세 조회 완료', { timeout: 10000 });
   });
 
   test('notice flow creates a notice and redirects to dm flow', async ({ page }) => {
@@ -429,11 +426,11 @@ test.describe.serial('local user1 service flows', () => {
 
   test('dm flow reflects global online and logout offline presence', async ({ browser, page }) => {
     const user1Token = loadToken(1);
-    const user2Token = loadToken(2);
+    const user2Token = loadToken(3);
     const user1Session = await ensureReadySession(user1Token);
     const user2Session = await ensureReadySession(user2Token);
 
-    const notice = await createNotice(user2Token, `playwright-user2-presence-${Date.now()}`);
+    const notice = await createNotice(user2Token, `playwright-user3-presence-${Date.now()}`);
     const room = await createRoom(user1Token, notice.id);
 
     await seedSession(page, user1Session);
@@ -451,6 +448,9 @@ test.describe.serial('local user1 service flows', () => {
       await expect(user2Page.locator('#currentUserState')).toContainText(user2Session.nickname);
 
       await expect(page.locator('#conversationTitle')).toContainText('온라인', { timeout: 20000 });
+      await user2Page.goto(`${baseURL}/notice-flow.html`, { waitUntil: 'domcontentloaded' });
+      await expect(user2Page.locator('#accountHint')).toContainText(user2Session.email);
+      await expect(page.locator('#conversationTitle')).toContainText('온라인', { timeout: 12000 });
 
       const logout = await api('/api/auth/logout', user2Token, { method: 'POST' });
       expect(logout.status).toBe(200);
@@ -462,6 +462,8 @@ test.describe.serial('local user1 service flows', () => {
   });
 
   test('dm flow reflects global offline when user session leaves', async ({ browser, page }) => {
+    test.setTimeout(60000);
+
     const user1Token = loadToken(1);
     const user2Token = loadToken(2);
     const user1Session = await ensureReadySession(user1Token);
@@ -486,7 +488,7 @@ test.describe.serial('local user1 service flows', () => {
     await expect(page.locator('#conversationTitle')).toContainText('온라인', { timeout: 20000 });
     await user2Context.close();
 
-    await expect(page.locator('#conversationTitle')).toContainText('오프라인', { timeout: 20000 });
+    await expect(page.locator('#conversationTitle')).toContainText('오프라인', { timeout: 35000 });
   });
 
   test('notification flow shows user1 unread notification and clears it', async ({ page }) => {

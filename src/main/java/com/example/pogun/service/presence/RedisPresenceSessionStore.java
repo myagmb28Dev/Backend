@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class RedisPresenceSessionStore implements PresenceSessionStore {
+    private static final String USER_GLOBAL_SESSIONS_PREFIX = "presence:user:globalSessions:";
+    private static final String USERS_WITH_GLOBAL_SESSIONS_KEY = "presence:user:globalSessions:users";
     private static final String USER_SESSIONS_PREFIX = "presence:user:sessions:";
     private static final String USERS_WITH_SESSIONS_KEY = "presence:user:sessions:users";
     private static final String LAST_TOUCHED_PREFIX = "presence:user:lastTouched:";
@@ -25,6 +27,41 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
 
     public RedisPresenceSessionStore(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
+    }
+
+    @Override
+    public void putGlobalSession(String firebaseUid, String clientSessionId, Instant touchedAt) {
+        String key = globalSessionsKey(firebaseUid);
+        redisTemplate.opsForHash().put(key, clientSessionId, String.valueOf(touchedAt.toEpochMilli()));
+        redisTemplate.opsForSet().add(USERS_WITH_GLOBAL_SESSIONS_KEY, firebaseUid);
+    }
+
+    @Override
+    public void removeGlobalSession(String firebaseUid, String clientSessionId) {
+        String key = globalSessionsKey(firebaseUid);
+        redisTemplate.opsForHash().delete(key, clientSessionId);
+        Long size = redisTemplate.opsForHash().size(key);
+        if (size != null && size == 0L) {
+            redisTemplate.delete(key);
+            redisTemplate.opsForSet().remove(USERS_WITH_GLOBAL_SESSIONS_KEY, firebaseUid);
+        }
+    }
+
+    @Override
+    public void clearGlobalSessions(String firebaseUid) {
+        redisTemplate.delete(globalSessionsKey(firebaseUid));
+        redisTemplate.opsForSet().remove(USERS_WITH_GLOBAL_SESSIONS_KEY, firebaseUid);
+    }
+
+    @Override
+    public Map<String, Instant> getGlobalSessions(String firebaseUid) {
+        return getSessionMap(globalSessionsKey(firebaseUid));
+    }
+
+    @Override
+    public Set<String> findUsersWithGlobalSessions() {
+        Set<String> members = redisTemplate.opsForSet().members(USERS_WITH_GLOBAL_SESSIONS_KEY);
+        return members == null ? Set.of() : members;
     }
 
     @Override
@@ -54,7 +91,11 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
 
     @Override
     public Map<String, Instant> getSessions(String firebaseUid) {
-        Map<Object, Object> entries = redisTemplate.opsForHash().entries(sessionsKey(firebaseUid));
+        return getSessionMap(sessionsKey(firebaseUid));
+    }
+
+    private Map<String, Instant> getSessionMap(String key) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
         if (entries == null || entries.isEmpty()) {
             return Map.of();
         }
@@ -216,6 +257,10 @@ public class RedisPresenceSessionStore implements PresenceSessionStore {
 
     private String sessionsKey(String firebaseUid) {
         return USER_SESSIONS_PREFIX + firebaseUid;
+    }
+
+    private String globalSessionsKey(String firebaseUid) {
+        return USER_GLOBAL_SESSIONS_PREFIX + firebaseUid;
     }
 
     private String lastTouchedKey(String firebaseUid) {

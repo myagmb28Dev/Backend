@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentMap;
 
 public class InMemoryPresenceSessionStore implements PresenceSessionStore {
 
+    private final ConcurrentHashMap<String, ConcurrentMap<String, Instant>> activeGlobalSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ConcurrentMap<String, Instant>> activeWebSocketSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> lastTouchedAtCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> forcedOfflineAtCache = new ConcurrentHashMap<>();
@@ -19,6 +20,40 @@ public class InMemoryPresenceSessionStore implements PresenceSessionStore {
     private final ConcurrentHashMap<String, UserAvailabilityStatus> manualPresenceStatusCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, UserAvailabilityStatus> effectivePresenceStatusCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> connectionStateCache = new ConcurrentHashMap<>();
+
+    @Override
+    public void putGlobalSession(String firebaseUid, String clientSessionId, Instant touchedAt) {
+        activeGlobalSessions
+                .computeIfAbsent(firebaseUid, ignored -> new ConcurrentHashMap<>())
+                .put(clientSessionId, touchedAt);
+    }
+
+    @Override
+    public void removeGlobalSession(String firebaseUid, String clientSessionId) {
+        activeGlobalSessions.computeIfPresent(firebaseUid, (ignored, sessions) -> {
+            sessions.remove(clientSessionId);
+            return sessions.isEmpty() ? null : sessions;
+        });
+    }
+
+    @Override
+    public void clearGlobalSessions(String firebaseUid) {
+        activeGlobalSessions.remove(firebaseUid);
+    }
+
+    @Override
+    public Map<String, Instant> getGlobalSessions(String firebaseUid) {
+        ConcurrentMap<String, Instant> sessions = activeGlobalSessions.get(firebaseUid);
+        if (sessions == null || sessions.isEmpty()) {
+            return Map.of();
+        }
+        return new HashMap<>(sessions);
+    }
+
+    @Override
+    public Set<String> findUsersWithGlobalSessions() {
+        return new HashSet<>(activeGlobalSessions.keySet());
+    }
 
     @Override
     public void putSession(String firebaseUid, String sessionId, Instant touchedAt) {

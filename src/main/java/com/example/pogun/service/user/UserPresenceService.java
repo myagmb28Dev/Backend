@@ -21,8 +21,8 @@ import java.util.Set;
 public class UserPresenceService {
 
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
+    private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(20);
     private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(18);
-    private static final Duration DISCONNECT_GRACE_WINDOW = Duration.ofSeconds(10);
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
 
@@ -37,6 +37,24 @@ public class UserPresenceService {
     @Transactional
     public boolean touchFromAuthentication(String firebaseUid) {
         return touchInternal(firebaseUid, true);
+    }
+
+    @Transactional
+    public PresenceSnapshot heartbeat(String firebaseUid, String clientSessionId) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return new PresenceSnapshot(UserAvailabilityStatus.ONLINE, UserAvailabilityStatus.OFFLINE, CONNECTION_DISCONNECTED, null);
+        }
+        String sessionId = normalizeClientSessionId(clientSessionId);
+        Instant now = Instant.now();
+        presenceSessionStore.putGlobalSession(firebaseUid, sessionId, now);
+        presenceSessionStore.clearForcedOfflineAt(firebaseUid);
+        presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
+        touchInternal(firebaseUid, true);
+        UserAvailabilityStatus manualStatus = presenceSessionStore.getManualPresenceStatus(firebaseUid);
+        syncPresenceCache(firebaseUid, manualStatus);
+        return userRepository.findByFirebaseUid(firebaseUid)
+                .map(this::snapshot)
+                .orElseGet(() -> buildSnapshot(firebaseUid, manualStatus != null ? manualStatus : UserAvailabilityStatus.ONLINE, now));
     }
 
     private boolean touchInternal(String firebaseUid, boolean allowForcedOfflineRecovery) {
@@ -70,6 +88,7 @@ public class UserPresenceService {
             return;
         }
         Instant now = Instant.now();
+        presenceSessionStore.clearGlobalSessions(firebaseUid);
         presenceSessionStore.clearSessions(firebaseUid);
         presenceSessionStore.clearLastTouchedAt(firebaseUid);
         presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
@@ -117,9 +136,8 @@ public class UserPresenceService {
             touch(firebaseUid);
             log.info("[presence] websocket disconnected but still active uid={} sessionId={}", firebaseUid, sessionId);
         } else {
-            presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
             presenceSessionStore.setLastTouchedAt(firebaseUid, now);
-            log.info("[presence] websocket disconnected uid={} sessionId={} graceUntil={}", firebaseUid, sessionId, now.plus(DISCONNECT_GRACE_WINDOW));
+            log.info("[presence] websocket disconnected uid={} sessionId={} globalConnectionState={}", firebaseUid, sessionId, resolveActualConnectionState(firebaseUid));
         }
         syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
     }
@@ -153,27 +171,19 @@ public class UserPresenceService {
     public Set<String> reconcileStaleSessions() {
         Instant now = Instant.now();
         Set<String> changedFirebaseUids = new LinkedHashSet<>();
-        for (String firebaseUid : presenceSessionStore.findUsersWithSessions()) {
-            pruneStaleWebSocketSessions(firebaseUid, now);
-            if (presenceSessionStore.getSessions(firebaseUid).isEmpty()
-                    && presenceSessionStore.getForcedOfflineAt(firebaseUid) == null) {
-                presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
-                log.info("[presence] stale session pruned uid={} graceUntil={}", firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
+        for (String firebaseUid : presenceSessionStore.findUsersWithGlobalSessions()) {
+            boolean wasConnected = !presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty();
+            pruneStaleGlobalSessions(firebaseUid, now);
+            boolean connected = !presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty();
+            if (wasConnected && !connected && presenceSessionStore.getForcedOfflineAt(firebaseUid) == null) {
+                presenceSessionStore.setConnectionState(firebaseUid, CONNECTION_DISCONNECTED);
+                presenceSessionStore.setEffectivePresenceStatus(firebaseUid, UserAvailabilityStatus.OFFLINE);
+                changedFirebaseUids.add(firebaseUid);
+                log.info("[presence] stale global session pruned uid={} -> disconnected", firebaseUid);
             }
         }
-        for (String firebaseUid : presenceSessionStore.findUsersWithDisconnectGrace()) {
-            if (hasActiveWebSocketSession(firebaseUid)) {
-                presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
-                continue;
-            }
-            Instant graceUntil = presenceSessionStore.getDisconnectGraceUntil(firebaseUid);
-            if (graceUntil == null) {
-                continue;
-            }
-            if (!now.isBefore(graceUntil) && presenceSessionStore.getForcedOfflineAt(firebaseUid) == null) {
-                forceOffline(firebaseUid);
-                changedFirebaseUids.add(firebaseUid);
-            }
+        for (String firebaseUid : presenceSessionStore.findUsersWithSessions()) {
+            pruneStaleWebSocketSessions(firebaseUid, now);
         }
         return changedFirebaseUids;
     }
@@ -243,6 +253,18 @@ public class UserPresenceService {
         pruneStaleWebSocketSessions(firebaseUid, now);
     }
 
+    private void pruneStaleGlobalSessions(String firebaseUid, Instant now) {
+        Map<String, Instant> sessions = presenceSessionStore.getGlobalSessions(firebaseUid);
+        if (sessions.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Instant> entry : sessions.entrySet()) {
+            if (Duration.between(entry.getValue(), now).compareTo(GLOBAL_SESSION_STALE_AFTER) > 0) {
+                presenceSessionStore.removeGlobalSession(firebaseUid, entry.getKey());
+            }
+        }
+    }
+
     private void pruneStaleWebSocketSessions(String firebaseUid, Instant now) {
         Map<String, Instant> sessions = presenceSessionStore.getSessions(firebaseUid);
         if (sessions.isEmpty()) {
@@ -255,16 +277,15 @@ public class UserPresenceService {
                 removedAny = true;
             }
         }
-        if (removedAny && presenceSessionStore.getSessions(firebaseUid).isEmpty()) {
-            presenceSessionStore.setDisconnectGraceUntil(firebaseUid, now.plus(DISCONNECT_GRACE_WINDOW));
-        }
+        // WebSocket freshness is scoped to DM/socket participation. It must not force global offline.
     }
 
     private boolean resolveIsConnected(String firebaseUid) {
         if (isForcedOfflineWithoutTrackedSession(firebaseUid)) {
             return false;
         }
-        return hasActiveWebSocketSession(firebaseUid);
+        pruneStaleGlobalSessions(firebaseUid, Instant.now());
+        return !presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty();
     }
 
     private String resolveActualConnectionState(String firebaseUid) {
@@ -283,7 +304,16 @@ public class UserPresenceService {
 
     private boolean isForcedOfflineWithoutTrackedSession(String firebaseUid) {
         Instant forcedOfflineAt = presenceSessionStore.getForcedOfflineAt(firebaseUid);
-        return forcedOfflineAt != null && presenceSessionStore.getSessions(firebaseUid).isEmpty();
+        return forcedOfflineAt != null
+                && presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty()
+                && presenceSessionStore.getSessions(firebaseUid).isEmpty();
+    }
+
+    private String normalizeClientSessionId(String clientSessionId) {
+        if (clientSessionId == null || clientSessionId.isBlank()) {
+            return "unknown";
+        }
+        return clientSessionId.trim();
     }
 
     public record PresenceSnapshot(UserAvailabilityStatus manualPresenceStatus,

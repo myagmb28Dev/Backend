@@ -7,6 +7,16 @@ import java.util.Map;
 import java.util.Set;
 
 public interface PresenceSessionStore {
+    void putGlobalSession(String firebaseUid, String clientSessionId, Instant touchedAt);
+
+    void removeGlobalSession(String firebaseUid, String clientSessionId);
+
+    void clearGlobalSessions(String firebaseUid);
+
+    Map<String, Instant> getGlobalSessions(String firebaseUid);
+
+    Set<String> findUsersWithGlobalSessions();
+
     void putSession(String firebaseUid, String sessionId, Instant touchedAt);
 
     void removeSession(String firebaseUid, String sessionId);
