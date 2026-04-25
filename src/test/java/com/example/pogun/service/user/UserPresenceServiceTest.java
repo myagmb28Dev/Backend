@@ -26,7 +26,7 @@ class UserPresenceServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void snapshotKeepsRecentlyDisconnectedUserOnlineDuringGrace() {
+    void snapshotReturnsOfflineWhenWebSocketSessionIsStaleDuringGrace() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("stale-user");
@@ -36,8 +36,9 @@ class UserPresenceServiceTest {
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 
-        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
-        assertThat(snapshot.online()).isTrue();
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
+        assertThat(snapshot.online()).isFalse();
+        assertThat(snapshot.actualConnectionState()).isEqualTo("disconnected");
     }
 
     @Test
