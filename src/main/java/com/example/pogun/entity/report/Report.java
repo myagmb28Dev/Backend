@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.example.pogun.entity.report.enums.ReportStatus;
 import com.example.pogun.entity.report.enums.ReportTargetType;
+import com.example.pogun.entity.report.enums.ReportProcessAction;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 import jakarta.persistence.Column;
@@ -75,6 +76,17 @@ public class Report {
 
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewed_by_id", foreignKey = @ForeignKey(name = "fk_reports_reviewed_by"))
+    private User reviewedBy;
+
+    @Column(name = "process_reason", columnDefinition = "text")
+    private String processReason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "processed_action", length = 40)
+    private ReportProcessAction processedAction;
 }
 
 

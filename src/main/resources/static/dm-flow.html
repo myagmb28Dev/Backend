@@ -268,6 +268,7 @@
           <button id="leaveRoomButton" class="danger" disabled>현재 DM 방 나가기</button>
           <button id="roomSettingsButton" class="secondary" disabled>방 설정</button>
           <button id="reportRoomButton" class="secondary" disabled>방 신고 테스트</button>
+          <button id="reportNoticeButton" class="secondary" disabled>선택 공고 신고</button>
           <button id="openNoticeFlowButton" class="secondary" disabled>선택 공고 상세(Notice Flow)</button>
         </div>
         <div id="roomSettingsPanel" class="room-settings">
@@ -466,6 +467,7 @@ function updateIds() {
   el("leaveRoomButton").disabled = !roomReady || !activeRole || !roomId;
   el("roomSettingsButton").disabled = !roomReady || !activeRole || !roomId;
   el("reportRoomButton").disabled = !roomReady || !activeRole || !roomId;
+  el("reportNoticeButton").disabled = !activeRole || !resolveCurrentNoticeId();
   el("openNoticeFlowButton").disabled = !activeRole || !resolveCurrentNoticeId();
   renderRoomSettingsPanel();
 }
@@ -1350,7 +1352,24 @@ async function reportCurrentRoom(role = activeRole) {
     })
   });
   if (response.status !== 200 && response.status !== 201) throw new Error(`채팅방 신고 실패: ${JSON.stringify(response.body)}`);
-  setStatus("채팅방 신고 접수 확인", "good");
+  const report = response.body?.data || {};
+  setStatus(`채팅방 신고 접수 확인 · ${report.id || "-"} · ${report.status || "RECEIVED"}`, "good");
+}
+async function reportCurrentNotice(role = activeRole) {
+  const noticeId = resolveCurrentNoticeId();
+  if (!role || !noticeId) throw new Error("신고할 공고를 먼저 선택하세요.");
+  const response = await authApi(role, "/api/reports", {
+    method: "POST",
+    body: JSON.stringify({
+      targetType: "PET_NOTICE",
+      targetId: noticeId,
+      reason: "ETC",
+      description: "DM 테스트 페이지 공고 신고 흐름 검증"
+    })
+  });
+  if (response.status !== 200 && response.status !== 201) throw new Error(`공고 신고 실패: ${JSON.stringify(response.body)}`);
+  const report = response.body?.data || {};
+  setStatus(`공고 신고 접수 확인 · ${report.id || "-"} · ${report.status || "RECEIVED"}`, "good");
 }
 function addPendingUploadMessage(role, files, message, replyToMessageId) {
   const clientUploadId = `${users[role].userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2282,6 +2301,7 @@ el("roomSettingsButton").addEventListener("click", () => {
 el("saveRoomSettingsButton").addEventListener("click", run(() => saveRoomSettings(activeRole)));
 el("clearRoomSettingsButton").addEventListener("click", run(() => clearRoomSettings(activeRole)));
 el("reportRoomButton").addEventListener("click", run(() => reportCurrentRoom(activeRole)));
+el("reportNoticeButton").addEventListener("click", run(() => reportCurrentNotice(activeRole)));
 el("openNoticeFlowButton").addEventListener("click", () => {
   const noticeId = resolveCurrentNoticeId();
   if (!noticeId) {

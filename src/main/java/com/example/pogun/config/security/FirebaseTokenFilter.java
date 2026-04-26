@@ -1,6 +1,8 @@
 package com.example.pogun.config;
 
 import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
+import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.auth.FirebaseIdentityService;
 import com.example.pogun.service.user.UserPresenceService;
@@ -17,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 /**
  * 애플리케이션 설정을 담당하는 FirebaseTokenFilter이다.
  */
@@ -43,7 +46,8 @@ FirebaseTokenFilter extends OncePerRequestFilter {
             try {
                 // revoke 여부까지 함께 검사해 로그아웃된 토큰이 보호 API를 다시 통과하지 못하게 한다.
                 String uid = firebaseIdentityService.verifyIdToken(idToken, true).uid();
-                if (!userRepository.existsByFirebaseUid(uid) && shouldRequireCompletedRegistration(request)) {
+                Optional<User> user = userRepository.findByFirebaseUid(uid);
+                if (user.isEmpty() && shouldRequireCompletedRegistration(request)) {
                     SecurityContextHolder.clearContext();
                     apiErrorResponseWriter.write(
                             response,
@@ -54,9 +58,21 @@ FirebaseTokenFilter extends OncePerRequestFilter {
                     );
                     return;
                 }
+                if (user.isPresent() && shouldBlockInactiveUser(request) && user.get().getStatus() != null && user.get().getStatus() != UserStatus.ACTIVE) {
+                    SecurityContextHolder.clearContext();
+                    UserStatus status = user.get().getStatus();
+                    apiErrorResponseWriter.write(
+                            response,
+                            org.springframework.http.HttpStatus.FORBIDDEN,
+                            status == UserStatus.BANNED ? "USER_BANNED" : "USER_WITHDRAWN",
+                            status == UserStatus.BANNED ? "제재된 사용자는 이용할 수 없습니다." : "탈퇴한 사용자는 이용할 수 없습니다.",
+                            null
+                    );
+                    return;
+                }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    uid, idToken, resolveAuthorities(uid));
+                    uid, idToken, resolveAuthorities(user));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 userPresenceService.touch(uid);
 
@@ -89,9 +105,21 @@ FirebaseTokenFilter extends OncePerRequestFilter {
         return path.startsWith("/api/");
     }
 
-    private List<SimpleGrantedAuthority> resolveAuthorities(String firebaseUid) {
+    private boolean shouldBlockInactiveUser(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        if (!path.startsWith("/api/")) {
+            return false;
+        }
+        if ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(path)) {
+            return false;
+        }
+        return true;
+    }
+
+    private List<SimpleGrantedAuthority> resolveAuthorities(Optional<User> resolvedUser) {
         // Firebase 토큰 자체에는 우리 서비스 role 이 없으므로 DB 사용자 role 을 다시 읽어 권한을 확정한다.
-        UserRole role = userRepository.findByFirebaseUid(firebaseUid)
+        UserRole role = resolvedUser
                 .map(user -> user.getRole() != null ? user.getRole() : UserRole.USER)
                 .orElse(UserRole.USER);
 

@@ -1,15 +1,21 @@
 package com.example.pogun.service.report;
 
+import com.example.pogun.dto.admin.AdminReportDetailResponse;
+import com.example.pogun.dto.admin.AdminReportListResponse;
+import com.example.pogun.dto.admin.AdminReportReviewRequest;
 import com.example.pogun.dto.report.ReportResponse;
 import com.example.pogun.entity.community.CommunityComment;
 import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.report.Report;
+import com.example.pogun.entity.report.enums.ReportProcessAction;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.report.enums.ReportStatus;
 import com.example.pogun.entity.report.enums.ReportTargetType;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
@@ -17,6 +23,7 @@ import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.admin.AdminService;
 import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Comparator;
 /**
  * 도메인 비즈니스 로직을 담당하는 ReportService이다.
  */
@@ -44,6 +52,7 @@ public class ReportService {
     private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final AdminService adminService;
 
     // 신고는 단일 테이블로 관리하되, 저장 전에 대상 존재 여부와 활성 중복 신고를 함께 차단한다.
     @Transactional
@@ -73,6 +82,33 @@ public class ReportService {
         return reportRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toReportResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public AdminReportListResponse getReports(String statusValue, String targetTypeValue, int page, int size) {
+        ReportStatus status = parseOptionalStatus(statusValue);
+        ReportTargetType targetType = parseOptionalTargetType(targetTypeValue);
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 ? 20 : Math.min(size, 100);
+
+        List<ReportResponse> filtered = reportRepository.findAll().stream()
+                .filter(report -> status == null || report.getStatus() == status)
+                .filter(report -> targetType == null || report.getTargetType() == targetType)
+                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+                .map(this::toReportResponse)
+                .toList();
+
+        int fromIndex = Math.min(safePage * safeSize, filtered.size());
+        int toIndex = Math.min(fromIndex + safeSize, filtered.size());
+        List<ReportResponse> items = filtered.subList(fromIndex, toIndex);
+        int totalPages = filtered.isEmpty() ? 0 : (int) Math.ceil((double) filtered.size() / safeSize);
+        return new AdminReportListResponse(items, filtered.size(), totalPages, safePage, safeSize);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminReportDetailResponse getReportDetail(String reportId) {
+        Report report = getReport(reportId);
+        return toAdminReportDetailResponse(report);
+    }
+
     @Transactional
     public ReportResponse updateReportStatus(String reportId, Object statusValue) {
         Report report = getReport(reportId);
@@ -88,6 +124,33 @@ public class ReportService {
             notifyReportResult(saved);
         }
         return toReportResponse(saved);
+    }
+
+    @Transactional
+    public AdminReportDetailResponse reviewReport(String reportId, AdminReportReviewRequest request) {
+        Report report = getReport(reportId);
+        ReportStatus status = parseStatus(request.getStatus());
+        ReportProcessAction action = parseProcessAction(request.getProcessAction());
+        User reviewer = getCurrentUser();
+        String processReason = normalizeNullable(request.getProcessReason());
+
+        applyProcessAction(report, action);
+        report.setStatus(status);
+        report.setProcessedAction(action);
+        report.setProcessReason(processReason);
+        if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
+            report.setReviewedAt(Instant.now());
+            report.setReviewedBy(reviewer);
+        } else {
+            report.setReviewedAt(null);
+            report.setReviewedBy(null);
+        }
+
+        Report saved = reportRepository.save(report);
+        if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
+            notifyReportResult(saved);
+        }
+        return toAdminReportDetailResponse(saved);
     }
 
     private User getCurrentUser() {
@@ -147,6 +210,13 @@ public class ReportService {
         }
     }
 
+    private ReportTargetType parseOptionalTargetType(String targetTypeValue) {
+        if (targetTypeValue == null || targetTypeValue.isBlank()) {
+            return null;
+        }
+        return parseTargetType(targetTypeValue);
+    }
+
     private ReportStatus parseStatus(Object statusValue) {
         if (statusValue == null || String.valueOf(statusValue).isBlank()) {
             throw ApiException.badRequest("MISSING_REPORT_STATUS", "status는 필수입니다.");
@@ -158,8 +228,177 @@ public class ReportService {
         }
     }
 
+    private ReportStatus parseOptionalStatus(String statusValue) {
+        if (statusValue == null || statusValue.isBlank()) {
+            return null;
+        }
+        return parseStatus(statusValue);
+    }
+
+    private ReportProcessAction parseProcessAction(String actionValue) {
+        if (actionValue == null || actionValue.isBlank()) {
+            return ReportProcessAction.NONE;
+        }
+        try {
+            return ReportProcessAction.valueOf(actionValue.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_REPORT_PROCESS_ACTION", "올바르지 않은 처리 액션입니다.");
+        }
+    }
+
+    private void applyProcessAction(Report report, ReportProcessAction action) {
+        switch (action) {
+            case NONE -> {
+            }
+            case HIDE_TARGET -> hideReportTarget(report);
+            case DELETE_TARGET -> deleteReportTarget(report);
+            case SANCTION_TARGET_USER -> sanctionReportTargetUser(report);
+        }
+    }
+
+    private void hideReportTarget(Report report) {
+        switch (report.getTargetType()) {
+            case PET_NOTICE -> adminService.updateMissingPostVisibility(report.getTargetId().toString(), "HIDDEN");
+            case COMMUNITY_POST -> adminService.updateCommunityVisibility(report.getTargetId().toString(), "HIDDEN");
+            default -> throw ApiException.badRequest("UNSUPPORTED_REPORT_ACTION", "해당 신고 대상은 숨김 처리할 수 없습니다.");
+        }
+    }
+
+    private void deleteReportTarget(Report report) {
+        switch (report.getTargetType()) {
+            case PET_NOTICE -> adminService.deleteMissingPost(report.getTargetId().toString());
+            case COMMUNITY_POST -> adminService.deleteCommunityPost(report.getTargetId().toString());
+            default -> throw ApiException.badRequest("UNSUPPORTED_REPORT_ACTION", "해당 신고 대상은 삭제 처리할 수 없습니다.");
+        }
+    }
+
+    private void sanctionReportTargetUser(Report report) {
+        User targetUser = resolveTargetUser(report);
+        if (targetUser == null) {
+            throw ApiException.badRequest("UNSUPPORTED_REPORT_ACTION", "해당 신고 대상에서 제재할 사용자를 찾을 수 없습니다.");
+        }
+        adminService.sanctionUser(targetUser.getId().toString(), UserStatus.BANNED.name());
+    }
+
+    private User resolveTargetUser(Report report) {
+        return switch (report.getTargetType()) {
+            case USER -> userRepository.findById(report.getTargetId()).orElse(null);
+            case PET_NOTICE -> petNoticeRepository.findById(report.getTargetId()).map(PetNotice::getAuthor).orElse(null);
+            case COMMUNITY_POST -> communityPostRepository.findById(report.getTargetId()).map(CommunityPost::getAuthor).orElse(null);
+            case COMMUNITY_COMMENT -> communityCommentRepository.findById(report.getTargetId()).map(CommunityComment::getAuthor).orElse(null);
+            case NOTICE_CHAT_ROOM -> null;
+        };
+    }
+
     private ReportResponse toReportResponse(Report report) {
         return new ReportResponse(report.getId(), report.getReporter().getId(), report.getTargetType().name(), report.getTargetId(), report.getReason(), report.getDescription(), report.getStatus().name(), report.getReviewedAt(), report.getCreatedAt());
+    }
+
+    private AdminReportDetailResponse toAdminReportDetailResponse(Report report) {
+        User reporter = report.getReporter();
+        User reviewedBy = report.getReviewedBy();
+        return new AdminReportDetailResponse(
+                report.getId(),
+                report.getTargetType().name(),
+                report.getTargetId(),
+                report.getReason(),
+                report.getDescription(),
+                report.getStatus().name(),
+                new AdminReportDetailResponse.ReporterSummary(
+                        reporter.getId(),
+                        reporter.getEmail(),
+                        reporter.getNickname(),
+                        reporter.getStatus() == null ? null : reporter.getStatus().name()
+                ),
+                resolveTargetSummary(report),
+                reportRepository.countByTargetTypeAndTargetId(report.getTargetType(), report.getTargetId()),
+                reviewedBy == null ? null : reviewedBy.getId(),
+                reviewedBy == null ? null : reviewedBy.getNickname(),
+                report.getProcessReason(),
+                report.getProcessedAction() == null ? null : report.getProcessedAction().name(),
+                report.getReviewedAt(),
+                report.getCreatedAt()
+        );
+    }
+
+    private AdminReportDetailResponse.TargetSummary resolveTargetSummary(Report report) {
+        UUID targetId = report.getTargetId();
+        return switch (report.getTargetType()) {
+            case PET_NOTICE -> petNoticeRepository.findById(targetId)
+                    .map(notice -> new AdminReportDetailResponse.TargetSummary(
+                            targetId,
+                            report.getTargetType().name(),
+                            notice.getTitle(),
+                            notice.getAuthor().getId(),
+                            notice.getAuthor().getNickname(),
+                            notice.getStatus().name(),
+                            notice.getHidden()
+                    ))
+                    .orElse(missingTargetSummary(report));
+            case COMMUNITY_POST -> communityPostRepository.findById(targetId)
+                    .map(post -> new AdminReportDetailResponse.TargetSummary(
+                            targetId,
+                            report.getTargetType().name(),
+                            post.getTitle(),
+                            post.getAuthor().getId(),
+                            post.getAuthor().getNickname(),
+                            post.getStatus().name(),
+                            null
+                    ))
+                    .orElse(missingTargetSummary(report));
+            case COMMUNITY_COMMENT -> communityCommentRepository.findById(targetId)
+                    .map(comment -> new AdminReportDetailResponse.TargetSummary(
+                            targetId,
+                            report.getTargetType().name(),
+                            abbreviate(comment.getContent()),
+                            comment.getAuthor().getId(),
+                            comment.getAuthor().getNickname(),
+                            comment.getStatus().name(),
+                            null
+                    ))
+                    .orElse(missingTargetSummary(report));
+            case USER -> userRepository.findById(targetId)
+                    .map(user -> new AdminReportDetailResponse.TargetSummary(
+                            targetId,
+                            report.getTargetType().name(),
+                            user.getNickname(),
+                            user.getId(),
+                            user.getNickname(),
+                            user.getStatus() == null ? null : user.getStatus().name(),
+                            null
+                    ))
+                    .orElse(missingTargetSummary(report));
+            case NOTICE_CHAT_ROOM -> noticeChatRoomRepository.findById(targetId)
+                    .map(room -> new AdminReportDetailResponse.TargetSummary(
+                            targetId,
+                            report.getTargetType().name(),
+                            room.getNotice().getTitle(),
+                            room.getNotice().getAuthor().getId(),
+                            room.getNotice().getAuthor().getNickname(),
+                            room.getStatus().name(),
+                            null
+                    ))
+                    .orElse(missingTargetSummary(report));
+        };
+    }
+
+    private AdminReportDetailResponse.TargetSummary missingTargetSummary(Report report) {
+        return new AdminReportDetailResponse.TargetSummary(report.getTargetId(), report.getTargetType().name(), "삭제된 대상", null, null, "DELETED_OR_MISSING", null);
+    }
+
+    private String normalizeNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String abbreviate(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.length() <= 80 ? normalized : normalized.substring(0, 80) + "...";
     }
 
     private void notifyReportResult(Report report) {
