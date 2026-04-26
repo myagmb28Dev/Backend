@@ -48,6 +48,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/notification-flow.html")
                         .permitAll()
+                        .requestMatchers("/admin-flow.html")
+                        .permitAll()
                         .requestMatchers("/firebase-web-config.js")
                         .permitAll()
                         .requestMatchers("/global-presence.js")

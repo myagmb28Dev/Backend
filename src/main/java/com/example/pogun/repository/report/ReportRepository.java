@@ -26,6 +26,8 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
 
     List<Report> findAllByOrderByCreatedAtDesc();
 
+    long countByTargetTypeAndTargetId(ReportTargetType targetType, UUID targetId);
+
     long countByCreatedAtBetween(Instant from, Instant to);
 
     long countByStatusIn(Collection<ReportStatus> statuses);

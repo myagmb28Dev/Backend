@@ -2,6 +2,9 @@ package com.example.pogun.controller.admin;
 
 import com.example.pogun.dto.admin.AdminDashboardResponse;
 import com.example.pogun.dto.admin.AdminDeleteResponse;
+import com.example.pogun.dto.admin.AdminReportDetailResponse;
+import com.example.pogun.dto.admin.AdminReportListResponse;
+import com.example.pogun.dto.admin.AdminReportReviewRequest;
 import com.example.pogun.dto.admin.AdminUserSanctionRequest;
 import com.example.pogun.dto.admin.AdminUserSanctionResponse;
 import com.example.pogun.dto.admin.AdminVisibilityResponse;
@@ -23,9 +26,9 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 /**
  * HTTP/WebSocket 진입점을 담당하는 AdminController이다.
  */
@@ -68,10 +71,22 @@ public class AdminController {
     }
 
     @GetMapping("/reports")
-    @Operation(summary = "전체 신고 내역 조회", description = "사용자들이 접수한 모든 신고 목록을 조회합니다.")
-    public ResponseEntity<ApiResponse<List<ReportResponse>>> adminReports() {
-        List<ReportResponse> data = reportService.getAllReports();
+    @Operation(summary = "관리자 신고 목록 조회", description = "상태/대상 타입별 신고 목록을 최신순 페이지로 조회합니다.")
+    public ResponseEntity<ApiResponse<AdminReportListResponse>> adminReports(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        AdminReportListResponse data = reportService.getReports(status, targetType, page, size);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 내역 조회 성공", data));
+    }
+
+    @GetMapping("/reports/{reportId}")
+    @Operation(summary = "관리자 신고 상세 조회", description = "신고자, 대상 정보, 동일 대상 신고 수와 처리 이력을 조회합니다.")
+    public ResponseEntity<ApiResponse<AdminReportDetailResponse>> adminReportDetail(@PathVariable String reportId) {
+        AdminReportDetailResponse data = reportService.getReportDetail(reportId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 상세 조회 성공", data));
     }
 
     @PatchMapping("/reports/{reportId}")
@@ -80,6 +95,13 @@ public class AdminController {
         // 상태 변경은 관리자 검토 흐름의 핵심이라, 잘못된 상태값 검증도 서비스에서 엄격하게 처리한다.
         ReportResponse data = reportService.updateReportStatus(reportId, request.getStatus());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 처리 상태 변경 성공", data));
+    }
+
+    @PatchMapping("/reports/{reportId}/review")
+    @Operation(summary = "신고 검토 처리", description = "신고 상태와 처리 사유를 저장하고 숨김/삭제/사용자 제재 후속 조치를 적용합니다.")
+    public ResponseEntity<ApiResponse<AdminReportDetailResponse>> reviewReport(@PathVariable String reportId, @Valid @RequestBody AdminReportReviewRequest request) {
+        AdminReportDetailResponse data = reportService.reviewReport(reportId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 검토 처리 성공", data));
     }
 
     @DeleteMapping("/posts/{postId}")
