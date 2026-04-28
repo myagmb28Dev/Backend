@@ -1,5 +1,6 @@
 package com.example.pogun.service.auth;
 
+import com.example.pogun.config.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
@@ -44,6 +45,9 @@ class AuthServiceTest {
 
     @Mock
     private FirebaseAuth firebaseAuth;
+
+    @Mock
+    private FirebaseAuthProperties firebaseAuthProperties;
 
     @Mock
     private FirebaseIdentityService firebaseIdentityService;
@@ -176,6 +180,7 @@ class AuthServiceTest {
         );
 
         when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(user));
+        when(firebaseAuthProperties.isEmulatorMode()).thenReturn(false);
         when(noticeChatServiceProvider.getObject()).thenReturn(noticeChatService);
 
         LogoutResponse response = authService.logout();
