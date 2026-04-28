@@ -132,6 +132,7 @@
     GoogleAuthProvider,
     browserLocalPersistence,
     getAuth,
+    sendEmailVerification,
     setPersistence,
     signInWithPopup
   } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -208,6 +209,7 @@
   let adminAccessToken = null;
   let bootstrapToken = null;
   let firebaseAuthInstance = null;
+  let currentGoogleUser = null;
 
   async function getFirebaseAuthInstance() {
     if (firebaseAuthInstance) return firebaseAuthInstance;
@@ -241,6 +243,7 @@
     if (!user) {
       throw new Error("Google 로그인 결과에서 사용자 정보를 확인할 수 없습니다.");
     }
+    currentGoogleUser = user;
     const token = await user.getIdToken(true);
     const res = await request("/api/admin/auth/login", {
       method: "POST",
@@ -267,7 +270,16 @@
         el("passkeyMessage").textContent = "최초 1회 패스키 등록이 필요합니다.";
         setStatus("패스키 등록 단계", "admin");
     } else if (data.nextStep === "EMAIL_VERIFICATION_REQUIRED") {
-      setStatus("Firebase 기본 관리자 이메일 인증 메일을 전송했습니다. 받은 메일의 링크를 클릭해 인증을 완료한 뒤 다시 로그인하세요.", "good");
+      let verificationMessage = "Firebase 기본 관리자 이메일 인증 메일을 전송했습니다. 받은 메일의 링크를 클릭해 인증을 완료한 뒤 다시 로그인하세요.";
+      try {
+        if (currentGoogleUser) {
+          await sendEmailVerification(currentGoogleUser);
+          verificationMessage = "Firebase 이메일 인증 메일 전송 요청을 완료했습니다. 메일함(스팸함 포함)을 확인한 뒤 다시 로그인하세요.";
+        }
+      } catch (verificationError) {
+        verificationMessage = `인증 메일 재전송 실패: ${verificationError?.code || verificationError?.message || "unknown_error"} (백엔드 전송은 이미 요청됨)`;
+      }
+      setStatus(verificationMessage, "good");
       el("passkeySection").style.display = "none";
       el("logoutButton").style.display = "none";
     } else if (data.nextStep === "PASSKEY_REQUIRED") {
