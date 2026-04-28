@@ -23,6 +23,7 @@ import com.example.pogun.repository.admin.AdminSessionRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,11 +61,11 @@ public class AdminAuthService {
 
     public AdminLoginResponse login(String email, String password, HttpServletRequest request) {
         FirebasePasswordSignInClient.FirebasePasswordSignInResult result = firebasePasswordSignInClient.signIn(email, password);
-        assertFirebaseUserAccessible(result.localId());
+        boolean emailVerified = resolveEmailVerified(result.localId(), result.emailVerified());
 
         User admin = resolveAdminUser(result.localId(), result.email());
 
-        if (!result.emailVerified()) {
+        if (!emailVerified) {
             adminEmailVerificationService.sendVerificationEmail(result.idToken());
             adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
@@ -387,9 +388,10 @@ public class AdminAuthService {
         }
     }
 
-    private void assertFirebaseUserAccessible(String firebaseUid) {
+    private boolean resolveEmailVerified(String firebaseUid, boolean fallback) {
         try {
-            firebaseAuth.getUser(firebaseUid);
+            UserRecord userRecord = firebaseAuth.getUser(firebaseUid);
+            return userRecord != null ? userRecord.isEmailVerified() : fallback;
         } catch (FirebaseAuthException e) {
             throw ApiException.unauthorized("INVALID_CREDENTIALS", "Firebase 관리자 사용자 확인에 실패했습니다.");
         }
