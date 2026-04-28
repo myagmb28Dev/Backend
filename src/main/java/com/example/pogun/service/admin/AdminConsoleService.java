@@ -43,6 +43,8 @@ import com.example.pogun.service.shelterpet.ShelterPublicApiClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -249,13 +251,31 @@ public class AdminConsoleService {
         Map<String, Object> before = Map.of("role", user.getRole().name());
         UserRole nextRole = parseRole(roleValue);
         user.setRole(nextRole);
+        if (nextRole == UserRole.ADMIN && !UserRole.ADMIN.name().equals(before.get("role"))) {
+            user.setAdminEmailVerificationRequired(true);
+            user.setAdminEmailVerifiedAt(null);
+        }
         User saved = userRepository.save(user);
         if (saved.getRole() == UserRole.ADMIN) {
             adminPermissionService.ensureDefaults(saved);
+            if (saved.isAdminEmailVerificationRequired()) {
+                forceAdminEmailReverification(saved);
+            }
         }
         Map<String, Object> after = Map.of("role", saved.getRole().name());
         adminAuditService.log("ADMIN_USER_ROLE_UPDATED", "USER", saved.getId().toString(), before, after, Map.of("email", saved.getEmail()));
         return Map.of("id", saved.getId(), "role", saved.getRole().name());
+    }
+
+    private void forceAdminEmailReverification(User user) {
+        if (user.getFirebaseUid() == null || user.getFirebaseUid().isBlank()) {
+            return;
+        }
+        try {
+            firebaseAuth.updateUser(new UserRecord.UpdateRequest(user.getFirebaseUid()).setEmailVerified(false));
+        } catch (FirebaseAuthException e) {
+            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
+        }
     }
 
     @Transactional

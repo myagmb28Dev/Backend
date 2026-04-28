@@ -89,6 +89,13 @@ public class User {
     private Instant lastActiveAt;
 
     @Builder.Default
+    @Column(name = "admin_email_verification_required", nullable = false)
+    private boolean adminEmailVerificationRequired = false;
+
+    @Column(name = "admin_email_verified_at")
+    private Instant adminEmailVerifiedAt;
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "availability_status", nullable = false, length = 20)
     private UserAvailabilityStatus availabilityStatus = UserAvailabilityStatus.ONLINE;

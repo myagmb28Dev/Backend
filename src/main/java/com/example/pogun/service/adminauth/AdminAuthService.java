@@ -78,10 +78,24 @@ public class AdminAuthService {
             throw ApiException.unauthorized("INVALID_CREDENTIALS", "Google 로그인 사용자 정보를 확인할 수 없습니다.");
         }
 
-        boolean emailVerified = resolveEmailVerified(firebaseUid, false);
         User admin = resolveAdminUser(firebaseUid, email);
+        boolean emailVerified = resolveEmailVerified(firebaseUid, false);
 
-        if (!emailVerified) {
+        if (admin.isAdminEmailVerificationRequired()) {
+            if (!emailVerified) {
+                adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
+                adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+                return new AdminLoginResponse(
+                        "EMAIL_VERIFICATION_REQUIRED",
+                        false,
+                        null,
+                        null
+                );
+            }
+            admin.setAdminEmailVerificationRequired(false);
+            admin.setAdminEmailVerifiedAt(Instant.now());
+            admin = userRepository.save(admin);
+        } else if (!emailVerified) {
             adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
             adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(

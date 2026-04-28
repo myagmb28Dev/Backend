@@ -28,6 +28,9 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminAuditService;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +62,7 @@ public class AdminService {
     private final AdminSecurityService adminSecurityService;
     private final AdminAuditService adminAuditService;
     private final AdminPermissionService adminPermissionService;
+    private final FirebaseAuth firebaseAuth;
 
     // 대시보드는 여러 도메인 저장소에서 바로 집계해 관리자 첫 화면이 별도 후처리 없이 그릴 수 있게 반환한다.
     public AdminDashboardResponse getDashboard() {
@@ -138,14 +142,28 @@ public class AdminService {
 
         String beforeRole = user.getRole().name();
         user.setRole(UserRole.ADMIN);
+        user.setAdminEmailVerificationRequired(true);
+        user.setAdminEmailVerifiedAt(null);
         User saved = userRepository.save(user);
         adminPermissionService.ensureDefaults(saved);
+        forceAdminEmailReverification(saved);
         AdminPromoteResponse response = new AdminPromoteResponse(saved.getId(), saved.getEmail(), saved.getRole().name(), saved.getStatus().name());
         adminAuditService.log("ADMIN_USER_PROMOTED", "USER", saved.getId().toString(),
                 java.util.Map.of("role", beforeRole),
                 java.util.Map.of("role", saved.getRole().name()),
                 java.util.Map.of("email", saved.getEmail()));
         return response;
+    }
+
+    private void forceAdminEmailReverification(User user) {
+        if (user.getFirebaseUid() == null || user.getFirebaseUid().isBlank()) {
+            return;
+        }
+        try {
+            firebaseAuth.updateUser(new UserRecord.UpdateRequest(user.getFirebaseUid()).setEmailVerified(false));
+        } catch (FirebaseAuthException e) {
+            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
+        }
     }
 
     // 공고 삭제 전에 북마크와 채팅 흔적을 먼저 비워 연관 데이터가 고아 상태로 남지 않게 정리한다.
