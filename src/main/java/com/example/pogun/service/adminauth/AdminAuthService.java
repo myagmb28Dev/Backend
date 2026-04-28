@@ -82,6 +82,10 @@ public class AdminAuthService {
         boolean emailVerified = resolveEmailVerified(firebaseUid, false);
 
         if (admin.isAdminEmailVerificationRequired()) {
+            if (emailVerified && admin.getAdminEmailVerifiedAt() == null) {
+                resetFirebaseEmailVerified(firebaseUid);
+                emailVerified = false;
+            }
             if (!emailVerified) {
                 adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
                 adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
@@ -436,6 +440,14 @@ public class AdminAuthService {
             return userRecord != null ? userRecord.isEmailVerified() : fallback;
         } catch (FirebaseAuthException e) {
             throw ApiException.unauthorized("INVALID_CREDENTIALS", "Firebase 관리자 사용자 확인에 실패했습니다.");
+        }
+    }
+
+    private void resetFirebaseEmailVerified(String firebaseUid) {
+        try {
+            firebaseAuth.updateUser(new UserRecord.UpdateRequest(firebaseUid).setEmailVerified(false));
+        } catch (FirebaseAuthException e) {
+            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
         }
     }
 
