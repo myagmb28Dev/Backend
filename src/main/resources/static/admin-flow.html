@@ -130,9 +130,22 @@
 
 <script type="module">
   import { ensureLocalAdminTestUserVerified } from "./admin-local-bootstrap.js";
+  import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    EmailAuthProvider,
+    GoogleAuthProvider,
+    browserLocalPersistence,
+    getAuth,
+    linkWithCredential,
+    setPersistence,
+    signInWithPopup,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import { FIREBASE_WEB_CONFIG } from "./firebase-web-config.js";
 
   const BACKEND_BASE = window.location.origin;
   const ADMIN_ACCESS_TOKEN_KEY = "pogun-admin-access-token-v1";
+  const ADMIN_LINK_CONTEXT_KEY = "pogun-admin-link-context-v1";
 
   const el = (id) => document.getElementById(id);
   function setStatus(msg, tone = "") {
@@ -200,7 +213,83 @@
   }
 
   let adminAccessToken = null;
-  let bootstrapToken = null; 
+  let bootstrapToken = null;
+  let firebaseAuthInstance = null;
+  let linkingInProgress = false;
+
+  function saveLinkContext(email, password) {
+    try {
+      sessionStorage.setItem(ADMIN_LINK_CONTEXT_KEY, JSON.stringify({ email, password }));
+    } catch {}
+  }
+
+  function loadLinkContext() {
+    try {
+      const raw = sessionStorage.getItem(ADMIN_LINK_CONTEXT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.email || !parsed?.password) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearLinkContext() {
+    try {
+      sessionStorage.removeItem(ADMIN_LINK_CONTEXT_KEY);
+    } catch {}
+  }
+
+  async function getFirebaseAuthInstance() {
+    if (firebaseAuthInstance) return firebaseAuthInstance;
+    const app = getApps().length > 0 ? getApp() : initializeApp(FIREBASE_WEB_CONFIG);
+    firebaseAuthInstance = getAuth(app);
+    await setPersistence(firebaseAuthInstance, browserLocalPersistence);
+    return firebaseAuthInstance;
+  }
+
+  async function linkPasswordProvider() {
+    const context = loadLinkContext();
+    if (!context) {
+      throw new Error("연결할 이메일/비밀번호 정보가 없습니다. 다시 로그인하세요.");
+    }
+
+    const auth = await getFirebaseAuthInstance();
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
+    setStatus("Google 계정 확인 중...");
+    const result = await signInWithPopup(auth, provider);
+    const user = result?.user;
+    if (!user?.email) {
+      throw new Error("Google 로그인 결과에서 이메일을 확인할 수 없습니다.");
+    }
+    if (user.email.toLowerCase() !== context.email.toLowerCase()) {
+      await signOut(auth);
+      throw new Error(`같은 이메일 Google 계정으로 로그인해야 합니다. 현재 계정: ${user.email}`);
+    }
+
+    try {
+      setStatus("Email/Password provider 연결 중...");
+      await linkWithCredential(user, EmailAuthProvider.credential(context.email, context.password));
+    } catch (error) {
+      if (error?.code === "auth/provider-already-linked") {
+        setStatus("이미 Email/Password provider가 연결되어 있습니다.");
+      } else if (error?.code === "auth/email-already-in-use" || error?.code === "auth/credential-already-in-use") {
+        throw new Error("이미 다른 Firebase UID에 Email/Password 계정이 존재합니다. 계정 정리가 필요합니다.");
+      } else if (error?.code === "auth/account-exists-with-different-credential") {
+        throw new Error("같은 이메일에 다른 인증 방식 계정이 이미 존재합니다. UID 병합이 필요합니다.");
+      } else {
+        throw error;
+      }
+    }
+
+    await signOut(auth);
+    clearLinkContext();
+    setStatus("비밀번호 연결 완료. 관리자 로그인을 다시 시도합니다.", "good");
+    await login(true);
+  }
 
   async function request(url, init = {}) {
     const headers = { "Content-Type": "application/json", ...init.headers };
@@ -215,13 +304,16 @@
     return { ok: response.ok, status: response.status, body };
   }
 
-  async function login() {
+  async function login(isRetry = false) {
     const email = el("emailInput").value.trim();
     const password = el("passwordInput").value;
     
     if (!email || !password) return setStatus("이메일과 비밀번호를 입력하세요.", "bad");
 
     setStatus("관리자 인증 진행 중...");
+    if (!isRetry) {
+      clearLinkContext();
+    }
     const res = await request("/api/admin/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password })
@@ -230,11 +322,29 @@
     if (!res.ok) {
         const errorCode = res.body?.error?.code || `HTTP_${res.status}`;
         const errorMessage = res.body?.error?.message || res.body?.message || "응답을 확인하세요.";
+        if (errorCode === "ADMIN_PASSWORD_PROVIDER_NOT_LINKED") {
+          saveLinkContext(email, password);
+          if (!linkingInProgress) {
+            linkingInProgress = true;
+            setStatus("Email/Password 미연결 상태 감지. Google 로그인으로 자동 연결을 시작합니다...");
+            try {
+              await linkPasswordProvider();
+              return;
+            } catch (linkError) {
+              setStatus(`자동 링킹 실패: ${linkError.message || String(linkError)}`, "bad");
+            } finally {
+              linkingInProgress = false;
+            }
+          }
+        } else {
+          clearLinkContext();
+        }
         setStatus(`로그인 실패: ${errorCode} - ${errorMessage}`, "bad");
         print(res.body);
         return;
     }
 
+    clearLinkContext();
     const data = res.body.data;
     print(res.body);
 
