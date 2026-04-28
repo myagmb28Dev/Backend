@@ -17,6 +17,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminAuditService;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
+import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -60,6 +61,8 @@ class AdminServiceTest {
     private AdminAuditService adminAuditService;
     @Mock
     private AdminPermissionService adminPermissionService;
+    @Mock
+    private FirebaseAuth firebaseAuth;
 
     @InjectMocks
     private AdminService adminService;
