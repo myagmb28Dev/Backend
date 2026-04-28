@@ -3,6 +3,9 @@ package com.example.pogun.service.adminauth;
 import com.example.pogun.config.FirebaseAuthProperties;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserInfo;
+import com.google.firebase.auth.UserRecord;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class FirebasePasswordSignInClientTest {
 
@@ -91,6 +95,72 @@ class FirebasePasswordSignInClientTest {
                 });
     }
 
+    @Test
+    void signIn_reportsProviderNotLinkedWhenPasswordProviderMissing() throws Exception {
+        server = errorServer("INVALID_LOGIN_CREDENTIALS");
+        server.start();
+
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        UserRecord userRecord = mock(UserRecord.class);
+        UserInfo googleProvider = mock(UserInfo.class);
+        when(googleProvider.getProviderId()).thenReturn("google.com");
+        when(userRecord.getProviderData()).thenReturn(new UserInfo[]{googleProvider});
+        when(firebaseAuth.getUserByEmail("admin@local.dev")).thenReturn(userRecord);
+
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort(), firebaseAuth);
+
+        assertThatThrownBy(() -> client.signIn("admin@local.dev", "bad-password"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    ApiException apiException = (ApiException) error;
+                    assertThat(apiException.getStatus().value()).isEqualTo(409);
+                    assertThat(apiException.getCode()).isEqualTo("ADMIN_PASSWORD_PROVIDER_NOT_LINKED");
+                });
+    }
+
+    @Test
+    void signIn_keepsUnauthorizedWhenPasswordProviderExists() throws Exception {
+        server = errorServer("INVALID_LOGIN_CREDENTIALS");
+        server.start();
+
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        UserRecord userRecord = mock(UserRecord.class);
+        UserInfo passwordProvider = mock(UserInfo.class);
+        when(passwordProvider.getProviderId()).thenReturn("password");
+        when(userRecord.getProviderData()).thenReturn(new UserInfo[]{passwordProvider});
+        when(userRecord.isDisabled()).thenReturn(false);
+        when(firebaseAuth.getUserByEmail("admin@local.dev")).thenReturn(userRecord);
+
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort(), firebaseAuth);
+
+        assertThatThrownBy(() -> client.signIn("admin@local.dev", "bad-password"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    ApiException apiException = (ApiException) error;
+                    assertThat(apiException.getStatus().value()).isEqualTo(401);
+                    assertThat(apiException.getCode()).isEqualTo("INVALID_CREDENTIALS");
+                });
+    }
+
+    @Test
+    void signIn_fallbacksUnauthorizedWhenUserLookupFails() throws Exception {
+        server = errorServer("INVALID_LOGIN_CREDENTIALS");
+        server.start();
+
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        when(firebaseAuth.getUserByEmail("admin@local.dev")).thenThrow(mock(FirebaseAuthException.class));
+
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort(), firebaseAuth);
+
+        assertThatThrownBy(() -> client.signIn("admin@local.dev", "bad-password"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    ApiException apiException = (ApiException) error;
+                    assertThat(apiException.getStatus().value()).isEqualTo(401);
+                    assertThat(apiException.getCode()).isEqualTo("INVALID_CREDENTIALS");
+                });
+    }
+
     private void stopServer(HttpServer server) {
         try {
             if (server != null) {
@@ -101,11 +171,15 @@ class FirebasePasswordSignInClientTest {
     }
 
     private FirebasePasswordSignInClient newClient(int port) {
+        return newClient(port, mock(FirebaseAuth.class));
+    }
+
+    private FirebasePasswordSignInClient newClient(int port, FirebaseAuth firebaseAuth) {
         FirebaseAuthProperties properties = new FirebaseAuthProperties();
         properties.setMode(FirebaseAuthProperties.Mode.PRODUCTION);
         properties.setWebApiKey("test-api-key");
 
-        return new FirebasePasswordSignInClient(properties, mock(FirebaseAuth.class)) {
+        return new FirebasePasswordSignInClient(properties, firebaseAuth) {
             @Override
             String resolveBaseUrl() {
                 return "http://127.0.0.1:" + port;

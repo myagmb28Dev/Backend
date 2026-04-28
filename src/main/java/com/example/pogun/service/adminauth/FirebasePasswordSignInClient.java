@@ -4,6 +4,8 @@ import com.example.pogun.config.FirebaseAuthProperties;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserInfo;
+import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -15,6 +17,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @Slf4j
@@ -66,7 +70,7 @@ public class FirebasePasswordSignInClient {
                     resolveEmailVerified(text(response, "localId"), response.path("emailVerified").asBoolean(false))
             );
         } catch (WebClientResponseException e) {
-            throw mapError(e);
+            throw mapError(e, email);
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
@@ -104,18 +108,13 @@ public class FirebasePasswordSignInClient {
         }
     }
 
-    private RuntimeException mapError(WebClientResponseException e) {
+    private RuntimeException mapError(WebClientResponseException e, String email) {
         try {
             JsonNode json = OBJECT_MAPPER.readTree(e.getResponseBodyAsString());
             String message = json.path("error").path("message").asText("");
             return switch (message) {
                 case "INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS" ->
-                        new ApiException(
-                                HttpStatus.UNAUTHORIZED,
-                                "INVALID_CREDENTIALS",
-                                "이메일 또는 비밀번호가 올바르지 않습니다.",
-                                Map.of("firebaseError", message)
-                        );
+                        diagnoseInvalidCredentials(email, message);
                 case "USER_DISABLED" ->
                         new ApiException(
                                 HttpStatus.FORBIDDEN,
@@ -145,6 +144,68 @@ public class FirebasePasswordSignInClient {
         } catch (Exception ignored) {
             return ApiException.unauthorized("INVALID_CREDENTIALS", "관리자 로그인에 실패했습니다.");
         }
+    }
+
+    private RuntimeException diagnoseInvalidCredentials(String email, String firebaseError) {
+        try {
+            UserRecord userRecord = firebaseAuth.getUserByEmail(email);
+            if (userRecord == null) {
+                return new ApiException(
+                        HttpStatus.UNAUTHORIZED,
+                        "INVALID_CREDENTIALS",
+                        "이메일 또는 비밀번호가 올바르지 않습니다.",
+                        Map.of("firebaseError", firebaseError)
+                );
+            }
+            Set<String> providers = providerIds(userRecord);
+            if (!providers.contains("password")) {
+                return new ApiException(
+                        HttpStatus.CONFLICT,
+                        "ADMIN_PASSWORD_PROVIDER_NOT_LINKED",
+                        "해당 이메일에 Email/Password 로그인 방식이 연결되어 있지 않습니다. 기존 Google 계정이면 provider linking 또는 비밀번호 재설정을 먼저 진행하세요.",
+                        Map.of("firebaseError", firebaseError, "providers", providers)
+                );
+            }
+            if (userRecord.isDisabled()) {
+                return new ApiException(
+                        HttpStatus.FORBIDDEN,
+                        "ADMIN_FIREBASE_USER_DISABLED",
+                        "Firebase 관리자 계정이 비활성화되어 있습니다.",
+                        Map.of("firebaseError", firebaseError, "providers", providers)
+                );
+            }
+            return new ApiException(
+                    HttpStatus.UNAUTHORIZED,
+                    "INVALID_CREDENTIALS",
+                    "이메일 또는 비밀번호가 올바르지 않습니다.",
+                    Map.of("firebaseError", firebaseError, "providers", providers)
+            );
+        } catch (FirebaseAuthException userLookupError) {
+            return new ApiException(
+                    HttpStatus.UNAUTHORIZED,
+                    "INVALID_CREDENTIALS",
+                    "이메일 또는 비밀번호가 올바르지 않습니다.",
+                    Map.of("firebaseError", firebaseError)
+            );
+        } catch (RuntimeException unexpected) {
+            return new ApiException(
+                    HttpStatus.UNAUTHORIZED,
+                    "INVALID_CREDENTIALS",
+                    "이메일 또는 비밀번호가 올바르지 않습니다.",
+                    Map.of("firebaseError", firebaseError)
+            );
+        }
+    }
+
+    private Set<String> providerIds(UserRecord userRecord) {
+        UserInfo[] providerData = userRecord.getProviderData();
+        if (providerData == null || providerData.length == 0) {
+            return Set.of();
+        }
+        return Set.of(providerData).stream()
+                .map(UserInfo::getProviderId)
+                .filter(providerId -> providerId != null && !providerId.isBlank())
+                .collect(Collectors.toSet());
     }
 
     private String text(JsonNode node, String field) {
