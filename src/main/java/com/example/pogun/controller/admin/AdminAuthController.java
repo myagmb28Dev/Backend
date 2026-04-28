@@ -1,0 +1,101 @@
+package com.example.pogun.controller.admin;
+
+import com.example.pogun.dto.admin.auth.AdminAuthSessionResponse;
+import com.example.pogun.dto.admin.auth.AdminLoginRequest;
+import com.example.pogun.dto.admin.auth.AdminLoginResponse;
+import com.example.pogun.dto.admin.auth.AdminPasskeyCredentialRequest;
+import com.example.pogun.dto.admin.auth.AdminPasskeyOptionsResponse;
+import com.example.pogun.dto.admin.auth.AdminSessionStateResponse;
+import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.service.adminauth.AdminAuthService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/admin/auth")
+@Tag(name = "Admin Auth", description = "관리자 인증 API")
+@RequiredArgsConstructor
+public class AdminAuthController {
+
+    private final AdminAuthService adminAuthService;
+
+    @PostMapping("/login")
+    @Operation(summary = "관리자 로그인", description = "Firebase 이메일/비밀번호 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
+    public ResponseEntity<ApiResponse<AdminLoginResponse>> login(@Valid @RequestBody AdminLoginRequest request, HttpServletRequest httpRequest) {
+        AdminLoginResponse data;
+        try {
+            data = adminAuthService.login(request.getEmail(), request.getPassword(), httpRequest);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw ApiException.internal("ADMIN_LOGIN_UNHANDLED", e.getClass().getName() + ": " + e.getMessage());
+        }
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그인 처리 성공", data));
+    }
+
+    @PostMapping("/passkeys/register/options")
+    @Operation(summary = "PassKey 등록 옵션 발급", description = "최초 관리자 로그인 후 PassKey 등록용 WebAuthn 옵션을 발급합니다.")
+    public ResponseEntity<ApiResponse<AdminPasskeyOptionsResponse>> passkeyRegistrationOptions(HttpServletRequest request) {
+        AdminPasskeyOptionsResponse data = adminAuthService.beginPasskeyRegistration(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 등록 옵션 발급 성공", data));
+    }
+
+    @PostMapping("/passkeys/register/verify")
+    @Operation(summary = "PassKey 등록 검증", description = "관리자의 PassKey 등록 결과를 검증하고 관리자 세션을 인증 완료 상태로 전환합니다.")
+    public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> passkeyRegistrationVerify(
+            @Valid @RequestBody AdminPasskeyCredentialRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AdminAuthSessionResponse data = adminAuthService.finishPasskeyRegistration(request, httpRequest);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 등록 성공", data));
+    }
+
+    @PostMapping("/mfa/verify")
+    @Operation(summary = "PassKey MFA 검증", description = "등록된 PassKey로 관리자 2단계 인증을 완료합니다.")
+    public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> verifyMfa(
+            @Valid @RequestBody AdminPasskeyCredentialRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AdminAuthSessionResponse data = adminAuthService.verifyMfa(request, httpRequest);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 인증 성공", data));
+    }
+
+    @PostMapping("/mfa/options")
+    @Operation(summary = "PassKey MFA 옵션 발급", description = "로그인 후 PassKey 인증용 WebAuthn assertion 옵션을 다시 발급합니다.")
+    public ResponseEntity<ApiResponse<AdminPasskeyOptionsResponse>> mfaOptions(HttpServletRequest request) {
+        AdminPasskeyOptionsResponse data = adminAuthService.startPendingPasskeyAssertion(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 인증 옵션 발급 성공", data));
+    }
+
+    @PostMapping("/passkeys/reset")
+    @Operation(summary = "PassKey 초기화", description = "MFA 대기 단계에서 저장된 PassKey를 초기화하고 재등록 단계로 전환합니다.")
+    public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> resetPasskeys() {
+        AdminAuthSessionResponse data = adminAuthService.resetPasskeys();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 초기화 성공", data));
+    }
+
+    @GetMapping("/session")
+    @Operation(summary = "관리자 세션 조회", description = "관리자 세션 복원에 필요한 인증 상태를 반환합니다.")
+    public ResponseEntity<ApiResponse<AdminSessionStateResponse>> session() {
+        AdminSessionStateResponse data = adminAuthService.session();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 세션 조회 성공", data));
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary = "관리자 로그아웃", description = "관리자 세션을 즉시 무효화합니다.")
+    public ResponseEntity<ApiResponse<Void>> logout() {
+        adminAuthService.logout();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그아웃 성공", null));
+    }
+}

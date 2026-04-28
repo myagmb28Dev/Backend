@@ -55,6 +55,8 @@ out/
 ### Local Tooling ###
 .tools/
 .codex/
+.agents/
+plugins/
 
 # Playwright
 node_modules/
@@ -68,3 +70,4 @@ node_modules/
 /bootrun.out.log
 /bootrun.err.log
 /.gradle-home/
+.env.local

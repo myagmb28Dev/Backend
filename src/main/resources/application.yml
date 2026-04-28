@@ -2,13 +2,12 @@ spring:
   jackson:
     date-format: yyyy-MM-dd'T'HH:mm:ss'Z'
     time-zone: UTC
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
   servlet:
     multipart:
       max-file-size: 30MB
       max-request-size: 320MB
-  config:
-    import:
-      - optional:file:.env[.properties]
   application:
     name: demo
   datasource:
@@ -47,6 +46,16 @@ app:
       mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}
       project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
       allow-emulator: ${APP_FIREBASE_AUTH_ALLOW_EMULATOR:${FIREBASE_ALLOW_AUTH_EMULATOR:false}}
+      web-api-key: ${FIREBASE_WEB_API_KEY:}
+  admin:
+    console:
+      session-ttl-seconds: ${APP_ADMIN_SESSION_TTL_SECONDS:28800}
+      bootstrap-session-ttl-seconds: ${APP_ADMIN_BOOTSTRAP_SESSION_TTL_SECONDS:900}
+      challenge-ttl-seconds: ${APP_ADMIN_CHALLENGE_TTL_SECONDS:300}
+      webauthn:
+        rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID:localhost}
+        rp-name: ${APP_ADMIN_WEBAUTHN_RP_NAME:Pogun Admin}
+        allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:http://localhost:8080,http://127.0.0.1:8080}
   shelter:
     api:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}
@@ -77,3 +86,27 @@ server:
       charset: UTF-8
       enabled: true
       force: true
+
+---
+# 로컬 개발 환경용 강제 설정
+spring:
+  config:
+    activate:
+      on-profile: local
+    import:
+      - optional:file:.env.local[.properties]
+  data:
+    redis:
+      host: localhost
+
+---
+# 운영 환경용 강제 설정
+spring:
+  config:
+    activate:
+      on-profile: prod
+    import:
+      - optional:file:.env[.properties]
+  data:
+    redis:
+      host: redis

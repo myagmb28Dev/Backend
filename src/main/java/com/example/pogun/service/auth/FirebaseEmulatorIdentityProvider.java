@@ -3,9 +3,6 @@ package com.example.pogun.service.auth;
 import com.example.pogun.config.FirebaseAuthProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseAuthException;
-import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
@@ -18,7 +15,6 @@ public class FirebaseEmulatorIdentityProvider implements FirebaseIdentityProvide
 
     private final ObjectMapper objectMapper;
     private final FirebaseAuthProperties firebaseAuthProperties;
-    private final FirebaseAuth firebaseAuth;
 
     @Override
     public FirebaseIdentityService.FirebaseIdentity verifyIdToken(String idToken, boolean checkRevoked) {
@@ -61,10 +57,6 @@ public class FirebaseEmulatorIdentityProvider implements FirebaseIdentityProvide
             throw new IllegalArgumentException("에뮬레이터 토큰에 사용자 식별자가 없습니다.");
         }
 
-        if (checkRevoked) {
-            verifyNotRevoked(uid, payload);
-        }
-
         String email = stringValue(payload.get("email"));
         String displayName = stringValue(payload.get("name"));
         String photoUrl = stringValue(payload.get("picture"));
@@ -76,33 +68,6 @@ public class FirebaseEmulatorIdentityProvider implements FirebaseIdentityProvide
         }
 
         return new FirebaseIdentityService.FirebaseIdentity(uid, email, displayName, photoUrl, provider, providers, payload);
-    }
-
-    private void verifyNotRevoked(String uid, Map<String, Object> payload) {
-        try {
-            UserRecord userRecord = firebaseAuth.getUser(uid);
-            long tokenValidAfterSeconds = userRecord.getTokensValidAfterTimestamp() / 1000L;
-            Long issuedAtSeconds = asEpochSeconds(payload.get("iat"));
-            if (issuedAtSeconds != null && issuedAtSeconds < tokenValidAfterSeconds) {
-                throw new IllegalArgumentException("에뮬레이터 토큰이 무효화되었습니다.");
-            }
-        } catch (FirebaseAuthException e) {
-            throw new IllegalArgumentException("에뮬레이터 토큰 사용자를 찾을 수 없습니다.", e);
-        }
-    }
-
-    private Long asEpochSeconds(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     @SuppressWarnings("unchecked")

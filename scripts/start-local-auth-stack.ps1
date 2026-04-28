@@ -17,36 +17,40 @@ New-Item -ItemType Directory -Force -Path $localDir | Out-Null
 
 function Get-DotEnvValue {
     param(
-        [string]$FilePath,
+        [string[]]$FilePaths,
         [string]$Key
     )
 
-    if (-not (Test-Path $FilePath)) {
-        return $null
-    }
+    foreach ($filePath in $FilePaths) {
+        if (-not (Test-Path $filePath)) {
+            continue
+        }
 
-    $line = Select-String -Path $FilePath -Pattern "^$Key=" | Select-Object -First 1
-    if (-not $line) {
-        return $null
+        $line = Select-String -Path $filePath -Pattern "^$Key=" | Select-Object -Last 1
+        if ($line) {
+            return ($line.Line -split '=', 2)[1]
+        }
     }
-
-    return ($line.Line -split '=', 2)[1]
+    return $null
 }
 
 function Resolve-DefaultProjectId {
-    $envFile = Join-Path $repoRoot ".env"
+    $envFiles = @(
+        (Join-Path $repoRoot ".env.local"),
+        (Join-Path $repoRoot ".env")
+    )
 
-    $dotenvProjectId = Get-DotEnvValue -FilePath $envFile -Key "FIREBASE_PROJECT_ID"
+    $dotenvProjectId = Get-DotEnvValue -FilePaths $envFiles -Key "FIREBASE_PROJECT_ID"
     if ($dotenvProjectId) {
         return $dotenvProjectId.Trim()
     }
 
-    $dotenvGcloudProject = Get-DotEnvValue -FilePath $envFile -Key "GCLOUD_PROJECT"
+    $dotenvGcloudProject = Get-DotEnvValue -FilePaths $envFiles -Key "GCLOUD_PROJECT"
     if ($dotenvGcloudProject) {
         return $dotenvGcloudProject.Trim()
     }
 
-    $dotenvBase64 = Get-DotEnvValue -FilePath $envFile -Key "FIREBASE_KEY_BASE64"
+    $dotenvBase64 = Get-DotEnvValue -FilePaths $envFiles -Key "FIREBASE_KEY_BASE64"
     if ($dotenvBase64) {
         try {
             $jsonText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($dotenvBase64.Trim()))
@@ -225,6 +229,45 @@ function Ensure-EmulatorUserAndGetToken {
     return $response.idToken
 }
 
+function Ensure-EmulatorEmailVerified {
+    param(
+        [string]$TargetEmail,
+        [string]$Token
+    )
+
+    $lookup = Invoke-AuthEmulatorRequest `
+        -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" `
+        -Body @{ idToken = $Token }
+
+    if ($lookup.users -and $lookup.users.Count -gt 0 -and $lookup.users[0].emailVerified -eq $true) {
+        return
+    }
+
+    Invoke-AuthEmulatorRequest `
+        -Path "/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=fake-api-key" `
+        -Body @{ requestType = "VERIFY_EMAIL"; idToken = $Token } | Out-Null
+
+    $oobResponse = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$AuthPort/emulator/v1/projects/$ProjectId/oobCodes"
+    $oobCodes = @($oobResponse.oobCodes)
+    $latestVerifyCode = $oobCodes |
+        Where-Object { $_.email -eq $TargetEmail -and $_.requestType -eq "VERIFY_EMAIL" } |
+        Select-Object -Last 1
+
+    if (-not $latestVerifyCode -or -not $latestVerifyCode.oobLink) {
+        throw "Failed to resolve VERIFY_EMAIL oobLink for $TargetEmail"
+    }
+
+    Invoke-WebRequest -Uri $latestVerifyCode.oobLink -UseBasicParsing | Out-Null
+
+    $afterLookup = Invoke-AuthEmulatorRequest `
+        -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" `
+        -Body @{ idToken = $Token }
+
+    if (-not ($afterLookup.users -and $afterLookup.users.Count -gt 0 -and $afterLookup.users[0].emailVerified -eq $true)) {
+        throw "Email verification did not complete for $TargetEmail"
+    }
+}
+
 function Ensure-BackendUserReady {
     param([string]$Token)
 
@@ -284,13 +327,18 @@ Wait-TcpPort -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $Timeout
 if (-not (Test-TcpPort -Port $BackendPort)) {
     $backendCommand = @(
         "`$env:PORT = '$BackendPort'",
+        "`$env:SERVER_PORT = '$BackendPort'",
+        "`$env:SPRING_PROFILES_ACTIVE = 'local'",
         "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
         "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
         "`$env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:$AuthPort'",
         "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
         "`$env:GCLOUD_PROJECT = '$ProjectId'",
         "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
-        "`$env:APP_PRESENCE_STORE = 'memory'",
+        "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
+        "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
+        "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
+        "`$env:APP_PRESENCE_STORE = 'redis'",
         "`$env:REDIS_HOST = 'localhost'",
         "& '.\\gradlew.bat' bootRun"
     ) -join "; "
@@ -301,6 +349,7 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
 Wait-TcpPort -Port $BackendPort -Name "Spring Boot backend" -TimeoutSec $TimeoutSeconds
 
 $idToken = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
+Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
 
 $playwrightAccounts = @(
     @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" },
@@ -328,6 +377,7 @@ Write-TokenArtifacts `
 
 foreach ($account in $playwrightAccounts) {
     $accountToken = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
+    Ensure-EmulatorEmailVerified -TargetEmail $account.Email -Token $accountToken
     Ensure-BackendUserReady -Token $accountToken | Out-Null
     Write-TokenArtifacts `
         -Token $accountToken `

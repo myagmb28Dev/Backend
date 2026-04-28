@@ -21,6 +21,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
     boolean existsByFirebaseUid(String firebaseUid);
     long countByStatus(UserStatus status);
+    long countByCreatedAtBetween(Instant from, Instant to);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

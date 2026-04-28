@@ -111,6 +111,7 @@
       <button id="goNoticeButton" class="secondary">Notice Flow 열기</button>
       <button id="goDmButton" class="secondary">DM Flow 열기</button>
       <button id="goNotificationFlowButton" class="secondary">Notification Flow 열기</button>
+      <button id="goAdminFlowButton" class="secondary">Admin Flow 열기</button>
       <button id="goRedirectButton">요청된 경로로 이동</button>
     </div>
   </section>
@@ -534,6 +535,7 @@ function targetUrl(pathname) {
 function goNotice() { assertCanNavigate(); window.location.href = targetUrl("/notice-flow.html"); }
 function goDm() { assertCanNavigate(); window.location.href = targetUrl("/dm-flow.html"); }
 function goNotificationFlow() { assertCanNavigate(); window.location.href = targetUrl("/notification-flow.html"); }
+function goAdminFlow() { window.location.href = "/admin-flow.html"; }
 function goRedirect() { assertCanNavigate(); window.location.href = targetUrl(redirectPath); }
 
 function run(handler) {
@@ -546,6 +548,7 @@ function run(handler) {
 el("goNoticeButton").addEventListener("click", run(goNotice));
 el("goDmButton").addEventListener("click", run(goDm));
 el("goNotificationFlowButton").addEventListener("click", run(goNotificationFlow));
+el("goAdminFlowButton").addEventListener("click", run(goAdminFlow));
 el("goRedirectButton").addEventListener("click", run(goRedirect));
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
 el("googleLoginButton").addEventListener("click", run(startGoogleLogin));

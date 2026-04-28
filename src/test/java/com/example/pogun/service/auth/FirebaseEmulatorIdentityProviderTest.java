@@ -2,7 +2,6 @@ package com.example.pogun.service.auth;
 
 import com.example.pogun.config.FirebaseAuthProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -21,7 +20,7 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(true);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
         String token = tokenFor("pogun-local", "emulator-uid", "tester@local.dev");
 
         FirebaseIdentityService.FirebaseIdentity identity = provider.verifyIdToken(token, false);
@@ -38,7 +37,7 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(false);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
 
         assertThatThrownBy(() -> provider.verifyIdToken(tokenFor("pogun-local", "uid", "tester@local.dev"), true))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -52,7 +51,7 @@ class FirebaseEmulatorIdentityProviderTest {
         properties.setAllowEmulator(true);
         properties.setProjectId("pogun-local");
 
-        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties, mock(FirebaseAuth.class));
+        FirebaseEmulatorIdentityProvider provider = new FirebaseEmulatorIdentityProvider(new ObjectMapper(), properties);
 
         assertThatThrownBy(() -> provider.verifyIdToken(tokenFor("other-project", "uid", "tester@local.dev"), true))
                 .isInstanceOf(IllegalArgumentException.class)

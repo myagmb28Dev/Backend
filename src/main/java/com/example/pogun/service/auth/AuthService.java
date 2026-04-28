@@ -1,5 +1,6 @@
 package com.example.pogun.service.auth;
 
+import com.example.pogun.config.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
@@ -49,6 +50,7 @@ public class AuthService {
     private static final long PENDING_SIGNUP_TTL_SECONDS = 60L * 60L * 24L;
 
     private final FirebaseAuth firebaseAuth;
+    private final FirebaseAuthProperties firebaseAuthProperties;
     private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final UserSocialAccountRepository userSocialAccountRepository;
@@ -163,6 +165,54 @@ public class AuthService {
         return buildAuthResponse(saved);
     }
 
+    @Transactional
+    public AuthResponse loginAdmin(String idToken) {
+        try {
+            FirebaseIdentityService.FirebaseIdentity identity = firebaseIdentityService.verifyIdToken(idToken);
+            String uid = identity.uid();
+            String email = identity.email();
+            String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "password");
+            String resolvedNickname = resolveNickname(identity.displayName(), email, uid);
+
+            User user = userRepository.findByFirebaseUid(uid)
+                    .orElseGet(() -> userRepository.findByEmail(email)
+                            .map(existingByEmail -> {
+                                existingByEmail.setFirebaseUid(uid);
+                                return userRepository.save(existingByEmail);
+                            })
+                            .orElseThrow(() -> ApiException.forbidden("ADMIN_ONLY", "관리자 계정만 로그인할 수 있습니다.")));
+
+            if (user.getRole() != UserRole.ADMIN) {
+                throw ApiException.forbidden("ADMIN_ONLY", "관리자 계정만 로그인할 수 있습니다.");
+            }
+            if (user.getStatus() != UserStatus.ACTIVE) {
+                throw ApiException.forbidden(
+                        user.getStatus() == UserStatus.BANNED ? "USER_BANNED" : "USER_WITHDRAWN",
+                        user.getStatus() == UserStatus.BANNED ? "제재된 관리자는 이용할 수 없습니다." : "탈퇴한 관리자는 이용할 수 없습니다."
+                );
+            }
+
+            user.setEmail(email);
+            user.setNickname(resolvedNickname);
+            user.setProfileImageUrl(identity.photoUrl());
+            user.setAuthProvider(normalizedProvider);
+            user.setLastActiveAt(Instant.now());
+            User saved = userRepository.save(user);
+
+            syncProviders(saved, identity);
+            userPresenceService.touchFromAuthentication(saved.getFirebaseUid());
+            return buildAuthResponse(saved);
+        } catch (ApiException e) {
+            throw e;
+        } catch (FirebaseAuthException | IllegalArgumentException e) {
+            log.error("관리자 Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
+            String detail = e instanceof FirebaseAuthException firebaseAuthException
+                    ? String.valueOf(firebaseAuthException.getAuthErrorCode())
+                    : e.getMessage();
+            throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + detail);
+        }
+    }
+
     private String resolveNickname(String displayName, String email, String uid) {
         if (displayName != null && !displayName.isBlank()) {
             return displayName.trim();
@@ -188,7 +238,9 @@ public class AuthService {
         log.info("사용자 로그아웃 처리 (RefreshToken 만료): userId={}", user.getId());
 
         try {
-            firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
+            if (!firebaseAuthProperties.isEmulatorMode()) {
+                firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
+            }
             firebaseIdentityService.revokeTokenLocally(currentIdToken);
             userPresenceService.forceOffline(user.getFirebaseUid());
             noticeChatServiceProvider.getObject().publishPresenceUpdates(user);
