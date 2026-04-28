@@ -81,11 +81,23 @@ public class AdminAuthService {
         User admin = resolveAdminUser(firebaseUid, email);
         boolean emailVerified = resolveEmailVerified(firebaseUid, false);
 
-        if (admin.isAdminEmailVerificationRequired()) {
-            if (emailVerified && admin.getAdminEmailVerifiedAt() == null) {
+        if (!admin.isAdminEmailVerificationRequired() && admin.getAdminEmailVerifiedAt() == null) {
+            admin.setAdminEmailVerificationRequired(true);
+            admin = userRepository.save(admin);
+            if (emailVerified) {
                 resetFirebaseEmailVerified(firebaseUid);
-                emailVerified = false;
             }
+            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
+            adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+            return new AdminLoginResponse(
+                    "EMAIL_VERIFICATION_REQUIRED",
+                    false,
+                    null,
+                    null
+            );
+        }
+
+        if (admin.isAdminEmailVerificationRequired()) {
             if (!emailVerified) {
                 adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
                 adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
