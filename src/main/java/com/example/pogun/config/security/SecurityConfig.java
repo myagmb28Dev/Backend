@@ -23,6 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final AdminSessionAuthenticationFilter adminSessionAuthenticationFilter;
     private final FirebaseTokenFilter firebaseTokenFilter;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
     private final ApiAccessDeniedHandler apiAccessDeniedHandler;
@@ -49,6 +50,8 @@ public class SecurityConfig {
                         .requestMatchers("/notification-flow.html")
                         .permitAll()
                         .requestMatchers("/admin-flow.html")
+                        .permitAll()
+                        .requestMatchers("/admin-local-bootstrap.js")
                         .permitAll()
                         .requestMatchers("/firebase-web-config.js")
                         .permitAll()
@@ -79,9 +82,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/missing-pets/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/shelter/*/analysis-result").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/admin/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/admin/auth/session").permitAll()
+                        .requestMatchers("/api/admin/auth/**").hasAuthority("ROLE_ADMIN_CONSOLE")
                         .requestMatchers("/ws/chat").permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated())
+                .addFilterBefore(adminSessionAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(firebaseTokenFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -29,6 +29,11 @@
     button.secondary { background:rgba(31,41,51,.11); color:var(--ink); }
     button:disabled { opacity:.5; cursor:not-allowed; }
     .detail { display:grid; gap:8px; }
+    .notice-list-controls { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .notice-list { display:grid; gap:8px; margin-top:10px; }
+    .notice-item { border:1px solid rgba(31,41,51,.12); border-radius:10px; background:#fffdf7; padding:10px; display:grid; gap:6px; }
+    .notice-item .top { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+    .notice-item .meta { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
     .detail-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:8px; }
     .detail-images img { width:100%; border-radius:10px; border:1px solid rgba(31,41,51,.1); display:block; background:#f5efe4; }
     @media (max-width:760px){ .grid{grid-template-columns:1fr;} }
@@ -49,6 +54,7 @@
       button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;white-space:normal;}
       .muted{font-size:12px;line-height:1.45;overflow-wrap:anywhere;}
       .detail{min-width:0;overflow-wrap:anywhere;}
+      .notice-list-controls{grid-template-columns:1fr;gap:7px;}
       .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
       .detail-images img{border-radius:8px;}
     }
@@ -79,6 +85,38 @@
     <div class="actions" style="margin-top:10px">
       <button id="goLoginFlowButton" class="secondary">Login Flow로 이동</button>
     </div>
+  </section>
+
+  <section class="card">
+    <h2>공고 목록 조회</h2>
+    <div class="notice-list-controls">
+      <label>검색어<input id="listQuery" placeholder="제목/설명"></label>
+      <label>상태
+        <select id="listStatus">
+          <option value="">전체</option>
+          <option value="OPEN">OPEN</option>
+          <option value="RESOLVED">RESOLVED</option>
+          <option value="CLOSED">CLOSED</option>
+        </select>
+      </label>
+      <label>내 공고만
+        <select id="listMineOnly">
+          <option value="false" selected>전체</option>
+          <option value="true">내 공고만</option>
+        </select>
+      </label>
+      <label>개수
+        <select id="listSize">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="loadNoticeListButton" class="secondary" disabled>공고 목록 불러오기</button>
+    </div>
+    <div id="noticeList" class="notice-list muted">로그인 후 목록을 조회할 수 있습니다.</div>
   </section>
 
   <section class="card">
@@ -152,6 +190,7 @@ function renderSessionInfo() {
     ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
     : "login-flow.html에서 로그인 후 진입해 주세요.";
   el("createNoticeButton").disabled = !activeRole;
+  el("loadNoticeListButton").disabled = !activeRole;
   el("loadDetailButton").disabled = !activeRole || !currentNoticeId;
   syncEditorButtons();
 }
@@ -266,6 +305,7 @@ async function login(role) {
   try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
   renderSessionInfo();
   setStatus(`${users[role].label} 로그인 완료`, "good");
+  await loadNoticeList();
   if (currentNoticeId) {
     await loadNoticeDetail(currentNoticeId);
   }
@@ -338,6 +378,7 @@ async function createNotice() {
   setStatus(`공고 생성 완료: ${response.body?.data?.title || currentNoticeId}`, "good");
   if (currentNoticeId) {
     await loadNoticeDetail(currentNoticeId);
+    await loadNoticeList();
     setTimeout(() => {
       window.location.href = toDmTestUrl(currentNoticeId);
     }, 600);
@@ -363,6 +404,7 @@ async function updateNotice() {
   currentNoticeId = response.body?.data?.id || editingNoticeId;
   setStatus(`공고 수정 완료: ${response.body?.data?.title || currentNoticeId}`, "good");
   await loadNoticeDetail(currentNoticeId);
+  await loadNoticeList();
   setEditorMode(false);
   el("images").value = "";
 }
@@ -388,6 +430,7 @@ async function deleteNotice() {
   setEditorMode(false);
   el("images").value = "";
   setStatus("공고와 연결된 DM 방 삭제 완료", "good");
+  await loadNoticeList();
   renderSessionInfo();
 }
 
@@ -483,6 +526,64 @@ async function loadNoticeDetail(noticeId) {
   renderSessionInfo();
 }
 
+function renderNoticeList(items) {
+  const list = el("noticeList");
+  if (!items.length) {
+    list.className = "notice-list muted";
+    list.textContent = "조회된 공고가 없습니다.";
+    return;
+  }
+  list.className = "notice-list";
+  list.innerHTML = items.map((notice) => {
+    const mine = isOwnerNotice(notice);
+    return `
+      <div class="notice-item">
+        <div class="top">
+          <strong>${escapeHtml(notice.title || "(제목 없음)")}</strong>
+          <button class="secondary" data-notice-open="${escapeHtml(notice.id || "")}">상세 보기</button>
+        </div>
+        <div class="meta">ID: ${escapeHtml(notice.id || "-")}</div>
+        <div class="meta">상태: ${escapeHtml(notice.status || "-")} · 지역: ${escapeHtml(notice.missingRegion || "-")}</div>
+        <div class="meta">작성자: ${escapeHtml(notice.authorNickname || "-")}${mine ? " (내 공고)" : ""}</div>
+      </div>
+    `;
+  }).join("");
+
+  list.querySelectorAll("[data-notice-open]").forEach((button) => {
+    button.addEventListener("click", run(async () => {
+      const noticeId = button.getAttribute("data-notice-open");
+      if (!noticeId) return;
+      currentNoticeId = noticeId;
+      query.set("noticeId", noticeId);
+      window.history.replaceState({}, "", `${window.location.pathname}?${query.toString()}`);
+      el("loadDetailButton").disabled = false;
+      await loadNoticeDetail(noticeId);
+    }));
+  });
+}
+
+async function loadNoticeList() {
+  if (!activeRole) throw new Error("먼저 로그인하세요.");
+  const params = new URLSearchParams();
+  const queryText = el("listQuery").value.trim();
+  const status = el("listStatus").value;
+  const size = String(el("listSize").value || "20");
+  if (queryText) params.set("query", queryText);
+  if (status) params.set("status", status);
+  params.set("size", size);
+  params.set("page", "0");
+
+  setStatus("공고 목록 조회 중...");
+  const response = await authApi(`/api/missing-pets?${params.toString()}`);
+  if (response.status !== 200) throw new Error(`공고 목록 조회 실패: ${JSON.stringify(response.body)}`);
+  const data = response.body?.data || {};
+  const rawItems = Array.isArray(data.content) ? data.content : (Array.isArray(data.items) ? data.items : []);
+  const mineOnly = el("listMineOnly").value === "true";
+  const items = mineOnly ? rawItems.filter((item) => isOwnerNotice(item)) : rawItems;
+  renderNoticeList(items);
+  setStatus(`공고 목록 ${items.length}건 조회 완료`, "good");
+}
+
 function run(handler) {
   return async () => {
     try { await handler(); }
@@ -496,6 +597,7 @@ el("cancelEditButton").addEventListener("click", cancelEdit);
 el("deleteNoticeButton").addEventListener("click", run(deleteNotice));
 el("toDmButton").addEventListener("click", () => { window.location.href = toDmTestUrl(); });
 el("loadDetailButton").addEventListener("click", run(() => loadNoticeDetail(currentNoticeId)));
+el("loadNoticeListButton").addEventListener("click", run(loadNoticeList));
 el("goLoginFlowButton").addEventListener("click", moveToLoginFlow);
 
 if (!el("missingDate").value) el("missingDate").value = new Date().toISOString();

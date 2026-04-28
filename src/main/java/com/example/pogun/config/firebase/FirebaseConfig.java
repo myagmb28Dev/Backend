@@ -1,5 +1,6 @@
 package com.example.pogun.config;
 
+import com.example.pogun.config.AdminConsoleProperties;
 import com.example.pogun.service.auth.FirebaseAdminIdentityProvider;
 import com.example.pogun.service.auth.FirebaseEmulatorIdentityProvider;
 import com.example.pogun.service.auth.FirebaseIdentityProvider;
@@ -25,7 +26,7 @@ import java.util.Date;
 
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(FirebaseAuthProperties.class)
+@EnableConfigurationProperties({FirebaseAuthProperties.class, AdminConsoleProperties.class})
 public class FirebaseConfig {
 
     private final FirebaseAuthProperties firebaseAuthProperties;
@@ -91,7 +92,7 @@ public class FirebaseConfig {
             FirebaseAuth firebaseAuth
     ) {
         if (firebaseAuthProperties.isEmulatorMode()) {
-            return new FirebaseEmulatorIdentityProvider(objectMapper, firebaseAuthProperties, firebaseAuth);
+            return new FirebaseEmulatorIdentityProvider(objectMapper, firebaseAuthProperties);
         }
         return new FirebaseAdminIdentityProvider(firebaseAuth);
     }

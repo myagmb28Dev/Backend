@@ -17,7 +17,8 @@ public enum NotificationType {
     FOLLOWED_ME,
     FOLLOWING_POST,
     COMMUNITY_NOTICE,
-    CHAT_ROOM_NOTICE
+    CHAT_ROOM_NOTICE,
+    ADMIN_BROADCAST
 }
 
 

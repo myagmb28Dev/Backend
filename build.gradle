@@ -26,7 +26,7 @@ repositories {
 
 dependencies {
 	implementation 'com.google.firebase:firebase-admin:9.4.2'
-	implementation 'me.paulschwarz:spring-dotenv:5.1.0'
+	implementation 'com.yubico:webauthn-server-core:2.8.1'
 	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
 	implementation platform('software.amazon.awssdk:bom:2.32.15')
 	implementation 'software.amazon.awssdk:s3'
@@ -56,19 +56,6 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 	jvmArgs '-Xshare:off'
-}
-
-// Load environment variables from .env file for bootRun
-tasks.named('bootRun') {
-	sourceResources sourceSets.main
-	if (file(".env").exists()) {
-		file(".env").readLines().each {
-			if (!it.isEmpty() && !it.startsWith("#")) {
-				def (key, value) = it.split("=", 2)
-				environment key.trim(), value.trim()
-			}
-		}
-	}
 }
 
 // Ensure Spring Boot creates only the executable bootJar and not the plain jar

@@ -47,6 +47,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그인 성공", data));
     }
 
+    @PostMapping("/admin/login")
+    @Operation(summary = "관리자 로그인", description = "Firebase 이메일/비밀번호 로그인으로 발급된 ID Token을 검증하고 기존 관리자 계정만 로그인시킵니다.")
+    public ResponseEntity<ApiResponse<AuthResponse>> adminSignIn(@Valid @RequestBody LoginRequest request) {
+        AuthResponse data = authService.loginAdmin(request.getFirebaseIdToken());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그인 성공", data));
+    }
+
     @PostMapping("/onboarding/complete")
     @Operation(summary = "온보딩 완료", description = "소셜 인증 후 지역 정보를 받아 정식 회원가입을 완료합니다.")
     public ResponseEntity<ApiResponse<AuthResponse>> completeOnboarding(@Valid @RequestBody OnboardingCompleteRequest request) {

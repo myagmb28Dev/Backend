@@ -10,7 +10,8 @@ public enum NotificationTargetType {
     COMMUNITY_POST,
     COMMUNITY_COMMENT,
     REPORT,
-    USER
+    USER,
+    ADMIN_BROADCAST
 }
 
 

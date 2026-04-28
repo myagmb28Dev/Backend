@@ -70,7 +70,7 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
-    void doFilterInternal_allowsActiveAdminAndSetsRole() throws ServletException, IOException, FirebaseAuthException {
+    void doFilterInternal_allowsActiveAdminOnNonAdminApiAndSetsRole() throws ServletException, IOException, FirebaseAuthException {
         FirebaseTokenFilter filter = new FirebaseTokenFilter(
                 firebaseIdentityService,
                 userRepository,
@@ -83,7 +83,7 @@ class FirebaseTokenFilterTest {
                 .thenReturn(new FirebaseIdentityService.FirebaseIdentity("firebase-uid", "admin@test.dev", "Admin", null, "password", List.of(), Map.of()));
         when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(admin));
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/admin/reports");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/missing-pets");
         request.addHeader("Authorization", "Bearer id-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 

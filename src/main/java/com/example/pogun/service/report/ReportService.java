@@ -2,8 +2,10 @@ package com.example.pogun.service.report;
 
 import com.example.pogun.dto.admin.AdminReportDetailResponse;
 import com.example.pogun.dto.admin.AdminReportListResponse;
+import com.example.pogun.dto.admin.AdminReportActionRequest;
 import com.example.pogun.dto.admin.AdminReportReviewRequest;
 import com.example.pogun.dto.report.ReportResponse;
+import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.community.CommunityComment;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.missingpet.PetNotice;
@@ -24,6 +26,9 @@ import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.admin.AdminService;
+import com.example.pogun.service.adminauth.AdminAuditService;
+import com.example.pogun.service.adminauth.AdminPrincipal;
+import com.example.pogun.service.adminauth.AdminSecurityService;
 import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,6 +36,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +60,8 @@ public class ReportService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final AdminService adminService;
+    private final AdminSecurityService adminSecurityService;
+    private final AdminAuditService adminAuditService;
 
     // 신고는 단일 테이블로 관리하되, 저장 전에 대상 존재 여부와 활성 중복 신고를 함께 차단한다.
     @Transactional
@@ -74,6 +83,7 @@ public class ReportService {
                 .description(description)
                 .status(ReportStatus.RECEIVED)
                 .build());
+        applyAutoHideThreshold(report);
 
         return toReportResponse(report);
     }
@@ -83,7 +93,73 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    public Map<String, Object> listAdminReports(String statusValue, String targetTypeValue, Integer page, Integer pageSize) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
+        ReportStatus status = parseOptionalAdminStatus(statusValue);
+        ReportTargetType targetType = parseOptionalAdminTargetType(targetTypeValue);
+        int resolvedPage = Math.max((page == null ? 1 : page) - 1, 0);
+        int resolvedPageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 100);
+
+        List<Map<String, Object>> items = reportRepository.findAll().stream()
+                .filter(report -> status == null || report.getStatus() == status)
+                .filter(report -> targetType == null || report.getTargetType() == targetType)
+                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+                .map(this::toAdminReportSummaryMap)
+                .toList();
+
+        return paginate(items, resolvedPage, resolvedPageSize);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getAdminReportDetail(String reportId) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
+        Report report = getReport(reportId);
+        return toAdminReportDetailMap(report);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getAdminReporters(String reportId) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
+        Report report = getReport(reportId);
+        return reportRepository.findAll().stream()
+                .filter(candidate -> candidate.getTargetType() == report.getTargetType())
+                .filter(candidate -> candidate.getTargetId().equals(report.getTargetId()))
+                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+                .map(candidate -> orderedMap(
+                        "userId", candidate.getReporter().getId(),
+                        "name", candidate.getReporter().getNickname(),
+                        "email", candidate.getReporter().getEmail(),
+                        "comment", candidate.getDescription(),
+                        "reason", candidate.getReason(),
+                        "autoFlagged", false,
+                        "reportedAt", candidate.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> dismissReport(String reportId, AdminReportActionRequest request) {
+        return applyAdminAction(reportId, ReportStatus.REJECTED, ReportProcessAction.NONE, request);
+    }
+
+    @Transactional
+    public Map<String, Object> warnReport(String reportId, AdminReportActionRequest request) {
+        return applyAdminAction(reportId, ReportStatus.RESOLVED, ReportProcessAction.SANCTION_TARGET_USER, request);
+    }
+
+    @Transactional
+    public Map<String, Object> deleteTarget(String reportId, AdminReportActionRequest request) {
+        return applyAdminAction(reportId, ReportStatus.RESOLVED, ReportProcessAction.DELETE_TARGET, request);
+    }
+
+    @Transactional
+    public Map<String, Object> resolveReport(String reportId, AdminReportActionRequest request) {
+        return applyAdminAction(reportId, ReportStatus.RESOLVED, ReportProcessAction.NONE, request);
+    }
+
+    @Transactional(readOnly = true)
     public AdminReportListResponse getReports(String statusValue, String targetTypeValue, int page, int size) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
         ReportStatus status = parseOptionalStatus(statusValue);
         ReportTargetType targetType = parseOptionalTargetType(targetTypeValue);
         int safePage = Math.max(page, 0);
@@ -105,13 +181,16 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public AdminReportDetailResponse getReportDetail(String reportId) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
         Report report = getReport(reportId);
         return toAdminReportDetailResponse(report);
     }
 
     @Transactional
     public ReportResponse updateReportStatus(String reportId, Object statusValue) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
         Report report = getReport(reportId);
+        ReportStatus beforeStatus = report.getStatus();
         ReportStatus status = parseStatus(statusValue);
         report.setStatus(status);
         if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
@@ -123,12 +202,22 @@ public class ReportService {
         if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
             notifyReportResult(saved);
         }
+        adminAuditService.log(
+                "ADMIN_REPORT_STATUS_UPDATED",
+                "REPORT",
+                saved.getId().toString(),
+                Map.of("status", normalizeAdminReportStatus(beforeStatus)),
+                Map.of("status", normalizeAdminReportStatus(saved.getStatus())),
+                null
+        );
         return toReportResponse(saved);
     }
 
     @Transactional
     public AdminReportDetailResponse reviewReport(String reportId, AdminReportReviewRequest request) {
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
         Report report = getReport(reportId);
+        ReportStatus beforeStatus = report.getStatus();
         ReportStatus status = parseStatus(request.getStatus());
         ReportProcessAction action = parseProcessAction(request.getProcessAction());
         User reviewer = getCurrentUser();
@@ -150,12 +239,31 @@ public class ReportService {
         if (status == ReportStatus.RESOLVED || status == ReportStatus.REJECTED) {
             notifyReportResult(saved);
         }
+        adminAuditService.log(
+                "ADMIN_REPORT_REVIEWED",
+                "REPORT",
+                saved.getId().toString(),
+                Map.of("status", normalizeAdminReportStatus(beforeStatus)),
+                Map.of(
+                        "status", normalizeAdminReportStatus(saved.getStatus()),
+                        "processAction", saved.getProcessedAction() == null ? "NONE" : saved.getProcessedAction().name()
+                ),
+                Map.of("processReason", saved.getProcessReason())
+        );
         return toAdminReportDetailResponse(saved);
     }
 
     private User getCurrentUser() {
-        String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return userRepository.findByFirebaseUid(firebaseUid).orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof String firebaseUid) {
+            return userRepository.findByFirebaseUid(firebaseUid)
+                    .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+        }
+        if (principal instanceof AdminPrincipal adminPrincipal) {
+            return userRepository.findById(adminPrincipal.userId())
+                    .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+        }
+        throw ApiException.unauthorized("USER_REQUIRED", "인증된 사용자가 필요합니다.");
     }
 
     private UUID parseUuid(String value) {
@@ -217,6 +325,13 @@ public class ReportService {
         return parseTargetType(targetTypeValue);
     }
 
+    private ReportTargetType parseOptionalAdminTargetType(String targetTypeValue) {
+        if (targetTypeValue == null || targetTypeValue.isBlank()) {
+            return null;
+        }
+        return parseAdminTargetType(targetTypeValue);
+    }
+
     private ReportStatus parseStatus(Object statusValue) {
         if (statusValue == null || String.valueOf(statusValue).isBlank()) {
             throw ApiException.badRequest("MISSING_REPORT_STATUS", "status는 필수입니다.");
@@ -233,6 +348,36 @@ public class ReportService {
             return null;
         }
         return parseStatus(statusValue);
+    }
+
+    private ReportStatus parseOptionalAdminStatus(String statusValue) {
+        if (statusValue == null || statusValue.isBlank()) {
+            return null;
+        }
+        return parseAdminStatus(statusValue);
+    }
+
+    private ReportStatus parseAdminStatus(String statusValue) {
+        String normalized = statusValue.trim().toUpperCase();
+        return switch (normalized) {
+            case "PENDING", "RECEIVED" -> ReportStatus.RECEIVED;
+            case "REVIEWING" -> ReportStatus.REVIEWING;
+            case "RESOLVED" -> ReportStatus.RESOLVED;
+            case "REJECTED", "DISMISSED" -> ReportStatus.REJECTED;
+            default -> throw ApiException.badRequest("INVALID_REPORT_STATUS", "올바르지 않은 신고 상태입니다.");
+        };
+    }
+
+    private ReportTargetType parseAdminTargetType(String targetTypeValue) {
+        String normalized = targetTypeValue.trim().toUpperCase();
+        return switch (normalized) {
+            case "NOTICE", "PET_NOTICE" -> ReportTargetType.PET_NOTICE;
+            case "COMMUNITY_POST" -> ReportTargetType.COMMUNITY_POST;
+            case "COMMUNITY_COMMENT" -> ReportTargetType.COMMUNITY_COMMENT;
+            case "NOTICE_CHAT_ROOM" -> ReportTargetType.NOTICE_CHAT_ROOM;
+            case "USER" -> ReportTargetType.USER;
+            default -> throw ApiException.badRequest("INVALID_TARGET_TYPE", "올바르지 않은 targetType 값입니다.");
+        };
     }
 
     private ReportProcessAction parseProcessAction(String actionValue) {
@@ -254,6 +399,33 @@ public class ReportService {
             case DELETE_TARGET -> deleteReportTarget(report);
             case SANCTION_TARGET_USER -> sanctionReportTargetUser(report);
         }
+    }
+
+    private Map<String, Object> applyAdminAction(String reportId, ReportStatus status, ReportProcessAction action, AdminReportActionRequest request) {
+        Report report = getReport(reportId);
+        adminSecurityService.require(AdminPermission.REPORT_REVIEW);
+        ReportStatus beforeStatus = report.getStatus();
+        String memo = request == null ? null : normalizeNullable(request.getMemo());
+
+        applyProcessAction(report, action);
+        report.setStatus(status);
+        report.setProcessedAction(action == ReportProcessAction.NONE ? null : action);
+        report.setProcessReason(memo);
+        report.setReviewedAt(Instant.now());
+        report.setReviewedBy(getCurrentUser());
+
+        Report saved = reportRepository.save(report);
+        notifyReportResult(saved);
+        Map<String, Object> response = toAdminReportDetailMap(saved);
+        adminAuditService.log(
+                "ADMIN_REPORT_ACTION_APPLIED",
+                "REPORT",
+                saved.getId().toString(),
+                Map.of("status", normalizeAdminReportStatus(beforeStatus)),
+                Map.of("status", normalizeAdminReportStatus(saved.getStatus()), "processAction", action.name()),
+                memo == null ? null : Map.of("memo", memo)
+        );
+        return response;
     }
 
     private void hideReportTarget(Report report) {
@@ -382,8 +554,61 @@ public class ReportService {
         };
     }
 
+    private Map<String, Object> toAdminReportSummaryMap(Report report) {
+        return orderedMap(
+                "id", report.getId(),
+                "targetType", normalizeAdminTargetType(report.getTargetType()),
+                "reason", report.getReason(),
+                "reporterCount", reportRepository.countByTargetTypeAndTargetId(report.getTargetType(), report.getTargetId()),
+                "status", normalizeAdminReportStatus(report.getStatus()),
+                "lastReportedAt", report.getCreatedAt(),
+                "targetId", report.getTargetId()
+        );
+    }
+
+    private Map<String, Object> toAdminReportDetailMap(Report report) {
+        AdminReportDetailResponse.TargetSummary target = resolveTargetSummary(report);
+        return orderedMap(
+                "id", report.getId(),
+                "targetType", normalizeAdminTargetType(report.getTargetType()),
+                "targetId", report.getTargetId(),
+                "reason", report.getReason(),
+                "description", report.getDescription(),
+                "status", normalizeAdminReportStatus(report.getStatus()),
+                "reporterCount", reportRepository.countByTargetTypeAndTargetId(report.getTargetType(), report.getTargetId()),
+                "reporters", getAdminReporters(report.getId().toString()),
+                "targetTitle", target.title(),
+                "targetUrl", resolveTargetUrl(report),
+                "target", orderedMap(
+                        "targetId", target.targetId(),
+                        "targetType", target.targetType(),
+                        "title", target.title(),
+                        "authorId", target.authorId(),
+                        "authorNickname", target.authorNickname(),
+                        "status", target.status(),
+                        "hidden", target.hidden()
+                ),
+                "reviewedById", report.getReviewedBy() == null ? null : report.getReviewedBy().getId(),
+                "reviewedByNickname", report.getReviewedBy() == null ? null : report.getReviewedBy().getNickname(),
+                "processReason", report.getProcessReason(),
+                "processedAction", report.getProcessedAction() == null ? null : report.getProcessedAction().name(),
+                "reviewedAt", report.getReviewedAt(),
+                "createdAt", report.getCreatedAt()
+        );
+    }
+
     private AdminReportDetailResponse.TargetSummary missingTargetSummary(Report report) {
         return new AdminReportDetailResponse.TargetSummary(report.getTargetId(), report.getTargetType().name(), "삭제된 대상", null, null, "DELETED_OR_MISSING", null);
+    }
+
+    private String resolveTargetUrl(Report report) {
+        return switch (report.getTargetType()) {
+            case PET_NOTICE -> "/api/admin/notices/" + report.getTargetId();
+            case COMMUNITY_POST -> "/api/admin/community/posts/" + report.getTargetId();
+            case COMMUNITY_COMMENT -> "/api/admin/community/posts/" + report.getTargetId();
+            case NOTICE_CHAT_ROOM -> "/api/admin/reports/" + report.getId();
+            case USER -> "/api/admin/users/" + report.getTargetId();
+        };
     }
 
     private String normalizeNullable(String value) {
@@ -445,5 +670,63 @@ public class ReportService {
                     .orElse(null);
         }
         return null;
+    }
+
+    private void applyAutoHideThreshold(Report report) {
+        if (report.getTargetType() != ReportTargetType.PET_NOTICE) {
+            return;
+        }
+        long reportCount = reportRepository.countByTargetTypeAndTargetId(report.getTargetType(), report.getTargetId());
+        if (reportCount < 5L) {
+            return;
+        }
+        petNoticeRepository.findById(report.getTargetId()).ifPresent(notice -> {
+            if (Boolean.TRUE.equals(notice.getHidden())) {
+                return;
+            }
+            notice.setHidden(true);
+            petNoticeRepository.save(notice);
+            adminAuditService.log(
+                    "AUTO_NOTICE_HIDDEN_BY_REPORT_THRESHOLD",
+                    "PET_NOTICE",
+                    notice.getId().toString(),
+                    Map.of("hidden", false, "reportCount", reportCount),
+                    Map.of("hidden", true, "reportCount", reportCount),
+                    null
+            );
+        });
+    }
+
+    private String normalizeAdminTargetType(ReportTargetType targetType) {
+        return switch (targetType) {
+            case PET_NOTICE -> "NOTICE";
+            case COMMUNITY_POST -> "COMMUNITY_POST";
+            case COMMUNITY_COMMENT -> "COMMUNITY_COMMENT";
+            case NOTICE_CHAT_ROOM -> "NOTICE_CHAT_ROOM";
+            case USER -> "USER";
+        };
+    }
+
+    private String normalizeAdminReportStatus(ReportStatus status) {
+        return status == ReportStatus.RECEIVED ? "PENDING" : status.name();
+    }
+
+    private Map<String, Object> paginate(List<Map<String, Object>> items, int page, int pageSize) {
+        int fromIndex = Math.min(page * pageSize, items.size());
+        int toIndex = Math.min(fromIndex + pageSize, items.size());
+        return orderedMap(
+                "items", items.subList(fromIndex, toIndex),
+                "page", page + 1,
+                "pageSize", pageSize,
+                "total", items.size()
+        );
+    }
+
+    private Map<String, Object> orderedMap(Object... keyValues) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int index = 0; index < keyValues.length; index += 2) {
+            map.put(String.valueOf(keyValues[index]), keyValues[index + 1]);
+        }
+        return map;
     }
 }

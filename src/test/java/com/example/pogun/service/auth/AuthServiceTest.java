@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -218,5 +219,67 @@ class AuthServiceTest {
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getAvailabilityStatus()).isEqualTo(UserAvailabilityStatus.IDLE);
+    }
+
+    @Test
+    void loginAdmin_allowsExistingAdminUserWithEmailProvider() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "admin-uid",
+                "admin@example.com",
+                "관리자",
+                null,
+                "password",
+                List.of(),
+                java.util.Map.of()
+        );
+        User admin = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("admin-uid")
+                .email("admin@example.com")
+                .nickname("기존 관리자")
+                .role(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("admin-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("admin-uid")).thenReturn(Optional.of(admin));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
+
+        AuthResponse response = authService.loginAdmin("admin-token");
+
+        assertThat(response.id()).isEqualTo(admin.getId());
+        assertThat(response.role()).isEqualTo("ADMIN");
+        assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
+        assertThat(response.provider()).isEqualTo("EMAIL");
+        verify(userPresenceService).touchFromAuthentication("admin-uid");
+    }
+
+    @Test
+    void loginAdmin_rejectsNonAdminUser() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "user-uid",
+                "user@example.com",
+                "사용자",
+                null,
+                "password",
+                List.of(),
+                java.util.Map.of()
+        );
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("user-uid")
+                .email("user@example.com")
+                .nickname("일반 사용자")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("user-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("user-uid")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.loginAdmin("user-token"))
+                .hasMessageContaining("관리자 계정만 로그인할 수 있습니다.");
     }
 }
