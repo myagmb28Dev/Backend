@@ -24,6 +24,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
+import com.example.pogun.service.auth.FirebaseIdentityService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,8 +46,8 @@ public class AdminAuthService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final FirebasePasswordSignInClient firebasePasswordSignInClient;
     private final FirebaseAuth firebaseAuth;
+    private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
     private final AdminPasskeyRepository adminPasskeyRepository;
     private final AdminAuthChallengeRepository adminAuthChallengeRepository;
@@ -59,14 +60,29 @@ public class AdminAuthService {
     private final AdminAuditService adminAuditService;
     private final AdminConsoleProperties adminConsoleProperties;
 
-    public AdminLoginResponse login(String email, String password, HttpServletRequest request) {
-        FirebasePasswordSignInClient.FirebasePasswordSignInResult result = firebasePasswordSignInClient.signIn(email, password);
-        boolean emailVerified = resolveEmailVerified(result.localId(), result.emailVerified());
+    public AdminLoginResponse loginWithGoogleToken(String firebaseIdToken, HttpServletRequest request) {
+        FirebaseIdentityService.FirebaseIdentity identity;
+        try {
+            identity = firebaseIdentityService.verifyIdToken(firebaseIdToken, true);
+        } catch (Exception e) {
+            throw ApiException.unauthorized("INVALID_CREDENTIALS", "유효한 Google 로그인 토큰이 필요합니다.");
+        }
 
-        User admin = resolveAdminUser(result.localId(), result.email());
+        if (!isGoogleSignIn(identity)) {
+            throw ApiException.forbidden("GOOGLE_SIGN_IN_REQUIRED", "관리자 로그인은 Google 소셜 로그인만 허용됩니다.");
+        }
+
+        String firebaseUid = identity.uid();
+        String email = identity.email();
+        if (firebaseUid == null || firebaseUid.isBlank() || email == null || email.isBlank()) {
+            throw ApiException.unauthorized("INVALID_CREDENTIALS", "Google 로그인 사용자 정보를 확인할 수 없습니다.");
+        }
+
+        boolean emailVerified = resolveEmailVerified(firebaseUid, false);
+        User admin = resolveAdminUser(firebaseUid, email);
 
         if (!emailVerified) {
-            adminEmailVerificationService.sendVerificationEmail(result.idToken());
+            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
             adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
                     "EMAIL_VERIFICATION_REQUIRED",
@@ -151,6 +167,18 @@ public class AdminAuthService {
                 sessionResponse,
                 options
         );
+    }
+
+    private boolean isGoogleSignIn(FirebaseIdentityService.FirebaseIdentity identity) {
+        if (identity == null) {
+            return false;
+        }
+        if ("google.com".equalsIgnoreCase(identity.signInProvider())) {
+            return true;
+        }
+        return identity.providers() != null && identity.providers().stream()
+                .map(FirebaseIdentityService.ProviderIdentity::providerId)
+                .anyMatch(providerId -> providerId != null && providerId.equalsIgnoreCase("google.com"));
     }
 
     @Transactional

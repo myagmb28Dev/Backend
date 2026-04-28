@@ -31,11 +31,11 @@ public class AdminAuthController {
     private final AdminAuthService adminAuthService;
 
     @PostMapping("/login")
-    @Operation(summary = "관리자 로그인", description = "Firebase 이메일/비밀번호 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
+    @Operation(summary = "관리자 Google 로그인", description = "Firebase Google ID 토큰으로 관리자 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
     public ResponseEntity<ApiResponse<AdminLoginResponse>> login(@Valid @RequestBody AdminLoginRequest request, HttpServletRequest httpRequest) {
         AdminLoginResponse data;
         try {
-            data = adminAuthService.login(request.getEmail(), request.getPassword(), httpRequest);
+            data = adminAuthService.loginWithGoogleToken(request.getFirebaseIdToken(), httpRequest);
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
