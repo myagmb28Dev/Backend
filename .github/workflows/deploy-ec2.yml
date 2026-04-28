@@ -81,6 +81,45 @@ jobs:
             next_url="$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
           done
 
+      - name: Verify only latest tag remains
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+
+          auth_token="$(
+            curl -fsSL \
+              -H "Content-Type: application/json" \
+              -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+              https://hub.docker.com/v2/users/login/ \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"
+          )"
+
+          success=0
+          for attempt in {1..12}; do
+            tags_json="$(curl -fsSL -H "Authorization: JWT ${auth_token}" \
+              "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100")"
+
+            non_latest_count="$(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') != 'latest'))")"
+            latest_count="$(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') == 'latest'))")"
+
+            echo "verify attempt ${attempt}/12: latest_count=${latest_count}, non_latest_count=${non_latest_count}"
+
+            if [ "$latest_count" -ge 1 ] && [ "$non_latest_count" -eq 0 ]; then
+              success=1
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "ERROR: cleanup verification failed. latest-only state not reached in retry window."
+            exit 1
+          fi
+
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
