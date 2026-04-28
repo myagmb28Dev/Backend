@@ -42,12 +42,55 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Install regctl
+        uses: regclient/actions/regctl-installer@main
+
+      - name: Capture previous latest digest
+        id: previous-latest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
+          previous_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
+          echo "digest=${previous_digest}" >> "$GITHUB_OUTPUT"
+          echo "Previous latest digest: ${previous_digest:-<none>}"
+
       - name: Build and push image
+        id: build-push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          provenance: false
+          sbom: false
+
+      - name: Verify latest points to pushed digest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
+          success=0
+          for attempt in {1..18}; do
+            latest_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
+            echo "latest digest verify attempt ${attempt}/18: expected=${PUSHED_DIGEST} actual=${latest_digest:-<none>}"
+            if [ -n "${latest_digest}" ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ]; then
+              success=1
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "ERROR: latest tag did not converge to pushed digest."
+            exit 1
+          fi
 
       - name: Delete stale Docker Hub tags
         env:
@@ -81,11 +124,25 @@ jobs:
             next_url="$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
           done
 
-      - name: Verify only latest tag remains
+      - name: Delete previous latest manifest and referrers
+        if: ${{ steps.previous-latest.outputs.digest != '' && steps.previous-latest.outputs.digest != steps.build-push.outputs.digest }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          PREVIOUS_DIGEST: ${{ steps.previous-latest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          stale_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PREVIOUS_DIGEST}"
+          echo "Deleting stale manifest digest: ${stale_ref}"
+          regctl manifest delete --ignore-missing --referrers "$stale_ref"
+
+      - name: Verify latest tag only and stale digest gone
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
+          PREVIOUS_DIGEST: ${{ steps.previous-latest.outputs.digest }}
         run: |
           set -euo pipefail
 
@@ -97,17 +154,30 @@ jobs:
               | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"
           )"
 
+          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
           success=0
-          for attempt in {1..12}; do
-            tags_json="$(curl -fsSL -H "Authorization: JWT ${auth_token}" \
-              "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100")"
+          for attempt in {1..18}; do
+            next_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100"
+            latest_count=0
+            non_latest_count=0
+            while [ -n "$next_url" ] && [ "$next_url" != "null" ]; do
+              tags_json="$(curl -fsSL -H "Authorization: JWT ${auth_token}" "$next_url")"
+              latest_count=$((latest_count + $(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') == 'latest'))")))
+              non_latest_count=$((non_latest_count + $(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') != 'latest'))")))
+              next_url="$(echo "$tags_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
+            done
 
-            non_latest_count="$(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') != 'latest'))")"
-            latest_count="$(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') == 'latest'))")"
+            latest_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
+            stale_digest_gone=1
+            if [ -n "${PREVIOUS_DIGEST}" ] && [ "${PREVIOUS_DIGEST}" != "${PUSHED_DIGEST}" ]; then
+              if regctl manifest head "docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PREVIOUS_DIGEST}" >/dev/null 2>&1; then
+                stale_digest_gone=0
+              fi
+            fi
 
-            echo "verify attempt ${attempt}/12: latest_count=${latest_count}, non_latest_count=${non_latest_count}"
+            echo "verify attempt ${attempt}/18: latest_count=${latest_count}, non_latest_count=${non_latest_count}, latest_digest=${latest_digest:-<none>}, stale_digest_gone=${stale_digest_gone}"
 
-            if [ "$latest_count" -ge 1 ] && [ "$non_latest_count" -eq 0 ]; then
+            if [ "$latest_count" -eq 1 ] && [ "$non_latest_count" -eq 0 ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ] && [ "$stale_digest_gone" -eq 1 ]; then
               success=1
               break
             fi
