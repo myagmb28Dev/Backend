@@ -1,8 +1,10 @@
 package com.example.pogun.service.adminauth;
 
 import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.google.firebase.auth.FirebaseAuth;
 import com.sun.net.httpserver.HttpServer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -10,13 +12,21 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 class FirebasePasswordSignInClientTest {
 
+    private HttpServer server;
+
+    @AfterEach
+    void tearDown() {
+        stopServer(server);
+    }
+
     @Test
     void signIn_parsesJsonResponseFromHttpBody() throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/accounts:signInWithPassword", exchange -> {
             byte[] bodyBytes = exchange.getRequestBody().readAllBytes();
             String requestBody = new String(bodyBytes, StandardCharsets.UTF_8);
@@ -40,40 +50,90 @@ class FirebasePasswordSignInClientTest {
         });
         server.start();
 
-        try {
-            int port = server.getAddress().getPort();
-            FirebaseAuthProperties properties = new FirebaseAuthProperties();
-            properties.setMode(FirebaseAuthProperties.Mode.PRODUCTION);
-            properties.setWebApiKey("test-api-key");
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort());
 
-            FirebasePasswordSignInClient client = new FirebasePasswordSignInClient(properties, mock(FirebaseAuth.class)) {
-                @Override
-                String resolveBaseUrl() {
-                    return "http://127.0.0.1:" + port;
-                }
+        FirebasePasswordSignInClient.FirebasePasswordSignInResult result = client.signIn("admin@local.dev", "Test1234!");
 
-                @Override
-                String resolveApiKey() {
-                    return "test-api-key";
-                }
-            };
+        assertThat(result.localId()).isEqualTo("firebase-local-id");
+        assertThat(result.email()).isEqualTo("admin@local.dev");
+        assertThat(result.idToken()).isEqualTo("id-token-123");
+        assertThat(result.refreshToken()).isEqualTo("refresh-token-123");
+        assertThat(result.emailVerified()).isTrue();
+    }
 
-            FirebasePasswordSignInClient.FirebasePasswordSignInResult result = client.signIn("admin@local.dev", "Test1234!");
+    @Test
+    void signIn_reportsDisabledPasswordProviderAsConfigurationError() throws Exception {
+        server = errorServer("OPERATION_NOT_ALLOWED");
+        server.start();
 
-            assertThat(result.localId()).isEqualTo("firebase-local-id");
-            assertThat(result.email()).isEqualTo("admin@local.dev");
-            assertThat(result.idToken()).isEqualTo("id-token-123");
-            assertThat(result.refreshToken()).isEqualTo("refresh-token-123");
-            assertThat(result.emailVerified()).isTrue();
-        } finally {
-            stopServer(server);
-        }
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort());
+
+        assertThatThrownBy(() -> client.signIn("admin@local.dev", "Test1234!"))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("FIREBASE_PASSWORD_SIGN_IN_DISABLED");
+    }
+
+    @Test
+    void signIn_keepsInvalidCredentialsUnauthorizedWithFirebaseDetail() throws Exception {
+        server = errorServer("INVALID_LOGIN_CREDENTIALS");
+        server.start();
+
+        FirebasePasswordSignInClient client = newClient(server.getAddress().getPort());
+
+        assertThatThrownBy(() -> client.signIn("admin@local.dev", "bad-password"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    ApiException apiException = (ApiException) error;
+                    assertThat(apiException.getStatus().value()).isEqualTo(401);
+                    assertThat(apiException.getCode()).isEqualTo("INVALID_CREDENTIALS");
+                    assertThat(apiException.getDetail()).asString().contains("INVALID_LOGIN_CREDENTIALS");
+                });
     }
 
     private void stopServer(HttpServer server) {
         try {
-            server.stop(0);
+            if (server != null) {
+                server.stop(0);
+            }
         } catch (RuntimeException ignored) {
         }
+    }
+
+    private FirebasePasswordSignInClient newClient(int port) {
+        FirebaseAuthProperties properties = new FirebaseAuthProperties();
+        properties.setMode(FirebaseAuthProperties.Mode.PRODUCTION);
+        properties.setWebApiKey("test-api-key");
+
+        return new FirebasePasswordSignInClient(properties, mock(FirebaseAuth.class)) {
+            @Override
+            String resolveBaseUrl() {
+                return "http://127.0.0.1:" + port;
+            }
+
+            @Override
+            String resolveApiKey() {
+                return "test-api-key";
+            }
+        };
+    }
+
+    private HttpServer errorServer(String firebaseErrorCode) throws IOException {
+        HttpServer errorServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        errorServer.createContext("/v1/accounts:signInWithPassword", exchange -> {
+            String response = """
+                    {
+                      \"error\": {
+                        \"message\": \"%s\"
+                      }
+                    }
+                    """.formatted(firebaseErrorCode);
+            byte[] payload = response.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(400, payload.length);
+            exchange.getResponseBody().write(payload);
+            exchange.close();
+        });
+        return errorServer;
     }
 }

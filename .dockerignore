@@ -9,6 +9,9 @@
 !gradle/**
 !build.gradle
 !settings.gradle
+!build/
+!build/libs/
+!build/libs/app.jar
 !src/
 !src/main/
 !src/main/**

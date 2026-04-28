@@ -110,10 +110,37 @@ public class FirebasePasswordSignInClient {
             String message = json.path("error").path("message").asText("");
             return switch (message) {
                 case "INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS" ->
-                        ApiException.unauthorized("INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+                        new ApiException(
+                                HttpStatus.UNAUTHORIZED,
+                                "INVALID_CREDENTIALS",
+                                "이메일 또는 비밀번호가 올바르지 않습니다.",
+                                Map.of("firebaseError", message)
+                        );
+                case "USER_DISABLED" ->
+                        new ApiException(
+                                HttpStatus.FORBIDDEN,
+                                "ADMIN_FIREBASE_USER_DISABLED",
+                                "Firebase 관리자 계정이 비활성화되어 있습니다.",
+                                Map.of("firebaseError", message)
+                        );
+                case "OPERATION_NOT_ALLOWED" ->
+                        ApiException.internal(
+                                "FIREBASE_PASSWORD_SIGN_IN_DISABLED",
+                                "Firebase Email/Password 로그인이 비활성화되어 있습니다. Firebase Authentication Sign-in method에서 Email/Password 제공자를 활성화하세요."
+                        );
+                case "API_KEY_INVALID", "INVALID_API_KEY" ->
+                        ApiException.internal(
+                                "FIREBASE_WEB_API_KEY_INVALID",
+                                "FIREBASE_WEB_API_KEY 값이 올바르지 않습니다."
+                        );
                 case "TOO_MANY_ATTEMPTS_TRY_LATER" ->
-                        new ApiException(HttpStatus.TOO_MANY_REQUESTS, "LOCKED", "로그인 시도가 너무 많습니다.", null);
-                default -> ApiException.unauthorized("INVALID_CREDENTIALS", "관리자 로그인에 실패했습니다: " + message);
+                        new ApiException(HttpStatus.TOO_MANY_REQUESTS, "LOCKED", "로그인 시도가 너무 많습니다.", Map.of("firebaseError", message));
+                default -> new ApiException(
+                        HttpStatus.UNAUTHORIZED,
+                        "INVALID_CREDENTIALS",
+                        "관리자 로그인에 실패했습니다: " + message,
+                        Map.of("firebaseError", message)
+                );
             };
         } catch (Exception ignored) {
             return ApiException.unauthorized("INVALID_CREDENTIALS", "관리자 로그인에 실패했습니다.");

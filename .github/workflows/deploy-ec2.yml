@@ -30,8 +30,8 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Run tests
-        run: ./gradlew test
+      - name: Build and test
+        run: ./gradlew test bootJar --no-daemon --build-cache
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -52,7 +52,7 @@
     <!-- 1단계: 이메일/비밀번호 로그인 폼 -->
     <form id="loginForm" style="margin-top:15px; border-top:1px solid var(--line); padding-top:15px;">
         <label>관리자 이메일 <input id="emailInput" type="email" placeholder="playwright-user1@local.dev"></label>
-        <label>비밀번호 <input id="passwordInput" type="password" value="Test1234!"></label>
+        <label>비밀번호 <input id="passwordInput" type="password" placeholder="관리자 Firebase 비밀번호"></label>
         <div class="actions" style="margin-top:10px;">
             <button id="loginButton" type="submit" class="admin">관리자 로그인</button>
         </div>
@@ -228,7 +228,9 @@
     });
 
     if (!res.ok) {
-        setStatus("로그인 실패. 응답을 확인하세요.", "bad");
+        const errorCode = res.body?.error?.code || `HTTP_${res.status}`;
+        const errorMessage = res.body?.error?.message || res.body?.message || "응답을 확인하세요.";
+        setStatus(`로그인 실패: ${errorCode} - ${errorMessage}`, "bad");
         print(res.body);
         return;
     }
