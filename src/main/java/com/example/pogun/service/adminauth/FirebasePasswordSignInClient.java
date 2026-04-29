@@ -29,6 +29,7 @@ public class FirebasePasswordSignInClient {
 
     private final FirebaseAuthProperties firebaseAuthProperties;
     private final FirebaseAuth firebaseAuth;
+    private final WebClient.Builder webClientBuilder;
 
     public FirebasePasswordSignInResult signIn(String email, String password) {
         String baseUrl = resolveBaseUrl();
@@ -38,7 +39,7 @@ public class FirebasePasswordSignInClient {
         }
 
         try {
-            String responseBody = WebClient.builder()
+            String responseBody = webClientBuilder
                     .baseUrl(baseUrl)
                     .build()
                     .post()

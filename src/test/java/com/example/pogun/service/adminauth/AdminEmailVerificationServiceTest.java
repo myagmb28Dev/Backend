@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -35,7 +36,7 @@ class AdminEmailVerificationServiceTest {
         server.start();
         int port = server.getAddress().getPort();
 
-        service = new AdminEmailVerificationService(firebaseAuthProperties) {
+        service = new AdminEmailVerificationService(firebaseAuthProperties, WebClient.builder()) {
             @Override
             String resolveBaseUrl() {
                 return "http://127.0.0.1:" + port;

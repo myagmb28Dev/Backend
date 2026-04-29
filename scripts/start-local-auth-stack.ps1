@@ -1,11 +1,11 @@
 param(
-    [string]$ProjectId = "",
+    [string]$ProjectId = "pogun-local",
     [string]$Email = "playwright-user1@local.dev",
     [string]$Password = "Test1234!",
     [int]$AuthPort = 9099,
     [int]$BackendPort = 8081,
     [int]$UiPort = 4000,
-    [int]$TimeoutSeconds = 90
+    [int]$TimeoutSeconds = 180
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +14,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $localDir = Join-Path $repoRoot ".local"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
+$xdgConfigDir = Join-Path $localDir "xdg"
+if ([string]::IsNullOrWhiteSpace($env:XDG_CONFIG_HOME)) {
+    $env:XDG_CONFIG_HOME = $xdgConfigDir
+}
+New-Item -ItemType Directory -Force -Path $env:XDG_CONFIG_HOME | Out-Null
 
 function Get-DotEnvValue {
     param(
@@ -34,35 +39,67 @@ function Get-DotEnvValue {
     return $null
 }
 
-function Resolve-DefaultProjectId {
-    $envFiles = @(
-        (Join-Path $repoRoot ".env.local"),
-        (Join-Path $repoRoot ".env")
-    )
-
-    $dotenvProjectId = Get-DotEnvValue -FilePaths $envFiles -Key "FIREBASE_PROJECT_ID"
-    if ($dotenvProjectId) {
-        return $dotenvProjectId.Trim()
-    }
-
-    $dotenvGcloudProject = Get-DotEnvValue -FilePaths $envFiles -Key "GCLOUD_PROJECT"
-    if ($dotenvGcloudProject) {
-        return $dotenvGcloudProject.Trim()
-    }
-
-    $dotenvBase64 = Get-DotEnvValue -FilePaths $envFiles -Key "FIREBASE_KEY_BASE64"
-    if ($dotenvBase64) {
-        try {
-            $jsonText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($dotenvBase64.Trim()))
-            $serviceAccount = $jsonText | ConvertFrom-Json
-            if ($serviceAccount.project_id) {
-                return [string]$serviceAccount.project_id
-            }
-        } catch {
+function Resolve-GradleUserHome {
+    $wrapperProperties = Join-Path $repoRoot "gradle\wrapper\gradle-wrapper.properties"
+    $distributionName = "gradle-8.14-bin"
+    if (Test-Path $wrapperProperties) {
+        $distributionUrlLine = Select-String -Path $wrapperProperties -Pattern "^distributionUrl=" | Select-Object -First 1
+        if ($distributionUrlLine -and $distributionUrlLine.Line -match "([^/\\]+)\.zip$") {
+            $distributionName = $Matches[1]
         }
     }
 
-    return "pogun-local"
+    $candidateHomes = @()
+    if ($env:GRADLE_USER_HOME) {
+        $candidateHomes += $env:GRADLE_USER_HOME
+    }
+    $candidateHomes += (Join-Path $env:USERPROFILE ".gradle")
+    $usersRoot = Join-Path $env:SystemDrive "Users"
+    if (Test-Path $usersRoot) {
+        $candidateHomes += Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName ".gradle" }
+    }
+
+    $repoGradleHome = Join-Path $repoRoot ".gradle"
+    New-Item -ItemType Directory -Force -Path $repoGradleHome | Out-Null
+    $repoDistributionRoot = Join-Path $repoGradleHome "wrapper\dists\$distributionName"
+
+    foreach ($candidateHome in ($candidateHomes | Select-Object -Unique)) {
+        $distributionRoot = Join-Path $candidateHome "wrapper\dists\$distributionName"
+        if (Test-Path $distributionRoot) {
+            $installed = Get-ChildItem $distributionRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match "^gradle-\d" } |
+                Select-Object -First 1
+            if ($installed) {
+                $lockProbe = Join-Path (Split-Path -Parent $installed.FullName) ".pogun-write-test"
+                try {
+                    [System.IO.File]::WriteAllText($lockProbe, "ok", [System.Text.UTF8Encoding]::new($false))
+                    Remove-Item $lockProbe -Force -ErrorAction SilentlyContinue
+                    return $candidateHome
+                } catch {
+                }
+
+                $hashDir = Split-Path -Parent $installed.FullName
+                $relativeHashDir = $hashDir.Substring($distributionRoot.Length).TrimStart("\", "/")
+                $targetHashDir = Join-Path $repoDistributionRoot $relativeHashDir
+                New-Item -ItemType Directory -Force -Path $targetHashDir | Out-Null
+                Copy-Item -Path $installed.FullName -Destination $targetHashDir -Recurse -Force
+                New-Item -ItemType File -Force -Path (Join-Path $targetHashDir "$distributionName.zip.ok") | Out-Null
+                return $repoGradleHome
+            }
+        }
+    }
+
+    if (Test-Path $repoDistributionRoot) {
+        $repoInstalled = Get-ChildItem $repoDistributionRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "^gradle-\d" } |
+            Select-Object -First 1
+        if ($repoInstalled) {
+            return $repoGradleHome
+        }
+    }
+
+    return $repoGradleHome
 }
 
 function Get-ExecutablePath {
@@ -114,19 +151,80 @@ function Wait-TcpPort {
     throw "$Name did not become ready on port $Port within $TimeoutSec seconds."
 }
 
+function Wait-BackendHealth {
+    param(
+        [int]$Port,
+        [int]$TimeoutSec
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 3
+            if ($response.status -eq 200 -or $response.ok -eq $true) {
+                return
+            }
+        } catch {
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    throw "Spring Boot backend health did not become ready on port $Port within $TimeoutSec seconds."
+}
+
+function Ensure-PortReadyWithRetry {
+    param(
+        [int]$Port,
+        [string]$Name,
+        [int]$TimeoutSec,
+        [scriptblock]$StartAction,
+        [int]$MaxAttempts = 2
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        if (-not (Test-TcpPort -Port $Port)) {
+            & $StartAction
+        }
+
+        try {
+            Wait-TcpPort -Port $Port -Name $Name -TimeoutSec $TimeoutSec
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Write-Warning "$Name startup attempt $attempt failed. Retrying..."
+        }
+    }
+}
+
 function Start-DetachedPowerShell {
+    param(
+        [string]$Title,
+        [string]$CommandText,
+        [string]$LogFileName
+    )
+
+    $powershellExe = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    $logPath = Join-Path $localDir $LogFileName
+    $fullCommand = "`$host.UI.RawUI.WindowTitle = '$Title'; Start-Transcript -Path '$logPath' -Append; $CommandText"
+
+    Start-Process -FilePath $powershellExe -WorkingDirectory $repoRoot -WindowStyle Normal -ArgumentList @(
+        "-NoExit",
+        "-Command",
+        $fullCommand
+    ) | Out-Null
+}
+
+function Start-DetachedCommandWindow {
     param(
         [string]$Title,
         [string]$CommandText
     )
 
-    $powershellExe = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-    $fullCommand = "`$host.UI.RawUI.WindowTitle = '$Title'; $CommandText"
-
-    Start-Process -FilePath $powershellExe -WorkingDirectory $repoRoot -ArgumentList @(
-        "-NoExit",
-        "-Command",
-        $fullCommand
+    Start-Process -FilePath "cmd.exe" -WorkingDirectory $repoRoot -WindowStyle Normal -ArgumentList @(
+        "/k",
+        "title $Title && $CommandText"
     ) | Out-Null
 }
 
@@ -311,23 +409,21 @@ function Write-TokenArtifacts {
     [System.IO.File]::WriteAllText($loginBodyPath, "{`n  `"firebaseIdToken`": `"$Token`"`n}", [System.Text.UTF8Encoding]::new($false))
 }
 
-$firebaseExe = Get-ExecutablePath -Names @("firebase.cmd", "firebase")
+$firebaseExe = Get-ExecutablePath -Names @("firebase.cmd")
+$gradleUserHome = Resolve-GradleUserHome
 
-if ([string]::IsNullOrWhiteSpace($ProjectId)) {
-    $ProjectId = Resolve-DefaultProjectId
+Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $TimeoutSeconds -StartAction {
+    $authLogPath = Join-Path $localDir "auth-emulator.log"
+    $escapedAuthLogPath = $authLogPath.Replace("&", "^&")
+    $emulatorCommand = "set XDG_CONFIG_HOME=$($env:XDG_CONFIG_HOME) && call `"$firebaseExe`" emulators:start --only auth --project $ProjectId >> `"$escapedAuthLogPath`" 2>&1"
+    Start-DetachedCommandWindow -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
 }
-
-if (-not (Test-TcpPort -Port $AuthPort)) {
-    $emulatorCommand = "& `"$firebaseExe`" emulators:start --only auth --project $ProjectId"
-    Start-DetachedPowerShell -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
-}
-
-Wait-TcpPort -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $TimeoutSeconds
 
 if (-not (Test-TcpPort -Port $BackendPort)) {
     $backendCommand = @(
         "`$env:PORT = '$BackendPort'",
         "`$env:SERVER_PORT = '$BackendPort'",
+        "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
         "`$env:SPRING_PROFILES_ACTIVE = 'local'",
         "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
         "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
@@ -338,15 +434,13 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
         "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
         "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
         "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
-        "`$env:APP_PRESENCE_STORE = 'redis'",
-        "`$env:REDIS_HOST = 'localhost'",
         "& '.\\gradlew.bat' bootRun"
     ) -join "; "
 
-    Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand
+    Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand -LogFileName "backend-8081.log"
 }
 
-Wait-TcpPort -Port $BackendPort -Name "Spring Boot backend" -TimeoutSec $TimeoutSeconds
+Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds
 
 $idToken = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
 Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken

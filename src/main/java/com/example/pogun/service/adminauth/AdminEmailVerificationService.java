@@ -22,6 +22,7 @@ public class AdminEmailVerificationService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final FirebaseAuthProperties firebaseAuthProperties;
+    private final WebClient.Builder webClientBuilder;
 
     public void sendVerificationEmail(String idToken) {
         String baseUrl = resolveBaseUrl();
@@ -31,7 +32,7 @@ public class AdminEmailVerificationService {
         }
 
         try {
-            String responseBody = WebClient.builder()
+            String responseBody = webClientBuilder
                     .baseUrl(baseUrl)
                     .build()
                     .post()

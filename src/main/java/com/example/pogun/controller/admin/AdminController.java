@@ -18,6 +18,7 @@ import com.example.pogun.dto.report.ReportResponse;
 import com.example.pogun.dto.report.ReportStatusUpdateRequest;
 import com.example.pogun.service.admin.AdminConsoleService;
 import com.example.pogun.service.admin.AdminService;
+import com.example.pogun.service.admin.AdminTrafficLogService;
 import com.example.pogun.service.report.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +46,7 @@ import java.util.Map;
 public class AdminController {
     private final AdminService adminService;
     private final AdminConsoleService adminConsoleService;
+    private final AdminTrafficLogService adminTrafficLogService;
     private final ReportService reportService;
 
     @GetMapping("/dashboard")
@@ -397,5 +399,14 @@ public class AdminController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> referenceData() {
         Map<String, Object> data = adminConsoleService.referenceDataSummary();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 요약 조회 성공", data));
+    }
+
+    @GetMapping("/traffic/logs")
+    @Operation(summary = "요청 로그", description = "프로젝트 IN/OUT 요청 로그를 최근순으로 조회합니다.")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> trafficLogs(
+            @RequestParam(required = false, defaultValue = "100") Integer limit
+    ) {
+        List<Map<String, Object>> data = adminTrafficLogService.recent(limit == null ? 100 : limit);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 조회 성공", data));
     }
 }

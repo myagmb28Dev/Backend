@@ -9,6 +9,7 @@ import com.google.firebase.auth.UserRecord;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -179,7 +180,7 @@ class FirebasePasswordSignInClientTest {
         properties.setMode(FirebaseAuthProperties.Mode.PRODUCTION);
         properties.setWebApiKey("test-api-key");
 
-        return new FirebasePasswordSignInClient(properties, firebaseAuth) {
+        return new FirebasePasswordSignInClient(properties, firebaseAuth, WebClient.builder()) {
             @Override
             String resolveBaseUrl() {
                 return "http://127.0.0.1:" + port;

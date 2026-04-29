@@ -1,6 +1,7 @@
 package com.example.pogun.service.shelterpet;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.service.admin.AdminTrafficLogService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -32,11 +33,17 @@ public class ShelterPublicApiClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final ShelterPublicApiProperties properties;
+    private final AdminTrafficLogService adminTrafficLogService;
 
-    public ShelterPublicApiClient(ObjectMapper objectMapper, ShelterPublicApiProperties properties) {
+    public ShelterPublicApiClient(
+            ObjectMapper objectMapper,
+            ShelterPublicApiProperties properties,
+            AdminTrafficLogService adminTrafficLogService
+    ) {
         this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.adminTrafficLogService = adminTrafficLogService;
     }
 
     public ShelterPublicApiPage fetchShelterPets(String region, String breed, String status, String sort, int page, int size) {
@@ -80,7 +87,15 @@ public class ShelterPublicApiClient {
                     .GET()
                     .header("Accept", "application/json")
                     .build();
+            long start = System.currentTimeMillis();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            adminTrafficLogService.recordOutbound(
+                    request.method(),
+                    uri.toString(),
+                    response.statusCode(),
+                    System.currentTimeMillis() - start,
+                    "HttpClient"
+            );
             if (response.statusCode() >= 400) {
                 log.warn("Shelter public API request failed. status={} body={}", response.statusCode(), response.body());
                 throw ApiException.internal("SHELTER_API_ERROR", "외부 보호소 API 호출에 실패했습니다.");
@@ -89,6 +104,7 @@ public class ShelterPublicApiClient {
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
+            adminTrafficLogService.recordOutbound("GET", uri.toString(), 0, 0, "HttpClient");
             log.error("Failed to call shelter public API", e);
             throw ApiException.internal("SHELTER_API_ERROR", "외부 보호소 API 호출 중 오류가 발생했습니다.");
         }

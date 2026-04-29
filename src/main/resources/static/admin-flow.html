@@ -123,6 +123,11 @@
       <h2>최근 응답</h2>
       <pre id="output">{}</pre>
     </section>
+
+    <section class="card" style="margin-top:14px;">
+      <h2>요청 콘솔</h2>
+      <pre id="trafficOutput">[]</pre>
+    </section>
   </div>
 </main>
 
@@ -148,6 +153,9 @@
   }
   function print(val) {
     el("output").textContent = JSON.stringify(val, null, 2);
+  }
+  function printTraffic(lines) {
+    el("trafficOutput").textContent = lines.join("\n");
   }
 
   function resolvePublicKeyOptions(payload) {
@@ -389,9 +397,14 @@
     el("logoutButton").style.display = "inline-block";
     setStatus("관리자 인증 완료", "good");
     loadReports();
+    startTrafficPolling();
   }
 
   async function logout() {
+    if (trafficPollTimer) {
+      clearInterval(trafficPollTimer);
+      trafficPollTimer = null;
+    }
     await request("/api/admin/auth/logout", { method: "POST" });
     localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
     location.reload();
@@ -477,6 +490,32 @@
     const res = await request("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ email }) });
     if (res.ok) setStatus(`${email} 승격 완료`, "good");
     else setStatus("승격 실패", "bad");
+  }
+
+  let trafficPollTimer = null;
+  async function loadTrafficLogs() {
+    const res = await request("/api/admin/traffic/logs?limit=100");
+    if (!res.ok) return;
+    const rows = Array.isArray(res.body?.data) ? res.body.data : [];
+    const lines = rows.map((row) => {
+      const ts = row.timestamp || "-";
+      const dir = row.direction || "-";
+      const method = row.method || "-";
+      const path = row.path || "-";
+      const status = row.status ?? "-";
+      const duration = row.durationMs ?? "-";
+      const source = row.remoteAddr || "-";
+      return `${ts} ${dir} ${method} ${path} status=${status} durationMs=${duration} source=${source}`;
+    });
+    printTraffic(lines);
+  }
+
+  function startTrafficPolling() {
+    if (trafficPollTimer) clearInterval(trafficPollTimer);
+    loadTrafficLogs().catch(() => {});
+    trafficPollTimer = setInterval(() => {
+      loadTrafficLogs().catch(() => {});
+    }, 2000);
   }
 
   el("loginForm").addEventListener("submit", (event) => {
