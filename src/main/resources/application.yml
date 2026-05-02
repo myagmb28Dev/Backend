@@ -45,6 +45,7 @@ app:
     auth:
       mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}
       project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
+      emulator-project-id: ${APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID:${FIREBASE_AUTH_EMULATOR_PROJECT_ID:}}
       allow-emulator: ${APP_FIREBASE_AUTH_ALLOW_EMULATOR:${FIREBASE_ALLOW_AUTH_EMULATOR:false}}
       web-api-key: ${FIREBASE_WEB_API_KEY:}
   admin:

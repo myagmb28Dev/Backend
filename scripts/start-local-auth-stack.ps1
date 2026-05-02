@@ -137,13 +137,17 @@ function Wait-TcpPort {
     param(
         [int]$Port,
         [string]$Name,
-        [int]$TimeoutSec
+        [int]$TimeoutSec,
+        [System.Diagnostics.Process]$Process = $null
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         if (Test-TcpPort -Port $Port) {
             return
+        }
+        if ($Process -and $Process.HasExited) {
+            throw "$Name process exited before port $Port became ready. Check the visible $Name window."
         }
         Start-Sleep -Seconds 1
     }
@@ -154,7 +158,8 @@ function Wait-TcpPort {
 function Wait-BackendHealth {
     param(
         [int]$Port,
-        [int]$TimeoutSec
+        [int]$TimeoutSec,
+        [System.Diagnostics.Process]$Process = $null
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -165,6 +170,9 @@ function Wait-BackendHealth {
                 return
             }
         } catch {
+        }
+        if ($Process -and $Process.HasExited) {
+            throw "Spring Boot backend process exited before health became ready. Check the visible backend window."
         }
         Start-Sleep -Seconds 2
     }
@@ -182,12 +190,13 @@ function Ensure-PortReadyWithRetry {
     )
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $startedProcess = $null
         if (-not (Test-TcpPort -Port $Port)) {
-            & $StartAction
+            $startedProcess = & $StartAction
         }
 
         try {
-            Wait-TcpPort -Port $Port -Name $Name -TimeoutSec $TimeoutSec
+            Wait-TcpPort -Port $Port -Name $Name -TimeoutSec $TimeoutSec -Process $startedProcess
             return
         } catch {
             if ($attempt -ge $MaxAttempts) {
@@ -201,19 +210,16 @@ function Ensure-PortReadyWithRetry {
 function Start-DetachedPowerShell {
     param(
         [string]$Title,
-        [string]$CommandText,
-        [string]$LogFileName
+        [string]$CommandText
     )
 
     $powershellExe = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-    $logPath = Join-Path $localDir $LogFileName
-    $fullCommand = "`$host.UI.RawUI.WindowTitle = '$Title'; Start-Transcript -Path '$logPath' -Append; $CommandText"
-
-    Start-Process -FilePath $powershellExe -WorkingDirectory $repoRoot -WindowStyle Normal -ArgumentList @(
+    $fullCommand = "`$host.UI.RawUI.WindowTitle = '$Title'; `$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); chcp 65001 > `$null; $CommandText"
+    return Start-Process -FilePath $powershellExe -WorkingDirectory $repoRoot -WindowStyle Normal -PassThru -ArgumentList @(
         "-NoExit",
         "-Command",
         $fullCommand
-    ) | Out-Null
+    )
 }
 
 function Start-DetachedCommandWindow {
@@ -222,10 +228,10 @@ function Start-DetachedCommandWindow {
         [string]$CommandText
     )
 
-    Start-Process -FilePath "cmd.exe" -WorkingDirectory $repoRoot -WindowStyle Normal -ArgumentList @(
+    return Start-Process -FilePath "cmd.exe" -WorkingDirectory $repoRoot -WindowStyle Normal -PassThru -ArgumentList @(
         "/k",
         "title $Title && $CommandText"
-    ) | Out-Null
+    )
 }
 
 function Get-HttpErrorText {
@@ -392,6 +398,19 @@ function Ensure-BackendUserReady {
         -Body @{ firebaseIdToken = $Token }
 }
 
+function Bootstrap-LocalAdmin {
+    param([string]$TargetEmail)
+
+    return Invoke-BackendRequest `
+        -Path "/api/admin/auth/login" `
+        -Method "Post" `
+        -Body @{
+            localTest = $true
+            localTestEmail = $TargetEmail
+            forcePasskeyEnroll = $true
+        }
+}
+
 function Write-TokenArtifacts {
     param(
         [string]$Token,
@@ -413,34 +432,35 @@ $firebaseExe = Get-ExecutablePath -Names @("firebase.cmd")
 $gradleUserHome = Resolve-GradleUserHome
 
 Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $TimeoutSeconds -StartAction {
-    $authLogPath = Join-Path $localDir "auth-emulator.log"
-    $escapedAuthLogPath = $authLogPath.Replace("&", "^&")
-    $emulatorCommand = "set XDG_CONFIG_HOME=$($env:XDG_CONFIG_HOME) && call `"$firebaseExe`" emulators:start --only auth --project $ProjectId >> `"$escapedAuthLogPath`" 2>&1"
-    Start-DetachedCommandWindow -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
+    $emulatorCommand = @(
+        "`$env:XDG_CONFIG_HOME = '$($env:XDG_CONFIG_HOME)'",
+        "& `"$firebaseExe`" emulators:start --only auth --project $ProjectId"
+    ) -join "; "
+    Start-DetachedPowerShell -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
 }
 
+$backendProcess = $null
 if (-not (Test-TcpPort -Port $BackendPort)) {
     $backendCommand = @(
         "`$env:PORT = '$BackendPort'",
         "`$env:SERVER_PORT = '$BackendPort'",
         "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
         "`$env:SPRING_PROFILES_ACTIVE = 'local'",
-        "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
+        "`$env:APP_FIREBASE_AUTH_MODE = 'PRODUCTION'",
         "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
+        "`$env:APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID = '$ProjectId'",
         "`$env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:$AuthPort'",
         "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
-        "`$env:GCLOUD_PROJECT = '$ProjectId'",
-        "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
         "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
         "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
         "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
         "& '.\\gradlew.bat' bootRun"
     ) -join "; "
 
-    Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand -LogFileName "backend-8081.log"
+    $backendProcess = Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand
 }
 
-Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds
+Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds -Process $backendProcess
 
 $idToken = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
 Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
@@ -471,8 +491,21 @@ Write-TokenArtifacts `
 
 foreach ($account in $playwrightAccounts) {
     $accountToken = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
-    Ensure-EmulatorEmailVerified -TargetEmail $account.Email -Token $accountToken
-    Ensure-BackendUserReady -Token $accountToken | Out-Null
+    if ($account.Index -eq 1) {
+        Ensure-EmulatorEmailVerified -TargetEmail $account.Email -Token $accountToken
+    }
+    try {
+        Ensure-BackendUserReady -Token $accountToken | Out-Null
+    } catch {
+        Write-Warning "Backend bootstrap failed for $($account.Email). Continuing without onboarding bootstrap."
+    }
+    if ($account.Index -eq 1) {
+        try {
+            Bootstrap-LocalAdmin -TargetEmail $account.Email | Out-Null
+        } catch {
+            Write-Warning "Local admin bootstrap failed for $($account.Email). Continuing without admin bootstrap."
+        }
+    }
     Write-TokenArtifacts `
         -Token $accountToken `
         -TokenFileName ("emulator-user{0}-firebase-id-token.txt" -f $account.Index) `

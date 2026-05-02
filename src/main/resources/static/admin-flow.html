@@ -32,6 +32,12 @@
     .report-item strong { display:block; margin-bottom:4px; font-size:14px; }
     .report-item span { font-size:12px; color:var(--muted); }
     pre { white-space:pre-wrap; word-break:break-all; background:#1f2933; color:#e8fff8; border-radius:12px; padding:14px; font-size:12px; margin-top:10px; max-height:400px; overflow-y:auto; }
+    .traffic-alert { margin-top:10px; padding:10px 12px; border-radius:10px; font-size:12px; font-weight:800; border:1px solid rgba(31,41,51,.14); background:#fff; color:var(--ink); display:none; }
+    .traffic-alert.show { display:block; background:rgba(31,138,76,.12); border-color:rgba(31,138,76,.35); color:var(--good); }
+    .traffic-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+    .traffic-chip { border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink); font-size:12px; padding:5px 10px; cursor:pointer; }
+    .traffic-chip.active { border-color:var(--accent); background:rgba(23,107,117,.12); }
+    .traffic-badge { display:inline-block; min-width:22px; padding:2px 7px; border-radius:999px; background:#1f2933; color:#fff; font-size:11px; text-align:center; }
     @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -45,6 +51,7 @@
       </div>
       <div class="actions">
         <button id="logoutButton" class="secondary" style="display:none;">로그아웃</button>
+        <button id="localAdminButton" class="secondary" style="display:none; padding:7px 10px; font-size:12px;">로컬 테스트 로그인</button>
       </div>
     </div>
     <div id="status" class="status">관리자 로그인이 필요합니다.</div>
@@ -126,12 +133,15 @@
 
     <section class="card" style="margin-top:14px;">
       <h2>요청 콘솔</h2>
+      <div id="trafficAlert" class="traffic-alert">신규 요청 없음</div>
+      <div id="trafficToolbar" class="traffic-toolbar"></div>
       <pre id="trafficOutput">[]</pre>
     </section>
   </div>
 </main>
 
 <script type="module">
+  import { ensureLocalAdminTestUserVerified } from "./admin-local-bootstrap.js";
   import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     GoogleAuthProvider,
@@ -144,6 +154,7 @@
 
   const BACKEND_BASE = window.location.origin;
   const ADMIN_ACCESS_TOKEN_KEY = "pogun-admin-access-token-v1";
+  const LOCAL_ADMIN_EMAIL = "playwright-user1@local.dev";
 
   const el = (id) => document.getElementById(id);
   function setStatus(msg, tone = "") {
@@ -156,6 +167,14 @@
   }
   function printTraffic(lines) {
     el("trafficOutput").textContent = lines.join("\n");
+  }
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;");
   }
 
   function resolvePublicKeyOptions(payload) {
@@ -217,6 +236,12 @@
   let bootstrapToken = null;
   let firebaseAuthInstance = null;
   let currentGoogleUser = null;
+  let passkeyRegisterRetrying = false;
+
+  function isLocalAdminShortcutAllowed() {
+    const host = window.location.hostname;
+    return (host === "localhost" || host === "127.0.0.1") && window.location.port === "8081";
+  }
 
   async function getFirebaseAuthInstance() {
     if (firebaseAuthInstance) return firebaseAuthInstance;
@@ -265,43 +290,88 @@
       return;
     }
 
-    const data = res.body.data;
     print(res.body);
+    handleAdminLoginResponse(res.body.data);
+  }
 
+  function handleAdminLoginResponse(data) {
     if (data.nextStep === "PASSKEY_REGISTRATION_REQUIRED") {
-        bootstrapToken = data.session.accessToken;
-        el("loginForm").style.display = "none";
-        el("passkeySection").style.display = "flex";
-        el("registerPasskeyButton").style.display = "inline-block";
-        el("mfaButton").style.display = "none";
-        el("passkeyMessage").textContent = "최초 1회 패스키 등록이 필요합니다.";
-        setStatus("패스키 등록 단계", "admin");
-    } else if (data.nextStep === "EMAIL_VERIFICATION_REQUIRED") {
+      bootstrapToken = data.session.accessToken;
+      el("loginForm").style.display = "none";
+      el("passkeySection").style.display = "flex";
+      el("registerPasskeyButton").style.display = "inline-block";
+      el("mfaButton").style.display = "none";
+      el("passkeyMessage").textContent = "최초 1회 패스키 등록이 필요합니다.";
+      setStatus("패스키 등록 단계", "admin");
+      return;
+    }
+    if (data.nextStep === "EMAIL_VERIFICATION_REQUIRED") {
       setStatus("관리자 이메일 인증 메일을 전송했습니다. 받은 메일의 링크를 클릭한 뒤 다시 로그인하세요.", "good");
       el("passkeySection").style.display = "none";
       el("logoutButton").style.display = "none";
-    } else if (data.nextStep === "PASSKEY_REQUIRED") {
-        bootstrapToken = data.session.accessToken;
-        el("loginForm").style.display = "none";
-        el("passkeySection").style.display = "flex";
-        el("registerPasskeyButton").style.display = "none";
-        el("mfaButton").style.display = "inline-block";
-        el("passkeyMessage").textContent = "등록된 패스키로 2단계 인증을 완료하세요.";
-        setStatus("패스키 인증 단계", "admin");
-    } else if (data.accessToken) {
-        adminAccessToken = data.accessToken;
-        localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
-        finalizeLogin();
+      return;
     }
+    if (data.nextStep === "PASSKEY_REQUIRED") {
+      bootstrapToken = data.session.accessToken;
+      el("loginForm").style.display = "none";
+      el("passkeySection").style.display = "flex";
+      el("registerPasskeyButton").style.display = "none";
+      el("mfaButton").style.display = "inline-block";
+      el("passkeyMessage").textContent = "등록된 패스키로 2단계 인증을 완료하세요.";
+      setStatus("패스키 인증 단계", "admin");
+      return;
+    }
+    if (data.accessToken) {
+      adminAccessToken = data.accessToken;
+      localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+      finalizeLogin();
+    }
+  }
+
+  async function localAdminLogin() {
+    setStatus("로컬 테스트 관리자 준비 중...");
+    await ensureLocalAdminTestUserVerified({ email: LOCAL_ADMIN_EMAIL, projectId: "pogun-local" });
+    const res = await request("/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        localTest: true,
+        localTestEmail: LOCAL_ADMIN_EMAIL,
+        forcePasskeyEnroll: true
+      })
+    });
+    if (!res.ok) {
+      setStatus("로컬 테스트 로그인 실패", "bad");
+      print(res.body);
+      return;
+    }
+    print(res.body);
+    handleAdminLoginResponse(res.body.data);
   }
 
   async function handlePasskeyRegistration() {
     setStatus("패스키 등록 옵션 가져오는 중...");
     const optionsRes = await request("/api/admin/auth/passkeys/register/options", { method: "POST" });
     if (!optionsRes.ok) {
-        setStatus("등록 옵션 발급 실패", "bad");
-        print(optionsRes.body);
-        return;
+      const code = optionsRes.body?.error?.code || `HTTP_${optionsRes.status}`;
+      const msg = optionsRes.body?.error?.message || optionsRes.body?.message || "응답 본문 확인";
+      // 로컬 shortcut 세션이 만료/단계 불일치면 1회 자동 복구 후 재시도
+      if (!passkeyRegisterRetrying
+        && isLocalAdminShortcutAllowed()
+        && (code === "ADMIN_SESSION_REQUIRED" || code === "ADMIN_AUTH_STEP_INVALID")
+      ) {
+        passkeyRegisterRetrying = true;
+        try {
+          setStatus("로컬 관리자 세션 재발급 중...");
+          await localAdminLogin();
+          await handlePasskeyRegistration();
+          return;
+        } finally {
+          passkeyRegisterRetrying = false;
+        }
+      }
+      setStatus(`등록 옵션 발급 실패: ${code}`, "bad");
+      print({ code, message: msg, raw: optionsRes.body });
+      return;
     }
 
     const options = optionsRes.body.data;
@@ -493,21 +563,110 @@
   }
 
   let trafficPollTimer = null;
+  const trafficSeen = new Set();
+  const TRAFFIC_TRACKED_API_PREFIXES = [
+    "/api/missing-pets",
+    "/api/shelter",
+    "/api/reports",
+    "/api/admin",
+    "/api/community/posts",
+    "/api/community"
+  ];
+  let selectedTrafficGroup = "ALL";
+
+  function isTrackedApiPath(path) {
+    if (!path || typeof path !== "string") return false;
+    const clean = path.split("?")[0];
+    if (!clean.startsWith("/api/")) return false;
+    return TRAFFIC_TRACKED_API_PREFIXES.some((prefix) => clean.startsWith(prefix));
+  }
+
+  function getApiGroup(path) {
+    if (!path || typeof path !== "string") return "UNKNOWN";
+    const clean = path.split("?")[0];
+    const parts = clean.split("/").filter(Boolean);
+    if (parts.length < 3) return clean || "UNKNOWN";
+    return `/${parts[0]}/${parts[1]}/${parts[2]}`;
+  }
+
+  function buildTrafficLine(row) {
+    const ts = row.timestamp || "-";
+    const dir = row.direction || "-";
+    const method = row.method || "-";
+    const path = row.path || "-";
+    const status = row.status ?? "-";
+    const duration = row.durationMs ?? "-";
+    const source = row.remoteAddr || "-";
+    return `${ts} ${dir} ${method} ${path} status=${status} durationMs=${duration} source=${source}`;
+  }
+
+  function renderTrafficToolbar(grouped) {
+    const host = el("trafficToolbar");
+    const groups = [...TRAFFIC_TRACKED_API_PREFIXES];
+    const allCount = groups.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
+    const groupItems = [{ key: "ALL", count: allCount }, ...groups.map((key) => ({ key, count: (grouped[key] || []).length }))];
+    host.innerHTML = groupItems.map((item) => {
+      const active = item.key === selectedTrafficGroup ? "active" : "";
+      return `<button type="button" class="traffic-chip ${active}" data-group="${escapeHtml(item.key)}">${escapeHtml(item.key)} <span class="traffic-badge">${item.count}</span></button>`;
+    }).join("");
+    host.querySelectorAll("button[data-group]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedTrafficGroup = button.dataset.group || "ALL";
+        renderTrafficToolbar(grouped);
+        renderTrafficOutput(grouped);
+      });
+    });
+  }
+
+  function renderTrafficOutput(grouped) {
+    const groups = [...TRAFFIC_TRACKED_API_PREFIXES];
+    let rows = [];
+    if (selectedTrafficGroup === "ALL") {
+      rows = groups.flatMap((group) => (grouped[group] || []).slice(0, 20));
+    } else {
+      rows = (grouped[selectedTrafficGroup] || []).slice(0, 40);
+    }
+    printTraffic(rows.map(buildTrafficLine));
+  }
+
+  function renderTrafficAlert(totalFresh, freshByGroup) {
+    const alertNode = el("trafficAlert");
+    if (!totalFresh) {
+      alertNode.className = "traffic-alert";
+      alertNode.textContent = "신규 요청 없음";
+      return;
+    }
+    const top = [...freshByGroup.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([group, count]) => `${group} ${count}`)
+      .join(" | ");
+    alertNode.className = "traffic-alert show";
+    alertNode.textContent = `신규 요청 ${totalFresh}건 도착: ${top}`;
+  }
+
   async function loadTrafficLogs() {
     const res = await request("/api/admin/traffic/logs?limit=100");
     if (!res.ok) return;
-    const rows = Array.isArray(res.body?.data) ? res.body.data : [];
-    const lines = rows.map((row) => {
-      const ts = row.timestamp || "-";
-      const dir = row.direction || "-";
-      const method = row.method || "-";
-      const path = row.path || "-";
-      const status = row.status ?? "-";
-      const duration = row.durationMs ?? "-";
-      const source = row.remoteAddr || "-";
-      return `${ts} ${dir} ${method} ${path} status=${status} durationMs=${duration} source=${source}`;
-    });
-    printTraffic(lines);
+    const rows = (Array.isArray(res.body?.data) ? res.body.data : [])
+      .filter((row) => isTrackedApiPath(row?.path));
+    const grouped = {};
+    const freshByGroup = new Map();
+    let totalFresh = 0;
+    for (const row of rows) {
+      const group = getApiGroup(row.path);
+      if (!grouped[group]) grouped[group] = [];
+      grouped[group].push(row);
+      const uniqKey = `${row.timestamp || ""}|${row.direction || ""}|${row.method || ""}|${row.path || ""}|${row.status ?? ""}|${row.durationMs ?? ""}|${row.remoteAddr || ""}`;
+      if (!trafficSeen.has(uniqKey)) {
+        trafficSeen.add(uniqKey);
+        totalFresh += 1;
+        freshByGroup.set(group, (freshByGroup.get(group) || 0) + 1);
+      }
+    }
+    renderTrafficToolbar(grouped);
+    renderTrafficOutput(grouped);
+    renderTrafficAlert(totalFresh, freshByGroup);
   }
 
   function startTrafficPolling() {
@@ -526,6 +685,12 @@
     });
   });
   el("logoutButton").onclick = logout;
+  el("localAdminButton").onclick = () => {
+    localAdminLogin().catch((error) => {
+      console.error(error);
+      setStatus(error.message || String(error), "bad");
+    });
+  };
   el("registerPasskeyButton").onclick = handlePasskeyRegistration;
   el("mfaButton").onclick = handleMfa;
   el("refreshReportsButton").onclick = loadReports;
@@ -543,6 +708,10 @@
       });
   } else {
       setStatus("Google 관리자 로그인 후 패스키 인증까지 완료해야 접속됩니다.");
+  }
+
+  if (isLocalAdminShortcutAllowed()) {
+    el("localAdminButton").style.display = "inline-block";
   }
 </script>
 </body>

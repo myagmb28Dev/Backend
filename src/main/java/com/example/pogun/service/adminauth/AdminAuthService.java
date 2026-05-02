@@ -122,80 +122,48 @@ public class AdminAuthService {
             );
         }
 
-        try {
-            adminPermissionService.ensureDefaults(admin);
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_PERMISSION_INIT_FAILED", "관리자 권한 초기화에 실패했습니다.");
+        return buildLoginResponse(admin, request, false);
+    }
+
+    @Transactional
+    public AdminLoginResponse loginLocalTestAdmin(String email, boolean forcePasskeyEnroll, HttpServletRequest request) {
+        if (email == null || email.isBlank()) {
+            throw ApiException.badRequest("INVALID_EMAIL", "email은 필수입니다.");
         }
 
-        Set<AdminPermission> permissions;
-        try {
-            permissions = adminPermissionService.getPermissions(admin);
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_PERMISSION_LOAD_FAILED", "관리자 권한 조회에 실패했습니다.");
+        User admin = userRepository.findByEmail(email.trim())
+                .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+
+        if (admin.getStatus() != UserStatus.ACTIVE) {
+            admin.setStatus(UserStatus.ACTIVE);
+        }
+        admin.setRole(UserRole.ADMIN);
+        admin.setAdminEmailVerificationRequired(false);
+        admin.setAdminEmailVerifiedAt(Instant.now());
+        admin = userRepository.save(admin);
+
+        adminPermissionService.ensureDefaults(admin);
+        var permissions = adminPermissionService.getPermissions(admin);
+
+        if (forcePasskeyEnroll) {
+            adminPasskeyRepository.deleteByUser(admin);
         }
 
-        boolean hasPasskey;
-        try {
-            hasPasskey = adminPasskeyRepository.existsByUser(admin);
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_PASSKEY_STATE_FAILED", "관리자 PassKey 상태 조회에 실패했습니다.");
-        }
-
-        if (!hasPasskey) {
-            AdminSessionTokenService.IssuedSession issuedSession;
-            try {
-                issuedSession = adminSessionTokenService.issue(
-                        admin,
-                        AdminSessionStage.PASSKEY_ENROLL,
-                        adminConsoleProperties.getBootstrapSessionTtlSeconds()
-                );
-            } catch (RuntimeException e) {
-                throw ApiException.internal("ADMIN_SESSION_ISSUE_FAILED", "관리자 부트스트랩 세션 발급에 실패했습니다.");
-            }
-            adminAuditService.log("ADMIN_LOGIN_PASSKEY_ENROLL_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
-            AdminAuthSessionResponse sessionResponse;
-            try {
-                sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
-            } catch (RuntimeException e) {
-                throw ApiException.internal("ADMIN_SESSION_RESPONSE_FAILED", "관리자 로그인 세션 응답 생성에 실패했습니다.");
-            }
-            return new AdminLoginResponse(
-                    "PASSKEY_REGISTRATION_REQUIRED",
-                    true,
-                    sessionResponse,
-                    null
-            );
-        }
-
-        AdminSessionTokenService.IssuedSession issuedSession;
-        try {
-            issuedSession = adminSessionTokenService.issue(
-                    admin,
-                    AdminSessionStage.MFA_PENDING,
-                    adminConsoleProperties.getBootstrapSessionTtlSeconds()
-            );
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_SESSION_ISSUE_FAILED", "관리자 MFA 대기 세션 발급에 실패했습니다.");
-        }
-        AdminPasskeyOptionsResponse options;
-        try {
-            options = startAssertion(issuedSession.session(), admin, request);
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_PASSKEY_OPTIONS_FAILED", "관리자 PassKey 인증 옵션 생성에 실패했습니다.");
-        }
-        adminAuditService.log("ADMIN_LOGIN_PASSKEY_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
-        AdminAuthSessionResponse sessionResponse;
-        try {
-            sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
-        } catch (RuntimeException e) {
-            throw ApiException.internal("ADMIN_SESSION_RESPONSE_FAILED", "관리자 로그인 세션 응답 생성에 실패했습니다.");
-        }
+        AdminSessionTokenService.IssuedSession issuedSession = adminSessionTokenService.issue(
+                admin,
+                AdminSessionStage.PASSKEY_ENROLL,
+                adminConsoleProperties.getBootstrapSessionTtlSeconds()
+        );
+        AdminAuthSessionResponse sessionResponse = toSessionResponse(
+                issuedSession.rawToken(),
+                issuedSession.session(),
+                permissions
+        );
         return new AdminLoginResponse(
-                "PASSKEY_REQUIRED",
+                "PASSKEY_REGISTRATION_REQUIRED",
                 true,
                 sessionResponse,
-                options
+                null
         );
     }
 
@@ -486,5 +454,88 @@ public class AdminAuthService {
         }
         Object credentials = authentication.getCredentials();
         return credentials instanceof String token && !token.isBlank() ? token : null;
+    }
+
+    private AdminLoginResponse buildLoginResponse(User admin, HttpServletRequest request, boolean forcePasskeyEnroll) {
+        try {
+            adminPermissionService.ensureDefaults(admin);
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_PERMISSION_INIT_FAILED", "관리자 권한 초기화에 실패했습니다.");
+        }
+
+        Set<AdminPermission> permissions;
+        try {
+            permissions = adminPermissionService.getPermissions(admin);
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_PERMISSION_LOAD_FAILED", "관리자 권한 조회에 실패했습니다.");
+        }
+
+        boolean hasPasskey;
+        try {
+            if (forcePasskeyEnroll) {
+                adminPasskeyRepository.deleteByUser(admin);
+                hasPasskey = false;
+            } else {
+                hasPasskey = adminPasskeyRepository.existsByUser(admin);
+            }
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_PASSKEY_STATE_FAILED", "관리자 PassKey 상태 조회에 실패했습니다.");
+        }
+
+        if (!hasPasskey) {
+            AdminSessionTokenService.IssuedSession issuedSession;
+            try {
+                issuedSession = adminSessionTokenService.issue(
+                        admin,
+                        AdminSessionStage.PASSKEY_ENROLL,
+                        adminConsoleProperties.getBootstrapSessionTtlSeconds()
+                );
+            } catch (RuntimeException e) {
+                throw ApiException.internal("ADMIN_SESSION_ISSUE_FAILED", "관리자 부트스트랩 세션 발급에 실패했습니다.");
+            }
+            adminAuditService.log("ADMIN_LOGIN_PASSKEY_ENROLL_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+            AdminAuthSessionResponse sessionResponse;
+            try {
+                sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
+            } catch (RuntimeException e) {
+                throw ApiException.internal("ADMIN_SESSION_RESPONSE_FAILED", "관리자 로그인 세션 응답 생성에 실패했습니다.");
+            }
+            return new AdminLoginResponse(
+                    "PASSKEY_REGISTRATION_REQUIRED",
+                    true,
+                    sessionResponse,
+                    null
+            );
+        }
+
+        AdminSessionTokenService.IssuedSession issuedSession;
+        try {
+            issuedSession = adminSessionTokenService.issue(
+                    admin,
+                    AdminSessionStage.MFA_PENDING,
+                    adminConsoleProperties.getBootstrapSessionTtlSeconds()
+            );
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_SESSION_ISSUE_FAILED", "관리자 MFA 대기 세션 발급에 실패했습니다.");
+        }
+        AdminPasskeyOptionsResponse options;
+        try {
+            options = startAssertion(issuedSession.session(), admin, request);
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_PASSKEY_OPTIONS_FAILED", "관리자 PassKey 인증 옵션 생성에 실패했습니다.");
+        }
+        adminAuditService.log("ADMIN_LOGIN_PASSKEY_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+        AdminAuthSessionResponse sessionResponse;
+        try {
+            sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
+        } catch (RuntimeException e) {
+            throw ApiException.internal("ADMIN_SESSION_RESPONSE_FAILED", "관리자 로그인 세션 응답 생성에 실패했습니다.");
+        }
+        return new AdminLoginResponse(
+                "PASSKEY_REQUIRED",
+                true,
+                sessionResponse,
+                options
+        );
     }
 }

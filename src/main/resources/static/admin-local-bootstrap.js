@@ -117,7 +117,7 @@ export async function ensureLocalAdminTestUserVerified(options = {}) {
   const projectId =
     options.projectId ||
     window.localStorage.getItem("pogun-local-project-id") ||
-    "pogeun-fire";
+    "pogun-local";
 
   const idToken = await ensureEmailUser(authBase, email, password);
   const verify = await verifyEmailOnAuthEmulator(authBase, projectId, idToken, email);

@@ -36,7 +36,10 @@ public class FirebaseEmulatorIdentityProvider implements FirebaseIdentityProvide
             throw new IllegalArgumentException("에뮬레이터 ID 토큰을 해석할 수 없습니다.", e);
         }
 
-        String projectId = blankToNull(firebaseAuthProperties.getProjectId());
+        String projectId = firstNonBlank(
+                blankToNull(firebaseAuthProperties.getEmulatorProjectId()),
+                blankToNull(firebaseAuthProperties.getProjectId())
+        );
         if (projectId == null) {
             throw new IllegalArgumentException("Auth Emulator 사용 시 app.firebase.auth.project-id 또는 FIREBASE_PROJECT_ID가 필요합니다.");
         }

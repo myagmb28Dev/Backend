@@ -9,6 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -23,6 +25,7 @@ public class AdminAuditService {
     private final ObjectMapper objectMapper;
     private final AdminSecurityService adminSecurityService;
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(String action, String targetType, String targetId, Object before, Object after, Map<String, Object> metadata) {
         User actor = null;
         try {
