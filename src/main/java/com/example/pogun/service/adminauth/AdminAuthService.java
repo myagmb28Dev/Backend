@@ -27,6 +27,7 @@ import com.google.firebase.auth.UserRecord;
 import com.example.pogun.service.auth.FirebaseIdentityService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -41,6 +42,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AdminAuthService {
 
@@ -88,7 +90,7 @@ public class AdminAuthService {
                 resetFirebaseEmailVerified(firebaseUid);
             }
             adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
-            adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+            auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
                     "EMAIL_VERIFICATION_REQUIRED",
                     false,
@@ -100,7 +102,7 @@ public class AdminAuthService {
         if (admin.isAdminEmailVerificationRequired()) {
             if (!emailVerified) {
                 adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
-                adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+                auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
                 return new AdminLoginResponse(
                         "EMAIL_VERIFICATION_REQUIRED",
                         false,
@@ -113,7 +115,7 @@ public class AdminAuthService {
             admin = userRepository.save(admin);
         } else if (!emailVerified) {
             adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
-            adminAuditService.log("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+            auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
                     "EMAIL_VERIFICATION_REQUIRED",
                     false,
@@ -216,7 +218,7 @@ public class AdminAuthService {
             session.setExpiresAt(Instant.now().plusSeconds(adminConsoleProperties.getSessionTtlSeconds()));
             adminAuthChallengeRepository.save(challenge);
             adminSessionRepository.save(session);
-            adminAuditService.log("ADMIN_PASSKEY_REGISTERED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("credentialId", result.credentialId()), null);
+            auditSafely("ADMIN_PASSKEY_REGISTERED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("credentialId", result.credentialId()), null);
             return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
         } catch (Exception e) {
             throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 등록 검증에 실패했습니다.");
@@ -243,7 +245,7 @@ public class AdminAuthService {
             session.setExpiresAt(Instant.now().plusSeconds(adminConsoleProperties.getSessionTtlSeconds()));
             adminAuthChallengeRepository.save(challenge);
             adminSessionRepository.save(session);
-            adminAuditService.log("ADMIN_LOGIN_AUTHENTICATED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("email", session.getUser().getEmail()), null);
+            auditSafely("ADMIN_LOGIN_AUTHENTICATED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("email", session.getUser().getEmail()), null);
             return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
         } catch (Exception e) {
             throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 검증에 실패했습니다.");
@@ -274,7 +276,7 @@ public class AdminAuthService {
         AdminSession session = adminSessionRepository.findById(principal.sessionId())
                 .orElseThrow(() -> ApiException.unauthorized("ADMIN_SESSION_REQUIRED", "관리자 세션이 필요합니다."));
         adminSessionTokenService.revoke(session);
-        adminAuditService.log("ADMIN_LOGOUT", "ADMIN_USER", session.getUser().getId().toString(), null, null, null);
+        auditSafely("ADMIN_LOGOUT", "ADMIN_USER", session.getUser().getId().toString(), null, null, null);
     }
 
     @Transactional
@@ -297,7 +299,7 @@ public class AdminAuthService {
         session.setStage(AdminSessionStage.PASSKEY_ENROLL);
         session.setExpiresAt(Instant.now().plusSeconds(adminConsoleProperties.getBootstrapSessionTtlSeconds()));
         adminSessionRepository.save(session);
-        adminAuditService.log(
+        auditSafely(
                 "ADMIN_PASSKEY_RESET",
                 "ADMIN_USER",
                 admin.getId().toString(),
@@ -493,7 +495,7 @@ public class AdminAuthService {
             } catch (RuntimeException e) {
                 throw ApiException.internal("ADMIN_SESSION_ISSUE_FAILED", "관리자 부트스트랩 세션 발급에 실패했습니다.");
             }
-            adminAuditService.log("ADMIN_LOGIN_PASSKEY_ENROLL_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+            auditSafely("ADMIN_LOGIN_PASSKEY_ENROLL_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             AdminAuthSessionResponse sessionResponse;
             try {
                 sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
@@ -524,7 +526,7 @@ public class AdminAuthService {
         } catch (RuntimeException e) {
             throw ApiException.internal("ADMIN_PASSKEY_OPTIONS_FAILED", "관리자 PassKey 인증 옵션 생성에 실패했습니다.");
         }
-        adminAuditService.log("ADMIN_LOGIN_PASSKEY_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+        auditSafely("ADMIN_LOGIN_PASSKEY_REQUIRED", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
         AdminAuthSessionResponse sessionResponse;
         try {
             sessionResponse = toSessionResponse(issuedSession.rawToken(), issuedSession.session(), permissions);
@@ -537,5 +539,13 @@ public class AdminAuthService {
                 sessionResponse,
                 options
         );
+    }
+
+    private void auditSafely(String action, String targetType, String targetId, Object before, Object after, Map<String, Object> metadata) {
+        try {
+            adminAuditService.log(action, targetType, targetId, before, after, metadata);
+        } catch (RuntimeException e) {
+            log.warn("Admin audit ignored action={} targetId={} reason={}", action, targetId, e.getClass().getSimpleName());
+        }
     }
 }
