@@ -304,6 +304,7 @@ const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
 const PRESENCE_PING_INTERVAL_MS = 8000;
 const MAX_UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;
+const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "video/mp4"]);
 const SOCKET_CONNECT_TIMEOUT_MS = 15000;
 const SOCKET_STALE_AFTER_MS = 25000;
 const SOCKET_RECOVERY_COOLDOWN_MS = 1500;
@@ -507,6 +508,31 @@ function addFilesToUploadQueue(files) {
     const objectUrl = URL.createObjectURL(file);
     uploadQueue.push({ id: `upload-${nextUploadQueueId++}`, file, objectUrl });
   }
+}
+function enqueueSelectedFiles(selectedFiles) {
+  if (!Array.isArray(selectedFiles) || selectedFiles.length === 0) return false;
+  const unsupported = selectedFiles.filter((file) => !ALLOWED_UPLOAD_MIME_TYPES.has(String(file?.type || "").toLowerCase()));
+  if (unsupported.length > 0) {
+    setStatus("png/jpg/gif/mp4 파일만 첨부할 수 있습니다.", "bad");
+    return false;
+  }
+  if (uploadQueueRoomId && uploadQueueRoomId !== roomId) {
+    resetUploadQueue();
+  }
+  const previousLength = uploadQueue.length;
+  addFilesToUploadQueue(selectedFiles);
+  const totalBytes = queueTotalBytes();
+  if (totalBytes > MAX_UPLOAD_TOTAL_BYTES) {
+    const overflowed = uploadQueue.splice(previousLength);
+    for (const item of overflowed) {
+      try { URL.revokeObjectURL(item.objectUrl); } catch {}
+    }
+    renderImagePreview();
+    setStatus("첨부 파일 총 용량은 30MB 이하여야 합니다.", "bad");
+    return false;
+  }
+  renderImagePreview();
+  return true;
 }
 function removeUploadQueueItem(itemId) {
   if (isUploadingImages) return;
@@ -2314,24 +2340,29 @@ el("imageInput").addEventListener("change", (event) => {
   const input = event.target;
   const selected = input?.files ? [...input.files] : [];
   if (selected.length === 0) return;
-  if (uploadQueueRoomId && uploadQueueRoomId !== roomId) {
-    resetUploadQueue();
-  }
-  const previousLength = uploadQueue.length;
-  addFilesToUploadQueue(selected);
-  const totalBytes = queueTotalBytes();
-  if (totalBytes > MAX_UPLOAD_TOTAL_BYTES) {
-    const overflowed = uploadQueue.splice(previousLength);
-    for (const item of overflowed) {
-      try { URL.revokeObjectURL(item.objectUrl); } catch {}
-    }
-    input.value = "";
-    renderImagePreview();
-    setStatus("첨부 파일 총 용량은 30MB 이하여야 합니다.", "bad");
-    return;
-  }
+  enqueueSelectedFiles(selected);
   input.value = "";
-  renderImagePreview();
+});
+el("messageInput").addEventListener("paste", (event) => {
+  const files = extractClipboardFiles(event.clipboardData);
+  if (files.length === 0) return;
+  event.preventDefault();
+  enqueueSelectedFiles(files);
+});
+function extractClipboardFiles(clipboardData) {
+  if (!clipboardData) return [];
+  const items = [...(clipboardData.items || [])];
+  return items
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file) => file && file.size > 0);
+}
+window.addEventListener("paste", (event) => {
+  const files = extractClipboardFiles(event.clipboardData);
+  if (files.length === 0) return;
+  if (!activeRole || !roomId || !roomReady) return;
+  event.preventDefault();
+  enqueueSelectedFiles(files);
 });
 window.__dmTestState = () => ({ activeRole, roomId, roomReady, selectedOwnNoticeId, selectedTargetNoticeId, ownNoticeCount: ownNotices.length, targetNoticeCount: targetNotices.length, roomSummaries, messagesCount: messages.length, debugFrames: debugFrames.slice(-40) });
 renderAccountGrid();
