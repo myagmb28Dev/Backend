@@ -61,6 +61,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/notification-push.js")
                         .permitAll()
+                        .requestMatchers("/js/**")
+                        .permitAll()
                         .requestMatchers("/firebase-messaging-sw.js")
                         .permitAll()
                         .requestMatchers(
