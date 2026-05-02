@@ -164,6 +164,8 @@
 </main>
 
 <script type="module">
+import { request } from "./js/api-client.js";
+import { loadSession as loadStoredSession, saveSession as saveStoredSession, removeSession } from "./js/session-store.js";
 import {
   ACTIVE_ROLE_KEY,
   REAL_SESSION_KEY,
@@ -200,25 +202,8 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-async function readJson(response) {
-  const text = await response.text();
-  try { return JSON.parse(text); } catch { return text; }
-}
-
-async function request(url, init = {}) {
-  const response = await fetch(url, init);
-  return { status: response.status, body: await readJson(response) };
-}
-
 function getStoredSession() {
-  try {
-    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.firebaseIdToken ? parsed : null;
-  } catch {
-    return null;
-  }
+  return loadStoredSession(REAL_SESSION_KEY);
 }
 
 function redirectToLoginFlow() {
@@ -259,14 +244,14 @@ async function login() {
 
   if (response.status !== 200) {
     clearStoredSession();
-    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(ACTIVE_ROLE_KEY);
     redirectToLoginFlow();
     return;
   }
 
   const data = response.body?.data || {};
   if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
-    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(ACTIVE_ROLE_KEY);
     redirectToLoginFlow();
     return;
   }
@@ -274,20 +259,17 @@ async function login() {
   state.token = session.firebaseIdToken;
   state.user = data;
 
-  try {
-    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify({
-      ...session,
-      firebaseIdToken: state.token,
-      firebaseUid: data.firebaseUid || session.firebaseUid || "",
-      email: data.email || session.email || "",
-      nickname: data.nickname || session.nickname || "",
-      profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
-      userId: data.id,
-      registrationStatus: data.registrationStatus
-    }));
-    window.localStorage.setItem(ACTIVE_ROLE_KEY, "google");
-  } catch {
-  }
+  saveStoredSession(REAL_SESSION_KEY, {
+    ...session,
+    firebaseIdToken: state.token,
+    firebaseUid: data.firebaseUid || session.firebaseUid || "",
+    email: data.email || session.email || "",
+    nickname: data.nickname || session.nickname || "",
+    profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+    userId: data.id,
+    registrationStatus: data.registrationStatus
+  });
+  try { window.localStorage.setItem(ACTIVE_ROLE_KEY, "google"); } catch {}
 
   renderSessionInfo();
   setStatus(`${data.nickname || data.email || "사용자"} 로그인 완료`, "good");
@@ -512,7 +494,7 @@ function run(handler) {
       const message = error.message || String(error);
       if (message.includes("401") || message.includes("로그인이 필요")) {
         clearStoredSession();
-        try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+        removeSession(ACTIVE_ROLE_KEY);
         redirectToLoginFlow();
         return;
       }

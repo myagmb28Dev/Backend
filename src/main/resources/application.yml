@@ -94,8 +94,6 @@ spring:
   config:
     activate:
       on-profile: local
-    import:
-      - optional:file:.env.local[.properties]
   data:
     redis:
       host: localhost
@@ -106,8 +104,7 @@ spring:
   config:
     activate:
       on-profile: prod
-    import:
-      - optional:file:.env[.properties]
   data:
     redis:
       host: redis
+

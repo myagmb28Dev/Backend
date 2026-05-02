@@ -1,3 +1,6 @@
+import { request } from "./js/api-client.js";
+import { loadSession as loadStoredSession, removeSession } from "./js/session-store.js";
+
 const BACKEND_BASE = window.location.origin;
 export const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
 export const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
@@ -98,39 +101,13 @@ function initializeNotificationBridge() {
   });
 }
 
-export async function readJson(response) {
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-export async function request(url, init = {}) {
-  const response = await fetch(url, init);
-  return { status: response.status, body: await readJson(response) };
-}
-
 export function getStoredSession() {
-  try {
-    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    return parsed?.firebaseIdToken ? parsed : null;
-  } catch {
-    return null;
-  }
+  return loadStoredSession(REAL_SESSION_KEY);
 }
 
 export function clearStoredSession() {
-  try {
-    window.localStorage.removeItem(REAL_SESSION_KEY);
-    window.localStorage.removeItem(ACTIVE_ROLE_KEY);
-  } catch {
-  }
+  removeSession(REAL_SESSION_KEY);
+  removeSession(ACTIVE_ROLE_KEY);
 }
 
 export function getOrCreateNotificationDeviceId() {
@@ -184,12 +161,7 @@ export async function authRequest(path, init = {}) {
   if (!headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${session.firebaseIdToken}`);
   }
-
-  const response = await fetch(`${BACKEND_BASE}${path}`, {
-    ...init,
-    headers
-  });
-  return { status: response.status, body: await readJson(response) };
+  return request(`${BACKEND_BASE}${path}`, { ...init, headers });
 }
 
 export async function fetchUnreadCount() {

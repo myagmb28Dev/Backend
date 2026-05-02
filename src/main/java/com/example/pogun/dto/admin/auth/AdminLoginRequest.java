@@ -10,10 +10,4 @@ import lombok.Setter;
 public class AdminLoginRequest {
 
     private String firebaseIdToken;
-
-    private Boolean localTest;
-
-    private String localTestEmail;
-
-    private Boolean forcePasskeyEnroll;
 }

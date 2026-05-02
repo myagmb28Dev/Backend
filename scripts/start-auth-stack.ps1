@@ -1,117 +1,33 @@
 param(
+    [ValidateSet("local", "real")]
+    [string]$Mode = "local",
     [string]$ProjectId = "pogun-local",
     [string]$Email = "playwright-user1@local.dev",
     [string]$Password = "Test1234!",
     [int]$AuthPort = 9099,
     [int]$BackendPort = 8081,
     [int]$UiPort = 4000,
-    [int]$TimeoutSeconds = 180
+    [int]$TimeoutSeconds = 180,
+    [string]$SpringProfile = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
+. (Join-Path $scriptDir "lib\PogunScriptCommon.ps1")
+
 $localDir = Join-Path $repoRoot ".local"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
-$xdgConfigDir = Join-Path $localDir "xdg"
-if ([string]::IsNullOrWhiteSpace($env:XDG_CONFIG_HOME)) {
-    $env:XDG_CONFIG_HOME = $xdgConfigDir
-}
-New-Item -ItemType Directory -Force -Path $env:XDG_CONFIG_HOME | Out-Null
-
-function Get-DotEnvValue {
-    param(
-        [string[]]$FilePaths,
-        [string]$Key
-    )
-
-    foreach ($filePath in $FilePaths) {
-        if (-not (Test-Path $filePath)) {
-            continue
-        }
-
-        $line = Select-String -Path $filePath -Pattern "^$Key=" | Select-Object -Last 1
-        if ($line) {
-            return ($line.Line -split '=', 2)[1]
-        }
-    }
-    return $null
-}
-
-function Resolve-GradleUserHome {
-    $wrapperProperties = Join-Path $repoRoot "gradle\wrapper\gradle-wrapper.properties"
-    $distributionName = "gradle-8.14-bin"
-    if (Test-Path $wrapperProperties) {
-        $distributionUrlLine = Select-String -Path $wrapperProperties -Pattern "^distributionUrl=" | Select-Object -First 1
-        if ($distributionUrlLine -and $distributionUrlLine.Line -match "([^/\\]+)\.zip$") {
-            $distributionName = $Matches[1]
-        }
-    }
-
-    $candidateHomes = @()
-    if ($env:GRADLE_USER_HOME) {
-        $candidateHomes += $env:GRADLE_USER_HOME
-    }
-    $candidateHomes += (Join-Path $env:USERPROFILE ".gradle")
-    $usersRoot = Join-Path $env:SystemDrive "Users"
-    if (Test-Path $usersRoot) {
-        $candidateHomes += Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object { Join-Path $_.FullName ".gradle" }
-    }
-
-    $repoGradleHome = Join-Path $repoRoot ".gradle"
-    New-Item -ItemType Directory -Force -Path $repoGradleHome | Out-Null
-    $repoDistributionRoot = Join-Path $repoGradleHome "wrapper\dists\$distributionName"
-
-    foreach ($candidateHome in ($candidateHomes | Select-Object -Unique)) {
-        $distributionRoot = Join-Path $candidateHome "wrapper\dists\$distributionName"
-        if (Test-Path $distributionRoot) {
-            $installed = Get-ChildItem $distributionRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -match "^gradle-\d" } |
-                Select-Object -First 1
-            if ($installed) {
-                $lockProbe = Join-Path (Split-Path -Parent $installed.FullName) ".pogun-write-test"
-                try {
-                    [System.IO.File]::WriteAllText($lockProbe, "ok", [System.Text.UTF8Encoding]::new($false))
-                    Remove-Item $lockProbe -Force -ErrorAction SilentlyContinue
-                    return $candidateHome
-                } catch {
-                }
-
-                $hashDir = Split-Path -Parent $installed.FullName
-                $relativeHashDir = $hashDir.Substring($distributionRoot.Length).TrimStart("\", "/")
-                $targetHashDir = Join-Path $repoDistributionRoot $relativeHashDir
-                New-Item -ItemType Directory -Force -Path $targetHashDir | Out-Null
-                Copy-Item -Path $installed.FullName -Destination $targetHashDir -Recurse -Force
-                New-Item -ItemType File -Force -Path (Join-Path $targetHashDir "$distributionName.zip.ok") | Out-Null
-                return $repoGradleHome
-            }
-        }
-    }
-
-    if (Test-Path $repoDistributionRoot) {
-        $repoInstalled = Get-ChildItem $repoDistributionRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match "^gradle-\d" } |
-            Select-Object -First 1
-        if ($repoInstalled) {
-            return $repoGradleHome
-        }
-    }
-
-    return $repoGradleHome
-}
 
 function Get-ExecutablePath {
     param([string[]]$Names)
-
     foreach ($name in $Names) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
         if ($cmd) {
             return $cmd.Source
         }
     }
-
     throw "Required command not found: $($Names -join ', ')"
 }
 
@@ -151,7 +67,6 @@ function Wait-TcpPort {
         }
         Start-Sleep -Seconds 1
     }
-
     throw "$Name did not become ready on port $Port within $TimeoutSec seconds."
 }
 
@@ -176,7 +91,6 @@ function Wait-BackendHealth {
         }
         Start-Sleep -Seconds 2
     }
-
     throw "Spring Boot backend health did not become ready on port $Port within $TimeoutSec seconds."
 }
 
@@ -194,7 +108,6 @@ function Ensure-PortReadyWithRetry {
         if (-not (Test-TcpPort -Port $Port)) {
             $startedProcess = & $StartAction
         }
-
         try {
             Wait-TcpPort -Port $Port -Name $Name -TimeoutSec $TimeoutSec -Process $startedProcess
             return
@@ -222,18 +135,6 @@ function Start-DetachedPowerShell {
     )
 }
 
-function Start-DetachedCommandWindow {
-    param(
-        [string]$Title,
-        [string]$CommandText
-    )
-
-    return Start-Process -FilePath "cmd.exe" -WorkingDirectory $repoRoot -WindowStyle Normal -PassThru -ArgumentList @(
-        "/k",
-        "title $Title && $CommandText"
-    )
-}
-
 function Get-HttpErrorText {
     param([System.Management.Automation.ErrorRecord]$ErrorRecord)
 
@@ -250,7 +151,6 @@ function Get-HttpErrorText {
             $reader.Close()
         }
     }
-
     return $ErrorRecord.Exception.Message
 }
 
@@ -259,7 +159,6 @@ function Invoke-AuthEmulatorRequest {
         [string]$Path,
         [hashtable]$Body
     )
-
     $uri = "http://127.0.0.1:$AuthPort$Path"
     return Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body ($Body | ConvertTo-Json)
 }
@@ -277,18 +176,15 @@ function Invoke-BackendRequest {
     if ($BearerToken) {
         $headers["Authorization"] = "Bearer $BearerToken"
     }
-
     $params = @{
         Method = $Method
         Uri = $uri
         Headers = $headers
     }
-
     if ($null -ne $Body) {
         $params["ContentType"] = "application/json"
         $params["Body"] = ($Body | ConvertTo-Json)
     }
-
     return Invoke-RestMethod @params
 }
 
@@ -305,9 +201,7 @@ function Ensure-EmulatorUserAndGetToken {
     }
 
     try {
-        $response = Invoke-AuthEmulatorRequest `
-            -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" `
-            -Body $authBody
+        $response = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
         return $response.idToken
     } catch {
         $errorText = Get-HttpErrorText -ErrorRecord $_
@@ -317,9 +211,7 @@ function Ensure-EmulatorUserAndGetToken {
     }
 
     try {
-        Invoke-AuthEmulatorRequest `
-            -Path "/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key" `
-            -Body $authBody | Out-Null
+        Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key" -Body $authBody | Out-Null
     } catch {
         $errorText = Get-HttpErrorText -ErrorRecord $_
         if ($errorText -notmatch "EMAIL_EXISTS") {
@@ -327,9 +219,7 @@ function Ensure-EmulatorUserAndGetToken {
         }
     }
 
-    $response = Invoke-AuthEmulatorRequest `
-        -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" `
-        -Body $authBody
+    $response = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
     return $response.idToken
 }
 
@@ -339,18 +229,12 @@ function Ensure-EmulatorEmailVerified {
         [string]$Token
     )
 
-    $lookup = Invoke-AuthEmulatorRequest `
-        -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" `
-        -Body @{ idToken = $Token }
-
+    $lookup = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" -Body @{ idToken = $Token }
     if ($lookup.users -and $lookup.users.Count -gt 0 -and $lookup.users[0].emailVerified -eq $true) {
         return
     }
 
-    Invoke-AuthEmulatorRequest `
-        -Path "/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=fake-api-key" `
-        -Body @{ requestType = "VERIFY_EMAIL"; idToken = $Token } | Out-Null
-
+    Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=fake-api-key" -Body @{ requestType = "VERIFY_EMAIL"; idToken = $Token } | Out-Null
     $oobResponse = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$AuthPort/emulator/v1/projects/$ProjectId/oobCodes"
     $oobCodes = @($oobResponse.oobCodes)
     $latestVerifyCode = $oobCodes |
@@ -362,11 +246,7 @@ function Ensure-EmulatorEmailVerified {
     }
 
     Invoke-WebRequest -Uri $latestVerifyCode.oobLink -UseBasicParsing | Out-Null
-
-    $afterLookup = Invoke-AuthEmulatorRequest `
-        -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" `
-        -Body @{ idToken = $Token }
-
+    $afterLookup = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" -Body @{ idToken = $Token }
     if (-not ($afterLookup.users -and $afterLookup.users.Count -gt 0 -and $afterLookup.users[0].emailVerified -eq $true)) {
         throw "Email verification did not complete for $TargetEmail"
     }
@@ -375,40 +255,23 @@ function Ensure-EmulatorEmailVerified {
 function Ensure-BackendUserReady {
     param([string]$Token)
 
-    $loginResponse = Invoke-BackendRequest `
-        -Path "/api/auth/login" `
-        -Method "Post" `
-        -Body @{ firebaseIdToken = $Token }
-
+    $loginResponse = Invoke-BackendRequest -Path "/api/auth/login" -Method "Post" -Body @{ firebaseIdToken = $Token }
     $registrationStatus = [string]$loginResponse.data.registrationStatus
     $userId = $loginResponse.data.id
     if ($userId -or $registrationStatus -ne "PENDING_ONBOARDING") {
         return $loginResponse
     }
 
-    Invoke-BackendRequest `
-        -Path "/api/auth/onboarding/complete" `
-        -Method "Post" `
-        -Body @{ x = 127.1086228; y = 37.4012191 } `
-        -BearerToken $Token | Out-Null
-
-    return Invoke-BackendRequest `
-        -Path "/api/auth/login" `
-        -Method "Post" `
-        -Body @{ firebaseIdToken = $Token }
+    Invoke-BackendRequest -Path "/api/auth/onboarding/complete" -Method "Post" -Body @{ x = 127.1086228; y = 37.4012191 } -BearerToken $Token | Out-Null
+    return Invoke-BackendRequest -Path "/api/auth/login" -Method "Post" -Body @{ firebaseIdToken = $Token }
 }
 
 function Bootstrap-LocalAdmin {
     param([string]$TargetEmail)
-
-    return Invoke-BackendRequest `
-        -Path "/api/admin/auth/login" `
-        -Method "Post" `
-        -Body @{
-            localTest = $true
-            localTestEmail = $TargetEmail
-            forcePasskeyEnroll = $true
-        }
+    return Invoke-BackendRequest -Path "/api/admin/auth/local/login" -Method "Post" -Body @{
+        localTestEmail = $TargetEmail
+        forcePasskeyEnroll = $true
+    }
 }
 
 function Write-TokenArtifacts {
@@ -428,8 +291,39 @@ function Write-TokenArtifacts {
     [System.IO.File]::WriteAllText($loginBodyPath, "{`n  `"firebaseIdToken`": `"$Token`"`n}", [System.Text.UTF8Encoding]::new($false))
 }
 
+if ([string]::IsNullOrWhiteSpace($SpringProfile)) {
+    if ($Mode -eq "local") {
+        $SpringProfile = "local"
+    } else {
+        $SpringProfile = "prod"
+    }
+}
+
+$gradleUserHome = Resolve-PogunGradleUserHome -RepoRoot $repoRoot
+
+if ($Mode -eq "real") {
+    Set-PogunWindowTitle -Title "Pogun Backend Real"
+    Set-Location $repoRoot
+    Remove-Item Env:FIREBASE_AUTH_EMULATOR_HOST -ErrorAction SilentlyContinue
+    Remove-Item Env:APP_FIREBASE_AUTH_EMULATOR_HOST -ErrorAction SilentlyContinue
+
+    $env:SPRING_PROFILES_ACTIVE = $SpringProfile
+    $env:APP_FIREBASE_AUTH_MODE = "PRODUCTION"
+    $env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = "false"
+    $env:PORT = "$BackendPort"
+    $env:GRADLE_USER_HOME = $gradleUserHome
+
+    & ".\gradlew.bat" bootRun
+    exit $LASTEXITCODE
+}
+
+$xdgConfigDir = Join-Path $localDir "xdg"
+if ([string]::IsNullOrWhiteSpace($env:XDG_CONFIG_HOME)) {
+    $env:XDG_CONFIG_HOME = $xdgConfigDir
+}
+New-Item -ItemType Directory -Force -Path $env:XDG_CONFIG_HOME | Out-Null
+
 $firebaseExe = Get-ExecutablePath -Names @("firebase.cmd")
-$gradleUserHome = Resolve-GradleUserHome
 
 Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $TimeoutSeconds -StartAction {
     $emulatorCommand = @(
@@ -445,7 +339,7 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
         "`$env:PORT = '$BackendPort'",
         "`$env:SERVER_PORT = '$BackendPort'",
         "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
-        "`$env:SPRING_PROFILES_ACTIVE = 'local'",
+        "`$env:SPRING_PROFILES_ACTIVE = '$SpringProfile'",
         "`$env:APP_FIREBASE_AUTH_MODE = 'PRODUCTION'",
         "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
         "`$env:APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID = '$ProjectId'",
@@ -483,11 +377,7 @@ foreach ($legacyFile in $legacyFiles) {
     }
 }
 
-Write-TokenArtifacts `
-    -Token $idToken `
-    -TokenFileName "emulator-firebase-id-token.txt" `
-    -HeaderFileName "emulator-authorization-header.txt" `
-    -LoginBodyFileName "emulator-login-request.json"
+Write-TokenArtifacts -Token $idToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json"
 
 foreach ($account in $playwrightAccounts) {
     $accountToken = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password

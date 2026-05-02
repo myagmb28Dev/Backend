@@ -142,6 +142,7 @@
 
 <script type="module">
   import { ensureLocalAdminTestUserVerified } from "./admin-local-bootstrap.js";
+  import { createJsonAuthedRequest } from "./js/api-client.js";
   import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     GoogleAuthProvider,
@@ -237,6 +238,10 @@
   let firebaseAuthInstance = null;
   let currentGoogleUser = null;
   let passkeyRegisterRetrying = false;
+  const adminRequest = createJsonAuthedRequest({
+    baseUrl: BACKEND_BASE,
+    getToken: () => bootstrapToken || adminAccessToken || null
+  });
 
   function isLocalAdminShortcutAllowed() {
     const host = window.location.hostname;
@@ -249,19 +254,6 @@
     firebaseAuthInstance = getAuth(app);
     await setPersistence(firebaseAuthInstance, browserLocalPersistence);
     return firebaseAuthInstance;
-  }
-
-  async function request(url, init = {}) {
-    const headers = { "Content-Type": "application/json", ...init.headers };
-    const token = adminAccessToken || bootstrapToken;
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    const response = await fetch(`${BACKEND_BASE}${url}`, { ...init, headers });
-    const text = await response.text();
-    let body;
-    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-    return { ok: response.ok, status: response.status, body };
   }
 
   async function login() {
@@ -277,7 +269,7 @@
     }
     currentGoogleUser = user;
     const token = await user.getIdToken(true);
-    const res = await request("/api/admin/auth/login", {
+    const res = await adminRequest("/api/admin/auth/login", {
       method: "POST",
       body: JSON.stringify({ firebaseIdToken: token })
     });
@@ -296,6 +288,8 @@
 
   function handleAdminLoginResponse(data) {
     if (data.nextStep === "PASSKEY_REGISTRATION_REQUIRED") {
+      adminAccessToken = null;
+      localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
       bootstrapToken = data.session.accessToken;
       el("loginForm").style.display = "none";
       el("passkeySection").style.display = "flex";
@@ -312,6 +306,8 @@
       return;
     }
     if (data.nextStep === "PASSKEY_REQUIRED") {
+      adminAccessToken = null;
+      localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
       bootstrapToken = data.session.accessToken;
       el("loginForm").style.display = "none";
       el("passkeySection").style.display = "flex";
@@ -322,6 +318,7 @@
       return;
     }
     if (data.accessToken) {
+      bootstrapToken = null;
       adminAccessToken = data.accessToken;
       localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
       finalizeLogin();
@@ -331,10 +328,9 @@
   async function localAdminLogin() {
     setStatus("로컬 테스트 관리자 준비 중...");
     await ensureLocalAdminTestUserVerified({ email: LOCAL_ADMIN_EMAIL, projectId: "pogun-local" });
-    const res = await request("/api/admin/auth/login", {
+    const res = await adminRequest("/api/admin/auth/local/login", {
       method: "POST",
       body: JSON.stringify({
-        localTest: true,
         localTestEmail: LOCAL_ADMIN_EMAIL,
         forcePasskeyEnroll: true
       })
@@ -350,7 +346,7 @@
 
   async function handlePasskeyRegistration() {
     setStatus("패스키 등록 옵션 가져오는 중...");
-    const optionsRes = await request("/api/admin/auth/passkeys/register/options", { method: "POST" });
+    const optionsRes = await adminRequest("/api/admin/auth/passkeys/register/options", { method: "POST" });
     if (!optionsRes.ok) {
       const code = optionsRes.body?.error?.code || `HTTP_${optionsRes.status}`;
       const msg = optionsRes.body?.error?.message || optionsRes.body?.message || "응답 본문 확인";
@@ -382,7 +378,7 @@
         const credential = await createPasskey(publicKey);
         
         setStatus("패스키 검증 중...");
-        const verifyRes = await request("/api/admin/auth/passkeys/register/verify", {
+        const verifyRes = await adminRequest("/api/admin/auth/passkeys/register/verify", {
             method: "POST",
             body: JSON.stringify({
                 challengeId: options.challengeId,
@@ -405,7 +401,7 @@
 
   async function handleMfa() {
     setStatus("MFA 인증 옵션 가져오는 중...");
-    const optionsRes = await request("/api/admin/auth/mfa/options", { method: "POST" });
+    const optionsRes = await adminRequest("/api/admin/auth/mfa/options", { method: "POST" });
     if (!optionsRes.ok) {
         setStatus("MFA 옵션 발급 실패", "bad");
         print(optionsRes.body);
@@ -420,7 +416,7 @@
         const credential = await getPasskey(publicKey);
         
         setStatus("MFA 검증 중...");
-        const verifyRes = await request("/api/admin/auth/mfa/verify", {
+        const verifyRes = await adminRequest("/api/admin/auth/mfa/verify", {
             method: "POST",
             body: JSON.stringify({
                 challengeId: options.challengeId,
@@ -445,7 +441,7 @@
 
       async function resetPasskeys(fromAutoFallback = false) {
     setStatus("서버에 저장된 패스키를 초기화하는 중...");
-    const res = await request("/api/admin/auth/passkeys/reset", { method: "POST" });
+    const res = await adminRequest("/api/admin/auth/passkeys/reset", { method: "POST" });
     if (!res.ok) {
       setStatus("패스키 초기화 실패", "bad");
       print(res.body);
@@ -461,6 +457,7 @@
   }
 
   function finalizeLogin() {
+    bootstrapToken = null;
     el("loginForm").style.display = "none";
     el("passkeySection").style.display = "none";
     el("adminPanel").style.display = "block";
@@ -475,7 +472,7 @@
       clearInterval(trafficPollTimer);
       trafficPollTimer = null;
     }
-    await request("/api/admin/auth/logout", { method: "POST" });
+    await adminRequest("/api/admin/auth/logout", { method: "POST" });
     localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
     location.reload();
   }
@@ -529,7 +526,7 @@
   async function loadReports() {
     const status = el("statusFilter").value;
     const url = `/api/admin/reports?page=1&pageSize=20${status ? `&status=${status}` : ""}`;
-    const res = await request(url);
+    const res = await adminRequest(url);
     if (!res.ok) return setStatus("신고 목록 로딩 실패", "bad");
     const items = res.body.data.items || [];
     el("reportList").innerHTML = "";
@@ -549,7 +546,7 @@
     const id = el("reportIdInput").value;
     if (!id) return;
     const body = { status: el("reviewStatus").value, processAction: el("processAction").value, processReason: el("processReason").value };
-    const res = await request(`/api/admin/reports/${id}/review`, { method: "PATCH", body: JSON.stringify(body) });
+    const res = await adminRequest(`/api/admin/reports/${id}/review`, { method: "PATCH", body: JSON.stringify(body) });
     if (res.ok) { setStatus("신고 처리 완료", "good"); loadReports(); }
     else setStatus("신고 처리 실패", "bad");
   }
@@ -557,19 +554,18 @@
   async function promoteUser() {
     const email = el("promoteEmailInput").value.trim();
     if (!email) return;
-    const res = await request("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ email }) });
+    const res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ email }) });
     if (res.ok) setStatus(`${email} 승격 완료`, "good");
     else setStatus("승격 실패", "bad");
   }
 
   let trafficPollTimer = null;
   const trafficSeen = new Set();
-  const TRAFFIC_TRACKED_API_PREFIXES = [
+  let trafficTrackedApiPrefixes = [
     "/api/missing-pets",
     "/api/shelter",
     "/api/reports",
     "/api/admin",
-    "/api/community/posts",
     "/api/community"
   ];
   let selectedTrafficGroup = "ALL";
@@ -578,7 +574,7 @@
     if (!path || typeof path !== "string") return false;
     const clean = path.split("?")[0];
     if (!clean.startsWith("/api/")) return false;
-    return TRAFFIC_TRACKED_API_PREFIXES.some((prefix) => clean.startsWith(prefix));
+    return trafficTrackedApiPrefixes.some((prefix) => clean.startsWith(prefix));
   }
 
   function getApiGroup(path) {
@@ -600,9 +596,20 @@
     return `${ts} ${dir} ${method} ${path} status=${status} durationMs=${duration} source=${source}`;
   }
 
+  async function loadTrafficConfig() {
+    const res = await adminRequest("/api/admin/traffic/config");
+    if (!res.ok) return;
+    const prefixes = Array.isArray(res.body?.data?.trackedApiPrefixes) ? res.body.data.trackedApiPrefixes : [];
+    if (!prefixes.length) return;
+    trafficTrackedApiPrefixes = prefixes;
+    if (selectedTrafficGroup !== "ALL" && !trafficTrackedApiPrefixes.includes(selectedTrafficGroup)) {
+      selectedTrafficGroup = "ALL";
+    }
+  }
+
   function renderTrafficToolbar(grouped) {
     const host = el("trafficToolbar");
-    const groups = [...TRAFFIC_TRACKED_API_PREFIXES];
+    const groups = [...trafficTrackedApiPrefixes];
     const allCount = groups.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
     const groupItems = [{ key: "ALL", count: allCount }, ...groups.map((key) => ({ key, count: (grouped[key] || []).length }))];
     host.innerHTML = groupItems.map((item) => {
@@ -619,7 +626,7 @@
   }
 
   function renderTrafficOutput(grouped) {
-    const groups = [...TRAFFIC_TRACKED_API_PREFIXES];
+    const groups = [...trafficTrackedApiPrefixes];
     let rows = [];
     if (selectedTrafficGroup === "ALL") {
       rows = groups.flatMap((group) => (grouped[group] || []).slice(0, 20));
@@ -646,7 +653,7 @@
   }
 
   async function loadTrafficLogs() {
-    const res = await request("/api/admin/traffic/logs?limit=100");
+    const res = await adminRequest("/api/admin/traffic/logs?limit=100");
     if (!res.ok) return;
     const rows = (Array.isArray(res.body?.data) ? res.body.data : [])
       .filter((row) => isTrackedApiPath(row?.path));
@@ -671,7 +678,9 @@
 
   function startTrafficPolling() {
     if (trafficPollTimer) clearInterval(trafficPollTimer);
-    loadTrafficLogs().catch(() => {});
+    loadTrafficConfig()
+      .then(() => loadTrafficLogs())
+      .catch(() => {});
     trafficPollTimer = setInterval(() => {
       loadTrafficLogs().catch(() => {});
     }, 2000);
@@ -702,9 +711,14 @@
   const savedToken = localStorage.getItem(ADMIN_ACCESS_TOKEN_KEY);
   if (savedToken) {
       adminAccessToken = savedToken;
-      request("/api/admin/auth/session").then(res => {
+      adminRequest("/api/admin/auth/session").then(res => {
           if (res.ok && res.body.data.authenticated) finalizeLogin();
-          else { localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY); setStatus("세션이 만료되었습니다."); }
+          else {
+            adminAccessToken = null;
+            bootstrapToken = null;
+            localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+            setStatus("세션이 만료되었습니다.");
+          }
       });
   } else {
       setStatus("Google 관리자 로그인 후 패스키 인증까지 완료해야 접속됩니다.");

@@ -1,1 +1,18 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "org.springframework.boot" && requested.version != null) {
+                useModule("org.springframework.boot:org.springframework.boot.gradle.plugin:${requested.version}")
+            }
+            if (requested.id.id == "io.spring.dependency-management" && requested.version != null) {
+                useModule("io.spring.gradle:dependency-management-plugin:${requested.version}")
+            }
+        }
+    }
+}
+
 rootProject.name = 'demo'

@@ -13,6 +13,14 @@ import java.util.Map;
 public class AdminTrafficLogService {
 
     private static final int MAX_LOG_SIZE = 500;
+    private static final List<String> TRACKED_API_PREFIXES = List.of(
+            "/api/missing-pets",
+            "/api/shelter",
+            "/api/reports",
+            "/api/admin",
+            "/api/community"
+    );
+
     private final Deque<Map<String, Object>> logs = new ArrayDeque<>();
     private final Object lock = new Object();
 
@@ -49,6 +57,10 @@ public class AdminTrafficLogService {
         }
     }
 
+    public List<String> trackedApiPrefixes() {
+        return TRACKED_API_PREFIXES;
+    }
+
     private void push(Map<String, Object> entry) {
         synchronized (lock) {
             logs.addLast(entry);
@@ -58,4 +70,3 @@ public class AdminTrafficLogService {
         }
     }
 }
-

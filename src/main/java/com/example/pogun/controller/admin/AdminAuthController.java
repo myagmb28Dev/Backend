@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,28 +29,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminAuthController {
 
     private final AdminAuthService adminAuthService;
-    private final Environment environment;
 
     @PostMapping("/login")
     @Operation(summary = "관리자 Google 로그인", description = "Firebase Google ID 토큰으로 관리자 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
     public ResponseEntity<ApiResponse<AdminLoginResponse>> login(@RequestBody AdminLoginRequest request, HttpServletRequest httpRequest) {
         AdminLoginResponse data;
         try {
-            if (Boolean.TRUE.equals(request.getLocalTest())) {
-                if (!environment.matchesProfiles("local")) {
-                    throw ApiException.forbidden("LOCAL_TEST_DISABLED", "로컬 테스트 로그인은 local 프로필에서만 허용됩니다.");
-                }
-                String email = request.getLocalTestEmail() == null || request.getLocalTestEmail().isBlank()
-                        ? "playwright-user1@local.dev"
-                        : request.getLocalTestEmail().trim();
-                boolean forcePasskeyEnroll = !Boolean.FALSE.equals(request.getForcePasskeyEnroll());
-                data = adminAuthService.loginLocalTestAdmin(email, forcePasskeyEnroll, httpRequest);
-            } else {
-                if (request.getFirebaseIdToken() == null || request.getFirebaseIdToken().isBlank()) {
-                    throw ApiException.badRequest("FIREBASE_ID_TOKEN_REQUIRED", "firebaseIdToken은 필수입니다.");
-                }
-                data = adminAuthService.loginWithGoogleToken(request.getFirebaseIdToken(), httpRequest);
+            if (request.getFirebaseIdToken() == null || request.getFirebaseIdToken().isBlank()) {
+                throw ApiException.badRequest("FIREBASE_ID_TOKEN_REQUIRED", "firebaseIdToken은 필수입니다.");
             }
+            data = adminAuthService.loginWithGoogleToken(request.getFirebaseIdToken(), httpRequest);
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {

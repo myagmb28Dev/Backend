@@ -150,6 +150,8 @@
 </main>
 
 <script type="module">
+import { request } from "./js/api-client.js";
+import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "./js/session-store.js";
 import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     getAuth,
@@ -191,9 +193,6 @@ function setStatus(message, tone = "") { const node = el("status"); node.textCon
 function setMapStatus(message, tone = "") { const node = el("mapStatus"); node.textContent = message; node.className = `map-status${tone ? ` ${tone}` : ""}`; }
 function setSelectedRegionName(message) { el("selectedRegionName").textContent = message; }
 
-async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
-async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
-
 function renderSession() {
   const user = activeRole ? users[activeRole] : null;
   const pendingUser = pendingOnboardingRole ? users[pendingOnboardingRole] : null;
@@ -210,11 +209,13 @@ function renderSession() {
 
 function saveSession(session) {
   currentSession = session;
-  try {
-    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify(session));
-    window.localStorage.setItem(ACTIVE_ROLE_KEY, REAL_ROLE);
-  } catch {}
+  saveSessionStore(session);
+  try { window.localStorage.setItem(ACTIVE_ROLE_KEY, REAL_ROLE); } catch {}
   window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
+}
+
+function saveSessionStore(session) {
+  saveStoredSession(REAL_SESSION_KEY, session);
 }
 
 function clearSession() {
@@ -222,19 +223,15 @@ function clearSession() {
   activeRole = null;
   pendingOnboardingRole = null;
   users[REAL_ROLE] = { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null };
-  try {
-    window.localStorage.removeItem(REAL_SESSION_KEY);
-    window.localStorage.removeItem(ACTIVE_ROLE_KEY);
-  } catch {}
+  removeSession(REAL_SESSION_KEY);
+  removeSession(ACTIVE_ROLE_KEY);
   window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
 }
 
 function restoreSession() {
   try {
-    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.firebaseIdToken) return null;
+    const parsed = loadStoredSession(REAL_SESSION_KEY);
+    if (!parsed) return null;
     currentSession = parsed;
     users[REAL_ROLE] = {
       label: parsed.nickname || parsed.email || "Google 사용자",

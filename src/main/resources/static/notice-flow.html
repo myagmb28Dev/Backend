@@ -167,7 +167,10 @@
   </section>
 </main>
 
-<script>
+<script type="module">
+import { request } from "./js/api-client.js";
+import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "./js/session-store.js";
+
 const BACKEND_BASE = window.location.origin;
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
 const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
@@ -235,8 +238,6 @@ function fillForm(notice) {
   el("statusField").value = notice.status || "OPEN";
 }
 
-async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
-async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
 async function authApi(path, init = {}) {
   if (!activeRole || !users[activeRole].token) throw new Error("먼저 로그인하세요.");
   const headers = { Authorization: `Bearer ${users[activeRole].token}`, ...(init.headers || {}) };
@@ -250,14 +251,7 @@ async function authApi(path, init = {}) {
 }
 
 function loadRealSession() {
-  try {
-    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw);
-    return session?.firebaseIdToken ? session : null;
-  } catch {
-    return null;
-  }
+  return loadStoredSession(REAL_SESSION_KEY);
 }
 
 async function login(role) {
@@ -275,13 +269,13 @@ async function login(role) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
   });
   if (response.status !== 200) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
     moveToLoginFlow();
     return;
   }
   const data = response.body?.data || {};
   if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
-    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(ACTIVE_ROLE_KEY);
     const redirect = `/notice-flow.html${window.location.search || ""}`;
     window.location.href = `${window.location.origin}/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
     return;
@@ -289,18 +283,16 @@ async function login(role) {
   users[role].userId = data.id;
   users[role].email = data.email || users[role].email;
   users[role].label = data.nickname || users[role].label;
-  try {
-    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify({
-      ...session,
-      firebaseIdToken: users[role].token,
-      firebaseUid: data.firebaseUid || session.firebaseUid || "",
-      email: data.email || session.email || "",
-      nickname: data.nickname || session.nickname || "",
-      profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
-      userId: data.id,
-      registrationStatus: data.registrationStatus
-    }));
-  } catch {}
+  saveStoredSession(REAL_SESSION_KEY, {
+    ...session,
+    firebaseIdToken: users[role].token,
+    firebaseUid: data.firebaseUid || session.firebaseUid || "",
+    email: data.email || session.email || "",
+    nickname: data.nickname || session.nickname || "",
+    profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+    userId: data.id,
+    registrationStatus: data.registrationStatus
+  });
   activeRole = role;
   try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
   renderSessionInfo();
@@ -367,7 +359,7 @@ async function createNotice() {
   setStatus("공고 생성 중...");
   let response = await authApi("/api/missing-pets", { method: "POST", body: formData });
   if (response.status === 401) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
     moveToLoginFlow();
     return;
   }
@@ -396,7 +388,7 @@ async function updateNotice() {
   setStatus("공고 수정 중...");
   const response = await authApi(`/api/missing-pets/${editingNoticeId}`, { method: "PATCH", body: formData });
   if (response.status === 401) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
     moveToLoginFlow();
     return;
   }
@@ -415,7 +407,7 @@ async function deleteNotice() {
   setStatus("공고 삭제 중...");
   const response = await authApi(`/api/missing-pets/${currentNoticeId}`, { method: "DELETE" });
   if (response.status === 401) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
     moveToLoginFlow();
     return;
   }

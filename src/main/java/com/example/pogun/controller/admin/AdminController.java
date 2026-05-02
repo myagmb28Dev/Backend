@@ -409,4 +409,13 @@ public class AdminController {
         List<Map<String, Object>> data = adminTrafficLogService.recent(limit == null ? 100 : limit);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 조회 성공", data));
     }
+
+    @GetMapping("/traffic/config")
+    @Operation(summary = "요청 로그 추적 설정", description = "관리자 요청 콘솔에서 표시할 API prefix 목록을 반환합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> trafficConfig() {
+        Map<String, Object> data = Map.of(
+                "trackedApiPrefixes", adminTrafficLogService.trackedApiPrefixes()
+        );
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 설정 조회 성공", data));
+    }
 }

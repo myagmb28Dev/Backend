@@ -294,7 +294,12 @@
   </section>
 </main>
 
-<script>
+<script type="module">
+import { createAuthedRequest, fetchAuthedBlob, readJson, request } from "./js/api-client.js";
+import { adoptTokenFromQuery, loadSession, removeSession, saveSession } from "./js/session-store.js";
+import { createDmApi } from "./js/api/dm-api.js";
+import { mountNotificationBell, refreshNotificationBell } from "./notification-web.js";
+
 const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
 const PRESENCE_PING_INTERVAL_MS = 8000;
@@ -312,7 +317,6 @@ const dmQuery = new URLSearchParams(window.location.search);
 const requestedNoticeId = (dmQuery.get("noticeId") || "").trim() || null;
 const requestedRoomId = (dmQuery.get("roomId") || "").trim() || null;
 const requestedAutoOpen = dmQuery.get("autoOpen") === "1";
-const tokenFromQuery = (dmQuery.get("token") || dmQuery.get("firebaseIdToken") || "").trim() || null;
 const ACCOUNT_COLORS = ["#c05f2c","#176b75","#8a5a44","#2c7a5f","#8d4bb3","#b85c7a","#4f6ddf","#7b8f2f","#ad6f1f","#445c8b"];
 const users = {
   [REAL_ROLE]: {
@@ -1015,7 +1019,7 @@ async function loadAuthenticatedImages(role = activeRole) {
     }
 
     if (!hasToken) continue;
-    const response = await fetch(resolvedUrl.toString(), { headers: { Authorization: `Bearer ${users[role].token}` } });
+    const response = await fetchAuthedBlob(resolvedUrl.toString(), users[role].token);
     if (response.status === 401) {
       blockMediaUrls([imageUrl]);
       media.removeAttribute("data-auth-src");
@@ -1034,12 +1038,20 @@ async function loadAuthenticatedImages(role = activeRole) {
     media.dataset.loaded = "true";
   }
 }
-async function readJson(response) { const text = await response.text(); try { return JSON.parse(text); } catch { return text; } }
-async function request(url, init = {}) { const response = await fetch(url, init); return { status: response.status, body: await readJson(response) }; }
-async function authApi(role, path, init = {}) { return request(`${BACKEND_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${users[role].token}`, ...(init.headers || {}) } }); }
+function dmApiFor(role) {
+  const authedRequest = createAuthedRequest({
+    baseUrl: BACKEND_BASE,
+    getToken: () => users[role]?.token || null
+  });
+  return createDmApi({
+    request: authedRequest,
+    rawRequest: request,
+    baseUrl: BACKEND_BASE
+  });
+}
 async function loadAvailability(role = activeRole) {
   if (!role) return;
-  const response = await authApi(role, "/api/users/me/availability");
+  const response = await dmApiFor(role).getAvailability();
   if (response.status !== 200) throw new Error(`상태 조회 실패: ${JSON.stringify(response.body)}`);
   const data = response.body?.data || {};
   const manualStatus = data.manualPresenceStatus || data.availabilityStatus || "ONLINE";
@@ -1049,10 +1061,7 @@ async function loadAvailability(role = activeRole) {
 async function saveAvailability(role = activeRole) {
   if (!role) throw new Error("먼저 로그인하세요.");
   const availabilityStatus = el("availabilitySelect").value;
-  const response = await authApi(role, "/api/users/me/availability", {
-    method: "PATCH",
-    body: JSON.stringify({ availabilityStatus })
-  });
+  const response = await dmApiFor(role).patchAvailability(availabilityStatus);
   if (response.status !== 200) throw new Error(`상태 변경 실패: ${JSON.stringify(response.body)}`);
   const data = response.body?.data || {};
   const manualStatus = data.manualPresenceStatus || availabilityStatus;
@@ -1064,39 +1073,20 @@ function redirectToLoginFlow() {
   const redirect = `/dm-flow.html${window.location.search || ""}`;
   window.location.href = `${window.location.origin}/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
 }
-function loadRealSession() {
-  try {
-    const raw = window.localStorage.getItem(REAL_SESSION_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw);
-    if (!session?.firebaseIdToken) return null;
-    return session;
-  } catch {
-    return null;
-  }
-}
-function adoptTokenFromQuery(existingSession) {
-  if (!tokenFromQuery) return existingSession;
-  const session = { ...(existingSession || {}), firebaseIdToken: tokenFromQuery };
-  try {
-    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify(session));
-    window.localStorage.setItem(ACTIVE_ROLE_KEY, REAL_ROLE);
-  } catch {}
-  try {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("token");
-    nextUrl.searchParams.delete("firebaseIdToken");
-    const nextQuery = nextUrl.searchParams.toString();
-    const nextPath = `${nextUrl.pathname}${nextQuery ? `?${nextQuery}` : ""}${nextUrl.hash || ""}`;
-    window.history.replaceState({}, "", nextPath);
-  } catch {}
-  return session;
+function loadRealSession() { return loadSession(REAL_SESSION_KEY); }
+function adoptRealSessionToken() {
+  return adoptTokenFromQuery({
+    storageKey: REAL_SESSION_KEY,
+    roleKey: ACTIVE_ROLE_KEY,
+    roleValue: REAL_ROLE,
+    query: dmQuery
+  });
 }
 async function login(role) {
   role = REAL_ROLE;
   const user = users[role];
   resetOtherRoleForThisTab(role);
-  const session = adoptTokenFromQuery(loadRealSession());
+  const session = adoptRealSessionToken();
   if (!session) {
     redirectToLoginFlow();
     return;
@@ -1105,33 +1095,32 @@ async function login(role) {
   user.email = session.email || "";
   user.label = session.nickname || session.email || "Google 사용자";
   setStatus(`${user.label} 로그인 확인 중...`);
-  const loginResponse = await request(`${BACKEND_BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: user.token }) });
+  const loginResponse = await dmApiFor(role).loginWithFirebaseToken(user.token);
   if (loginResponse.status !== 200) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY);
+    removeSession(ACTIVE_ROLE_KEY);
     redirectToLoginFlow();
     return;
   }
   const data = loginResponse.body?.data || {};
   if (data.registrationStatus === "PENDING_ONBOARDING" || !data.id) {
-    try { window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(ACTIVE_ROLE_KEY);
     redirectToLoginFlow();
     return;
   }
   user.userId = data.id;
   user.email = data.email || user.email;
   user.label = data.nickname || user.label;
-  try {
-    window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify({
-      ...session,
-      firebaseIdToken: user.token,
-      firebaseUid: data.firebaseUid || session.firebaseUid || "",
-      email: data.email || session.email || "",
-      nickname: data.nickname || session.nickname || "",
-      profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
-      userId: data.id,
-      registrationStatus: data.registrationStatus
-    }));
-  } catch {}
+  saveSession(REAL_SESSION_KEY, {
+    ...session,
+    firebaseIdToken: user.token,
+    firebaseUid: data.firebaseUid || session.firebaseUid || "",
+    email: data.email || session.email || "",
+    nickname: data.nickname || session.nickname || "",
+    profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+    userId: data.id,
+    registrationStatus: data.registrationStatus
+  });
   rememberKnownUserLabel(user.userId, user.label);
   activeRole = role;
   try { window.localStorage.setItem(ACTIVE_ROLE_KEY, role); } catch {}
@@ -1152,7 +1141,7 @@ async function refreshContext(role = activeRole) {
   await Promise.all([loadNotices(role), loadRooms(role)]);
 }
 async function loadNotices(role) {
-  const listResponse = await authApi(role, "/api/missing-pets?page=0&size=50");
+  const listResponse = await dmApiFor(role).getMissingPets();
   if (listResponse.status !== 200) throw new Error(`공고 목록 조회 실패: ${JSON.stringify(listResponse.body)}`);
   const summaries = Array.isArray(listResponse.body?.data?.items) ? listResponse.body.data.items : [];
   const visibleNotices = summaries.filter((notice) => notice && notice.status === "OPEN");
@@ -1179,7 +1168,7 @@ async function loadNotices(role) {
   updateConversationTitle();
 }
 async function loadRooms(role) {
-  const response = await authApi(role, "/api/chat/rooms");
+  const response = await dmApiFor(role).getRooms();
   if (response.status !== 200) throw new Error(`채팅방 목록 조회 실패: ${JSON.stringify(response.body)}`);
   roomSummaries = response.body?.data || [];
   for (const room of roomSummaries) {
@@ -1224,7 +1213,7 @@ async function startDm(role = activeRole) {
   selectedTargetNoticeId = noticeId;
   renderNoticeSelectors();
   updateConversationTitle();
-  const roomResponse = await authApi(role, `/api/chat/rooms/notice/${noticeId}`, { method: "POST" });
+  const roomResponse = await dmApiFor(role).request(`/api/chat/rooms/notice/${noticeId}`, { method: "POST" });
   if (roomResponse.status !== 200 && roomResponse.status !== 201) throw new Error(`문의방 생성 실패: ${JSON.stringify(roomResponse.body)}`);
   const createdRoom = roomResponse.body?.data || null;
   if (!createdRoom?.roomId) throw new Error("문의방 생성 응답에 방 정보가 없습니다.");
@@ -1271,7 +1260,7 @@ async function leaveCurrentRoom(role = activeRole) {
   if (!role) throw new Error("먼저 로그인하세요.");
   if (!roomId) throw new Error("나갈 DM 방을 먼저 선택하세요.");
   const leavingRoomId = roomId;
-  const response = await authApi(role, `/api/chat/rooms/${leavingRoomId}/leave`, { method: "POST" });
+  const response = await dmApiFor(role).request(`/api/chat/rooms/${leavingRoomId}/leave`, { method: "POST" });
   if (response.status !== 200) throw new Error(`채팅방 나가기 실패: ${JSON.stringify(response.body)}`);
   stopTyping(role);
   setTyping(role, false);
@@ -1300,7 +1289,7 @@ async function leaveCurrentRoom(role = activeRole) {
 }
 async function saveRoomSettings(role = activeRole) {
   if (!role || !roomId) throw new Error("설정할 DM 방을 먼저 선택하세요.");
-  const response = await authApi(role, `/api/chat/rooms/${roomId}/settings`, {
+  const response = await dmApiFor(role).request(`/api/chat/rooms/${roomId}/settings`, {
     method: "PATCH",
     body: JSON.stringify({
       customRoomName: el("customRoomNameInput").value
@@ -1328,7 +1317,7 @@ async function saveRoomSettings(role = activeRole) {
 }
 async function clearRoomSettings(role = activeRole) {
   if (!role || !roomId) throw new Error("설정할 DM 방을 먼저 선택하세요.");
-  const response = await authApi(role, `/api/chat/rooms/${roomId}/settings`, {
+  const response = await dmApiFor(role).request(`/api/chat/rooms/${roomId}/settings`, {
     method: "PATCH",
     body: JSON.stringify({ clearCustomRoomName: true, clearCustomThumbnailUrl: true })
   });
@@ -1342,7 +1331,7 @@ async function clearRoomSettings(role = activeRole) {
 }
 async function reportCurrentRoom(role = activeRole) {
   if (!role || !roomId) throw new Error("신고할 DM 방을 먼저 선택하세요.");
-  const response = await authApi(role, "/api/reports", {
+  const response = await dmApiFor(role).request("/api/reports", {
     method: "POST",
     body: JSON.stringify({
       targetType: "NOTICE_CHAT_ROOM",
@@ -1358,7 +1347,7 @@ async function reportCurrentRoom(role = activeRole) {
 async function reportCurrentNotice(role = activeRole) {
   const noticeId = resolveCurrentNoticeId();
   if (!role || !noticeId) throw new Error("신고할 공고를 먼저 선택하세요.");
-  const response = await authApi(role, "/api/reports", {
+  const response = await dmApiFor(role).request("/api/reports", {
     method: "POST",
     body: JSON.stringify({
       targetType: "PET_NOTICE",
@@ -1434,7 +1423,7 @@ async function subscribeRoomIfReady(role, version = roomOpenVersion) {
 async function loadMessageHistory(role = activeRole, replace = false, version = roomOpenVersion) {
   if (!role || !roomId || !users[role].token) return;
   const loadingRoomId = roomId;
-  const response = await authApi(role, `/api/chat/rooms/${roomId}/messages`);
+  const response = await dmApiFor(role).request(`/api/chat/rooms/${roomId}/messages`);
   if (response.status !== 200) throw new Error(`메시지 내역 조회 실패: ${JSON.stringify(response.body)}`);
   if (version !== roomOpenVersion || loadingRoomId !== roomId) return;
   if (replace) messages = [];
@@ -2137,7 +2126,7 @@ async function sendMessage(role = activeRole) {
   setStatus(`${users[role].label} 메시지 전송`, "good");
 }
 async function updateMessage(role, messageId, message) {
-  const response = await authApi(role, `/api/chat/rooms/${roomId}/messages/${messageId}`, {
+  const response = await dmApiFor(role).request(`/api/chat/rooms/${roomId}/messages/${messageId}`, {
     method: "PATCH",
     body: JSON.stringify({ message })
   });
@@ -2158,7 +2147,7 @@ async function deleteMessage(messageId) {
   deletingMessageIds.add(messageId);
   openMessageMenuId = null;
   renderFeed();
-  const response = await authApi(activeRole, `/api/chat/rooms/${roomId}/messages/${messageId}`, { method: "DELETE" });
+  const response = await dmApiFor(activeRole).request(`/api/chat/rooms/${roomId}/messages/${messageId}`, { method: "DELETE" });
   if (response.status !== 200) {
     deletingMessageIds.delete(messageId);
     renderFeed();
@@ -2224,7 +2213,8 @@ async function sendImages(role = activeRole) {
     renderImagePreview();
   });
   if (response.status === 401) {
-    try { window.localStorage.removeItem(REAL_SESSION_KEY); window.localStorage.removeItem(ACTIVE_ROLE_KEY); } catch {}
+    removeSession(REAL_SESSION_KEY);
+    removeSession(ACTIVE_ROLE_KEY);
     redirectToLoginFlow();
     return;
   }
@@ -2348,7 +2338,12 @@ renderAccountGrid();
 setAvailabilityControlsEnabled(false);
 setStatus("Google 로그인 세션으로 DM을 시작하세요.");
 renderNoticeSelectors(); renderRoomList(); renderFeed(); renderReplyDraft(); renderEditDraft(); renderImagePreview(); updateIds();
-const initialSession = adoptTokenFromQuery(loadRealSession());
+mountNotificationBell("notificationBellMount");
+refreshNotificationBell("notificationBellMount").catch(() => {});
+window.addEventListener("focus", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
+window.addEventListener("notification-web:message", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
+
+const initialSession = adoptRealSessionToken();
 if (initialSession) {
   if (requestedRoomId) {
     pendingRoomSelection = { roomId: requestedRoomId };
@@ -2359,13 +2354,5 @@ if (initialSession) {
 }
 </script>
 <script type="module" src="./global-presence.js"></script>
-<script type="module">
-import { mountNotificationBell, refreshNotificationBell } from "./notification-web.js";
-
-mountNotificationBell("notificationBellMount");
-refreshNotificationBell("notificationBellMount").catch(() => {});
-window.addEventListener("focus", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
-window.addEventListener("notification-web:message", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
-</script>
 </body>
 </html>
