@@ -24,7 +24,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,7 +39,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -99,6 +105,23 @@ public class AdminController {
     ) {
         Map<String, Object> data = adminConsoleService.listUsers(query, status, role, createdFrom, createdTo, page, pageSize, sortBy, sortOrder);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "사용자 목록 조회 성공", data));
+    }
+
+    @GetMapping("/users/export.csv")
+    @Operation(summary = "사용자 목록 CSV", description = "검색/필터 조건을 반영한 사용자 목록 CSV를 내려줍니다.")
+    public ResponseEntity<byte[]> usersCsv(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String createdFrom,
+            @RequestParam(required = false) String createdTo,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "1000") Integer pageSize,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortOrder
+    ) {
+        Map<String, Object> data = adminConsoleService.listUsers(query, status, role, createdFrom, createdTo, page, pageSize, sortBy, sortOrder);
+        return csvResponse("admin-users.csv", extractItems(data));
     }
 
     @GetMapping("/users/{userId}")
@@ -166,6 +189,24 @@ public class AdminController {
     ) {
         Map<String, Object> data = adminConsoleService.listNotices(query, region, breed, status, from, to, page, pageSize, sortBy, sortOrder);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "공고 목록 조회 성공", data));
+    }
+
+    @GetMapping("/notices/export.csv")
+    @Operation(summary = "공고 목록 CSV", description = "검색/필터 조건을 반영한 공고 목록 CSV를 내려줍니다.")
+    public ResponseEntity<byte[]> noticesCsv(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String region,
+            @RequestParam(required = false) String breed,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "1000") Integer pageSize,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortOrder
+    ) {
+        Map<String, Object> data = adminConsoleService.listNotices(query, region, breed, status, from, to, page, pageSize, sortBy, sortOrder);
+        return csvResponse("admin-notices.csv", extractItems(data));
     }
 
     @GetMapping("/notices/{noticeId}")
@@ -265,6 +306,18 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "신고 목록 조회 성공", data));
     }
 
+    @GetMapping("/reports/export.csv")
+    @Operation(summary = "신고 목록 CSV", description = "상태/대상 조건을 반영한 신고 목록 CSV를 내려줍니다.")
+    public ResponseEntity<byte[]> adminReportsCsv(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "1000") Integer pageSize
+    ) {
+        Map<String, Object> data = reportService.listAdminReports(status, targetType, page, pageSize);
+        return csvResponse("admin-reports.csv", extractItems(data));
+    }
+
     @GetMapping("/reports/{reportId}")
     @Operation(summary = "신고 상세", description = "신고 대상, 신고자, 처리 정보를 조회합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> adminReportDetail(@PathVariable String reportId) {
@@ -339,6 +392,16 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 발송 이력 조회 성공", data));
     }
 
+    @GetMapping("/notifications/history/export.csv")
+    @Operation(summary = "알림 발송 이력 CSV", description = "관리자 알림 발송 이력 CSV를 내려줍니다.")
+    public ResponseEntity<byte[]> notificationHistoryCsv(
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "1000") Integer pageSize
+    ) {
+        Map<String, Object> data = adminConsoleService.notificationHistory(page, pageSize);
+        return csvResponse("admin-notification-history.csv", extractItems(data));
+    }
+
     @GetMapping("/integrations/overview")
     @Operation(summary = "외부 연동 상태 개요", description = "DB, Redis, Firebase, Shelter API 상태를 조회합니다.")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> integrationOverview(
@@ -348,6 +411,15 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 연동 상태 조회 성공", data));
     }
 
+    @GetMapping("/services/overview")
+    @Operation(summary = "서비스 상태 개요", description = "서비스 전체 상태와 서비스별 상태를 조회합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> servicesOverview(
+            @RequestParam(required = false, defaultValue = "false") boolean forceRefresh
+    ) {
+        Map<String, Object> data = adminConsoleService.servicesOverview(forceRefresh);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스 상태 개요 조회 성공", data));
+    }
+
     @GetMapping("/integrations/{integrationKey}")
     @Operation(summary = "외부 연동 상세", description = "특정 연동의 최신 상태와 이력을 조회합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> integrationDetail(@PathVariable String integrationKey) {
@@ -355,11 +427,39 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 연동 상세 조회 성공", data));
     }
 
+    @GetMapping("/services/{serviceId}")
+    @Operation(summary = "서비스 상태 상세", description = "특정 서비스의 상세 상태와 최근 로그를 조회합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> serviceDetail(@PathVariable String serviceId) {
+        Map<String, Object> data = adminConsoleService.integrationDetail(serviceId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스 상태 상세 조회 성공", data));
+    }
+
     @PostMapping("/integrations/{integrationKey}/recheck")
     @Operation(summary = "외부 연동 재확인", description = "특정 연동 상태를 즉시 재점검합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> recheckIntegration(@PathVariable String integrationKey) {
         Map<String, Object> data = adminConsoleService.recheckIntegration(integrationKey);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "외부 연동 재확인 성공", data));
+    }
+
+    @PostMapping("/services/{serviceId}/reboot")
+    @Operation(summary = "서비스 재시작 요청", description = "서비스 재확인 작업을 재시작 요청으로 처리합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> rebootService(@PathVariable String serviceId) {
+        Map<String, Object> data = adminConsoleService.recheckIntegration(serviceId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스 재시작 요청 성공", data));
+    }
+
+    @GetMapping("/services/{serviceId}/logs")
+    @Operation(summary = "서비스 로그 조회", description = "특정 서비스의 최근 상태 로그를 조회합니다.")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> serviceLogs(
+            @PathVariable String serviceId,
+            @RequestParam(required = false, defaultValue = "100") Integer limit
+    ) {
+        Map<String, Object> detail = adminConsoleService.integrationDetail(serviceId);
+        Object logs = detail.get("logs");
+        List<Map<String, Object>> rows = logs instanceof List<?> list
+                ? list.stream().filter(Map.class::isInstance).map(item -> (Map<String, Object>) item).limit(Math.max(1, limit)).toList()
+                : List.of();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스 로그 조회 성공", rows));
     }
 
     @GetMapping("/audit-logs")
@@ -371,6 +471,17 @@ public class AdminController {
     ) {
         Map<String, Object> data = adminConsoleService.auditLogs(query, page, pageSize);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "감사 로그 조회 성공", data));
+    }
+
+    @GetMapping("/audit-logs/export.csv")
+    @Operation(summary = "감사 로그 CSV", description = "검색 조건을 반영한 감사 로그 CSV를 내려줍니다.")
+    public ResponseEntity<byte[]> auditLogsCsv(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "1000") Integer pageSize
+    ) {
+        Map<String, Object> data = adminConsoleService.auditLogs(query, page, pageSize);
+        return csvResponse("admin-audit-logs.csv", extractItems(data));
     }
 
     @GetMapping("/audit-logs/{logId}")
@@ -401,6 +512,41 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 요약 조회 성공", data));
     }
 
+    @GetMapping("/reference-data/{kind}")
+    @Operation(summary = "기준 데이터 목록", description = "기준 데이터 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> referenceDataList(@PathVariable String kind) {
+        List<Map<String, Object>> data = adminConsoleService.referenceDataList(kind);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 목록 조회 성공", data));
+    }
+
+    @PostMapping("/reference-data/{kind}")
+    @Operation(summary = "기준 데이터 생성", description = "기준 데이터를 생성합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createReferenceData(@PathVariable String kind, @RequestBody Map<String, Object> request) {
+        Map<String, Object> data = adminConsoleService.createReferenceData(kind, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 생성 성공", data));
+    }
+
+    @PatchMapping("/reference-data/{kind}/{id}")
+    @Operation(summary = "기준 데이터 수정", description = "기준 데이터를 수정합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateReferenceData(
+            @PathVariable String kind,
+            @PathVariable String id,
+            @RequestBody Map<String, Object> request
+    ) {
+        Map<String, Object> data = adminConsoleService.updateReferenceData(kind, id, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 수정 성공", data));
+    }
+
+    @DeleteMapping("/reference-data/{kind}/{id}")
+    @Operation(summary = "기준 데이터 삭제", description = "기준 데이터를 삭제합니다.")
+    public ResponseEntity<ApiResponse<Void>> deleteReferenceData(
+            @PathVariable String kind,
+            @PathVariable String id
+    ) {
+        adminConsoleService.deleteReferenceData(kind, id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기준 데이터 삭제 성공", null));
+    }
+
     @GetMapping("/traffic/logs")
     @Operation(summary = "요청 로그", description = "프로젝트 IN/OUT 요청 로그를 최근순으로 조회합니다.")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> trafficLogs(
@@ -417,5 +563,64 @@ public class AdminController {
                 "trackedApiPrefixes", adminTrafficLogService.trackedApiPrefixes()
         );
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 설정 조회 성공", data));
+    }
+
+    private List<Map<String, Object>> extractItems(Map<String, Object> data) {
+        Object items = data.get("items");
+        if (items instanceof List<?> list) {
+            return list.stream()
+                    .filter(Map.class::isInstance)
+                    .map(item -> {
+                        Map<?, ?> source = (Map<?, ?>) item;
+                        Map<String, Object> normalized = source.entrySet().stream()
+                                .collect(Collectors.toMap(
+                                        entry -> String.valueOf(entry.getKey()),
+                                        entry -> (Object) entry.getValue(),
+                                        (left, right) -> right,
+                                        java.util.LinkedHashMap<String, Object>::new
+                                ));
+                        return normalized;
+                    })
+                    .toList();
+        }
+        return List.of();
+    }
+
+    private ResponseEntity<byte[]> csvResponse(String filename, List<Map<String, Object>> rows) {
+        String csv = toCsv(rows);
+        byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] payload = csv.getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = new byte[bom.length + payload.length];
+        System.arraycopy(bom, 0, bytes, 0, bom.length);
+        System.arraycopy(payload, 0, bytes, bom.length, payload.length);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .body(bytes);
+    }
+
+    private String toCsv(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "";
+        }
+        Set<String> headerSet = new LinkedHashSet<>();
+        rows.forEach(row -> headerSet.addAll(row.keySet()));
+        List<String> headers = List.copyOf(headerSet);
+        String headerLine = headers.stream().map(this::escapeCsv).collect(Collectors.joining(","));
+        String body = rows.stream()
+                .map(row -> headers.stream()
+                        .map(header -> escapeCsv(row.get(header)))
+                        .collect(Collectors.joining(",")))
+                .collect(Collectors.joining("\n"));
+        return headerLine + "\n" + body + "\n";
+    }
+
+    private String escapeCsv(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        String escaped = text.replace("\"", "\"\"");
+        if (escaped.contains(",") || escaped.contains("\n") || escaped.contains("\r") || escaped.contains("\"")) {
+            return "\"" + escaped + "\"";
+        }
+        return escaped;
     }
 }

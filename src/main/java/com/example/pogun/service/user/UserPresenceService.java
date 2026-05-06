@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -37,6 +38,16 @@ public class UserPresenceService {
     @Transactional
     public boolean touchFromAuthentication(String firebaseUid) {
         return touchInternal(firebaseUid, true);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = RuntimeException.class)
+    public boolean touchFromAuthenticationSafely(String firebaseUid) {
+        try {
+            return touchInternal(firebaseUid, true);
+        } catch (RuntimeException e) {
+            log.warn("[presence] auth touch skipped uid={} reason={}", firebaseUid, e.getClass().getSimpleName());
+            return false;
+        }
     }
 
     @Transactional
@@ -147,10 +158,28 @@ public class UserPresenceService {
         if (user == null || user.getFirebaseUid() == null) {
             return new PresenceSnapshot(UserAvailabilityStatus.ONLINE, UserAvailabilityStatus.OFFLINE, CONNECTION_DISCONNECTED, null);
         }
-        UserAvailabilityStatus manualStatus = resolveManualPresenceStatus(user.getFirebaseUid(), user.getAvailabilityStatus());
-        PresenceSnapshot snapshot = buildSnapshot(user.getFirebaseUid(), manualStatus, user.getLastActiveAt());
-        log.debug("[presence] snapshot uid={} manual={} connectionState={} effective={}", user.getFirebaseUid(), snapshot.manualPresenceStatus(), snapshot.actualConnectionState(), snapshot.availabilityStatus());
-        return snapshot;
+        try {
+            UserAvailabilityStatus manualStatus = resolveManualPresenceStatus(user.getFirebaseUid(), user.getAvailabilityStatus());
+            PresenceSnapshot snapshot = buildSnapshot(user.getFirebaseUid(), manualStatus, user.getLastActiveAt());
+            log.debug("[presence] snapshot uid={} manual={} connectionState={} effective={}",
+                    user.getFirebaseUid(),
+                    snapshot.manualPresenceStatus(),
+                    snapshot.actualConnectionState(),
+                    snapshot.availabilityStatus());
+            return snapshot;
+        } catch (RuntimeException e) {
+            // Redis 장애 시에도 API/채팅 핵심 플로우가 500으로 중단되지 않도록 안전 폴백한다.
+            UserAvailabilityStatus manualFallback = user.getAvailabilityStatus() != null
+                    ? user.getAvailabilityStatus()
+                    : UserAvailabilityStatus.ONLINE;
+            log.warn("[presence] snapshot fallback uid={} reason={}", user.getFirebaseUid(), e.getClass().getSimpleName());
+            return new PresenceSnapshot(
+                    manualFallback,
+                    UserAvailabilityStatus.OFFLINE,
+                    CONNECTION_DISCONNECTED,
+                    user.getLastActiveAt()
+            );
+        }
     }
 
     @Transactional
