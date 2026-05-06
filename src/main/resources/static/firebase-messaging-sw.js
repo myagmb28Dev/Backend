@@ -4,7 +4,7 @@ import { FIREBASE_WEB_CONFIG } from "./firebase-web-config.js";
 
 const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(FIREBASE_WEB_CONFIG);
 const messaging = getMessaging(firebaseApp);
-const defaultTargetUrl = new URL("/notification-flow.html", self.location.origin).toString();
+const defaultTargetUrl = new URL("/Full_Compact.html", self.location.origin).toString();
 
 onBackgroundMessage(messaging, (payload) => {
   const data = payload?.data || {};

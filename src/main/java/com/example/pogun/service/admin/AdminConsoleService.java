@@ -5,6 +5,7 @@ import com.example.pogun.dto.admin.AdminNotificationSendRequest;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.admin.AdminIntegrationStatus;
 import com.example.pogun.entity.admin.AdminNotificationDispatch;
+import com.example.pogun.entity.admin.AdminReferenceData;
 import com.example.pogun.entity.admin.AdminSetting;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.community.CommunityComment;
@@ -27,6 +28,7 @@ import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.admin.AdminAuditLogRepository;
 import com.example.pogun.repository.admin.AdminIntegrationStatusRepository;
 import com.example.pogun.repository.admin.AdminNotificationDispatchRepository;
+import com.example.pogun.repository.admin.AdminReferenceDataRepository;
 import com.example.pogun.repository.admin.AdminSettingRepository;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
@@ -86,6 +88,7 @@ public class AdminConsoleService {
     private final NotificationRepository notificationRepository;
     private final AdminNotificationDispatchRepository adminNotificationDispatchRepository;
     private final AdminIntegrationStatusRepository adminIntegrationStatusRepository;
+    private final AdminReferenceDataRepository adminReferenceDataRepository;
     private final AdminSettingRepository adminSettingRepository;
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final NotificationService notificationService;
@@ -112,7 +115,9 @@ public class AdminConsoleService {
         List<Report> reports = reportRepository.findAll();
         List<AdminNotificationDispatch> dispatches = adminNotificationDispatchRepository.findAll(PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
 
-        long activeUsers = resolveActiveUsers().size();
+        List<User> activeUsersList = resolveActiveUsersSafely();
+        long activeUsers = activeUsersList.size();
+        long connectedUsers = resolveConnectedUsersSafely();
         String serverStatus = latestGlobalStatus();
         long newUsers = users.stream().filter(user -> between(user.getCreatedAt(), from, to)).count();
         long announcementsPosted = notices.stream().filter(notice -> between(notice.getCreatedAt(), from, to)).count();
@@ -123,14 +128,18 @@ public class AdminConsoleService {
                 .count();
         long userReports = reports.stream().filter(report -> between(report.getCreatedAt(), from, to)).count();
 
-        return Map.of(
+        return orderedMap(
                 "activeUsers", activeUsers,
+                "connectedUsers", connectedUsers,
                 "serverStatus", serverStatus,
                 "newUsers", newUsers,
                 "announcementsPosted", announcementsPosted,
                 "communityPosts", communityPosts,
                 "processedTasks", processedTasks,
                 "userReports", userReports,
+                "kpiToday", kpiForRange(LocalDate.now(ZoneId.systemDefault()), LocalDate.now(ZoneId.systemDefault())),
+                "kpiWeekly", kpiForRange(LocalDate.now(ZoneId.systemDefault()).minusDays(6), LocalDate.now(ZoneId.systemDefault())),
+                "kpiMonthly", kpiForRange(LocalDate.now(ZoneId.systemDefault()).withDayOfMonth(1), LocalDate.now(ZoneId.systemDefault())),
                 "recentReports", reports.stream()
                         .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
                         .limit(5)
@@ -165,7 +174,7 @@ public class AdminConsoleService {
             ));
         }
 
-        return Map.of(
+        return orderedMap(
                 "granularity", granularity == null || granularity.isBlank() ? "day" : granularity,
                 "series", series
         );
@@ -447,7 +456,7 @@ public class AdminConsoleService {
         var history = adminNotificationDispatchRepository.findAllByOrderByCreatedAtDesc(
                 PageRequest.of(resolvedPage, resolvedPageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
         );
-        return Map.of(
+        return orderedMap(
                 "items", history.getContent().stream().map(this::toDispatchMap).toList(),
                 "page", resolvedPage + 1,
                 "pageSize", resolvedPageSize,
@@ -468,14 +477,38 @@ public class AdminConsoleService {
     }
 
     @Transactional(readOnly = true)
+    public Map<String, Object> servicesOverview(boolean forceRefresh) {
+        List<Map<String, Object>> services = integrationOverview(forceRefresh);
+        return orderedMap(
+                "globalStatus", latestGlobalStatus(),
+                "services", services
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Object> integrationDetail(String integrationKey) {
         adminSecurityService.require(AdminPermission.INTEGRATION_MANAGE);
-        Map<String, Object> latest = latestIntegrationSnapshot(integrationKey);
-        List<Map<String, Object>> logs = adminIntegrationStatusRepository.findTop20ByIntegrationKeyOrderByCreatedAtDesc(integrationKey.toUpperCase(Locale.ROOT))
+        String normalized = integrationKey.toUpperCase(Locale.ROOT);
+        Map<String, Object> latest = latestIntegrationSnapshot(normalized);
+        List<Map<String, Object>> logs = adminIntegrationStatusRepository.findTop20ByIntegrationKeyOrderByCreatedAtDesc(normalized)
                 .stream()
                 .map(this::toIntegrationMap)
                 .toList();
-        return Map.of("latest", latest, "logs", logs);
+        return orderedMap(
+                "id", normalized,
+                "name", normalized,
+                "status", latest.getOrDefault("status", "UNKNOWN"),
+                "uptime", latest.getOrDefault("uptime", "n/a"),
+                "latency", latest.getOrDefault("latency", null),
+                "cluster", "default",
+                "telemetry", orderedMap(
+                        "lastCheckedAt", latest.getOrDefault("checkedAt", null),
+                        "message", latest.getOrDefault("message", "")
+                ),
+                "recentLogs", logs,
+                "latest", latest,
+                "logs", logs
+        );
     }
 
     @Transactional
@@ -549,12 +582,14 @@ public class AdminConsoleService {
         values.put("siteName", settingValue("siteName", "Pogun"));
         values.put("supportEmail", settingValue("supportEmail", "support@paw.gbsw.hs.kr"));
         values.put("defaultLanguage", settingValue("defaultLanguage", "ko"));
+        values.put("logoUrl", settingValue("logoUrl", ""));
         values.put("apiEndpoint", settingValue("apiEndpoint", "https://apis.data.go.kr/1543061/abandonmentPublicService_v2"));
         values.put("autoSyncEnabled", settingBoolean("autoSyncEnabled", true));
         values.put("globalPushEnabled", settingBoolean("globalPushEnabled", true));
+        values.put("fcmServerKeyMasked", maskSecret(settingValue("fcmServerKey", "")));
         values.put("firebaseProjectId", safe(firebaseAuthProperties.getProjectId()));
         values.put("fcmConfigured", firebaseAuth != null);
-        values.put("shelterApiConfigured", firebaseAuthProperties.getProjectId() != null);
+        values.put("shelterApiConfigured", settingValue("apiEndpoint", "").startsWith("http"));
         return values;
     }
 
@@ -563,7 +598,7 @@ public class AdminConsoleService {
         adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
         User actor = adminSecurityService.getCurrentAdminUser();
         Map<String, Object> before = settings();
-        Set<String> allowedKeys = Set.of("siteName", "supportEmail", "defaultLanguage", "apiEndpoint", "autoSyncEnabled", "globalPushEnabled");
+        Set<String> allowedKeys = Set.of("siteName", "supportEmail", "defaultLanguage", "logoUrl", "apiEndpoint", "autoSyncEnabled", "globalPushEnabled", "fcmServerKey");
         request.forEach((key, value) -> {
             if (!allowedKeys.contains(key)) {
                 throw ApiException.badRequest("INVALID_SETTING_KEY", "지원하지 않는 설정 키입니다: " + key);
@@ -591,12 +626,77 @@ public class AdminConsoleService {
                 .map(PetNotice::getMissingRegion)
                 .filter(value -> value != null && !value.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        return Map.of(
+        return orderedMap(
                 "animalTypesCount", animalTypes.size(),
                 "regionCodesCount", regions.size(),
                 "noticeStatusLabelsCount", 5,
                 "reportStatusLabelsCount", 4
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> referenceDataList(String kind) {
+        adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
+        String resolvedKind = normalizeReferenceKind(kind);
+        return adminReferenceDataRepository.findByDataKindOrderByDataLabelAsc(resolvedKind).stream()
+                .map(item -> orderedMap(
+                        "id", item.getId(),
+                        "kind", item.getDataKind(),
+                        "key", item.getDataKey(),
+                        "label", item.getDataLabel(),
+                        "active", item.isActive(),
+                        "metadata", readJsonValue(item.getMetadata()),
+                        "updatedAt", item.getUpdatedAt()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> createReferenceData(String kind, Map<String, Object> request) {
+        adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
+        User actor = adminSecurityService.getCurrentAdminUser();
+        String resolvedKind = normalizeReferenceKind(kind);
+        String key = nullableString(request.get("key"));
+        String label = nullableString(request.get("label"));
+        if (blank(key) || blank(label)) {
+            throw ApiException.badRequest("INVALID_REFERENCE_DATA", "key와 label은 필수입니다.");
+        }
+        AdminReferenceData saved = adminReferenceDataRepository.save(AdminReferenceData.builder()
+                .dataKind(resolvedKind)
+                .dataKey(key)
+                .dataLabel(label)
+                .active(Boolean.parseBoolean(String.valueOf(request.getOrDefault("active", true))))
+                .metadata(writeJson(request.get("metadata")))
+                .updatedByUser(actor)
+                .build());
+        return orderedMap("id", saved.getId(), "kind", saved.getDataKind(), "key", saved.getDataKey(), "label", saved.getDataLabel(), "active", saved.isActive());
+    }
+
+    @Transactional
+    public Map<String, Object> updateReferenceData(String kind, String id, Map<String, Object> request) {
+        adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
+        User actor = adminSecurityService.getCurrentAdminUser();
+        String resolvedKind = normalizeReferenceKind(kind);
+        UUID uuid = parseUuid(id, "INVALID_REFERENCE_DATA_ID", "올바르지 않은 기준 데이터 ID 형식입니다.");
+        AdminReferenceData target = adminReferenceDataRepository.findByIdAndDataKind(uuid, resolvedKind)
+                .orElseThrow(() -> ApiException.notFound("REFERENCE_DATA_NOT_FOUND", "기준 데이터를 찾을 수 없습니다."));
+        if (request.containsKey("key")) target.setDataKey(nullableString(request.get("key")));
+        if (request.containsKey("label")) target.setDataLabel(nullableString(request.get("label")));
+        if (request.containsKey("active")) target.setActive(Boolean.parseBoolean(String.valueOf(request.get("active"))));
+        if (request.containsKey("metadata")) target.setMetadata(writeJson(request.get("metadata")));
+        target.setUpdatedByUser(actor);
+        AdminReferenceData saved = adminReferenceDataRepository.save(target);
+        return orderedMap("id", saved.getId(), "kind", saved.getDataKind(), "key", saved.getDataKey(), "label", saved.getDataLabel(), "active", saved.isActive());
+    }
+
+    @Transactional
+    public void deleteReferenceData(String kind, String id) {
+        adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
+        String resolvedKind = normalizeReferenceKind(kind);
+        UUID uuid = parseUuid(id, "INVALID_REFERENCE_DATA_ID", "올바르지 않은 기준 데이터 ID 형식입니다.");
+        AdminReferenceData target = adminReferenceDataRepository.findByIdAndDataKind(uuid, resolvedKind)
+                .orElseThrow(() -> ApiException.notFound("REFERENCE_DATA_NOT_FOUND", "기준 데이터를 찾을 수 없습니다."));
+        adminReferenceDataRepository.delete(target);
     }
 
     private void refreshAllIntegrations() {
@@ -717,11 +817,57 @@ public class AdminConsoleService {
                 "id", status.getId(),
                 "name", status.getIntegrationKey(),
                 "status", status.getStatus(),
+                "uptime", "n/a",
                 "latency", status.getLatencyMs(),
                 "message", safe(status.getMessage()),
                 "details", readJsonValue(status.getDetails()),
                 "checkedAt", status.getCreatedAt()
         );
+    }
+
+    private Map<String, Object> kpiForRange(LocalDate fromDate, LocalDate toDate) {
+        ZoneId zone = ZoneId.systemDefault();
+        Instant from = fromDate.atStartOfDay(zone).toInstant();
+        Instant to = toDate.plusDays(1).atStartOfDay(zone).toInstant();
+        long reportNotices = reportRepository.findAll().stream()
+                .filter(report -> report.getTargetType() == ReportTargetType.PET_NOTICE)
+                .filter(report -> between(report.getCreatedAt(), from, to))
+                .count();
+        long resolvedNotices = petNoticeRepository.findAll().stream()
+                .filter(notice -> notice.getStatus() == PetNoticeStatus.RESOLVED)
+                .filter(notice -> between(notice.getUpdatedAt(), from, to))
+                .count();
+        long reports = reportRepository.findAll().stream().filter(report -> between(report.getCreatedAt(), from, to)).count();
+        long signups = userRepository.findAll().stream().filter(user -> between(user.getCreatedAt(), from, to)).count();
+        return orderedMap(
+                "reportedNotices", reportNotices,
+                "resolvedNotices", resolvedNotices,
+                "reports", reports,
+                "users", signups,
+                "newUsers", signups
+        );
+    }
+
+    private String normalizeReferenceKind(String kind) {
+        if (blank(kind)) {
+            throw ApiException.badRequest("INVALID_REFERENCE_KIND", "reference kind는 필수입니다.");
+        }
+        return switch (kind.trim().toLowerCase(Locale.ROOT)) {
+            case "animal-types", "animal_types", "animaltypes" -> "ANIMAL_TYPES";
+            case "region-codes", "region_codes", "regioncodes" -> "REGION_CODES";
+            case "notice-status-labels", "notice_status_labels", "noticestatuslabels" -> "NOTICE_STATUS_LABELS";
+            default -> throw ApiException.badRequest("INVALID_REFERENCE_KIND", "지원하지 않는 reference kind입니다.");
+        };
+    }
+
+    private String maskSecret(String value) {
+        if (blank(value)) {
+            return "";
+        }
+        if (value.length() <= 8) {
+            return "****";
+        }
+        return value.substring(0, 4) + "..." + value.substring(value.length() - 4);
     }
 
     private List<User> resolveNotificationRecipients(AdminNotificationSendRequest request) {
@@ -748,6 +894,25 @@ public class AdminConsoleService {
                 .flatMap(java.util.Optional::stream)
                 .filter(user -> user.getStatus() == UserStatus.ACTIVE)
                 .toList();
+    }
+
+    private List<User> resolveActiveUsersSafely() {
+        try {
+            return resolveActiveUsers();
+        } catch (RuntimeException ignored) {
+            return userRepository.findAll().stream()
+                    .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                    .limit(1000)
+                    .toList();
+        }
+    }
+
+    private long resolveConnectedUsersSafely() {
+        try {
+            return presenceSessionStore.findUsersWithGlobalSessions().size();
+        } catch (RuntimeException ignored) {
+            return 0L;
+        }
     }
 
     private boolean between(Instant value, Instant from, Instant to) {

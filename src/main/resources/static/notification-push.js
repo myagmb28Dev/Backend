@@ -110,9 +110,6 @@ export async function registerWebPushToken() {
   if (!session?.firebaseIdToken) {
     throw new Error("로그인 후 웹 알림을 등록할 수 있습니다.");
   }
-  if (!session?.userId) {
-    throw new Error("온보딩 완료 후 웹 알림을 등록할 수 있습니다.");
-  }
   if (typeof Notification === "undefined") {
     throw new Error("이 브라우저는 Notification API를 지원하지 않습니다.");
   }
@@ -135,7 +132,7 @@ export async function registerWebPushToken() {
 
 export async function syncWebPushTokenIfPossible() {
   const session = getStoredSession();
-  if (!session?.firebaseIdToken || !session?.userId) {
+  if (!session?.firebaseIdToken) {
     return { synced: false, token: getStoredRegisteredPushToken(), reason: "NO_SESSION" };
   }
   if (typeof Notification === "undefined" || Notification.permission !== "granted") {

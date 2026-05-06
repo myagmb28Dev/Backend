@@ -208,7 +208,7 @@ export function mountNotificationBell(target, options = {}) {
 
   initializeNotificationBridge();
   injectBellStyles();
-  const href = options.href || "/notification-flow.html";
+  const href = options.href || "/Full_Compact.html";
   container.innerHTML = `
     <a class="notification-bell" href="${href}" title="알림 보기" aria-label="알림 보기">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -231,7 +231,7 @@ export async function refreshNotificationBell(target) {
   }
 
   const session = getStoredSession();
-  bell.href = `${window.location.origin}/notification-flow.html`;
+  bell.href = `${window.location.origin}/Full_Compact.html`;
   if (!session?.firebaseIdToken) {
     badge.hidden = true;
     bell.title = "로그인 후 알림 보기";

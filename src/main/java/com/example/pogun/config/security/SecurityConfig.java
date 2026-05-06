@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -29,6 +30,28 @@ public class SecurityConfig {
     private final ApiAccessDeniedHandler apiAccessDeniedHandler;
 
     @Bean
+    public WebSecurityCustomizer webSecurityCustomizer() {
+        return web -> web.ignoring()
+                .requestMatchers(
+                        "/Full_Compact.html",
+                        "/full_compact/**",
+                        "/admin-flow.html",
+                        "/login-flow.html",
+                        "/notice-flow.html",
+                        "/dm-flow.html",
+                        "/notification-flow.html",
+                        "/shelter-flow.html",
+                        "/admin-local-bootstrap.js",
+                        "/firebase-web-config.js",
+                        "/global-presence.js",
+                        "/notification-web.js",
+                        "/notification-push.js",
+                        "/firebase-messaging-sw.js",
+                        "/js/**"
+                );
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -39,6 +62,12 @@ public class SecurityConfig {
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
                         .accessDeniedHandler(apiAccessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(HttpMethod.GET, "/**/*.html")
+                        .permitAll()
+                        .requestMatchers("/Full_Compact.html")
+                        .permitAll()
+                        .requestMatchers("/full_compact/**")
+                        .permitAll()
                         .requestMatchers("/dm-flow.html")
                         .permitAll()
                         .requestMatchers("/notice-flow.html")

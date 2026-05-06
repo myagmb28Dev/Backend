@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pogun Full Compact</title>
+  <style>
+    :root { --bg:#0f0b14; --panel:#171220; --line:#2d2540; --ink:#f5f3ff; --muted:#a59bb9; --accent:#8b5cf6; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); }
+    .top { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); background:#130f1d; position:sticky; top:0; z-index:20; }
+    .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#1f1930; color:var(--ink); font-size:18px; }
+    .layout { display:grid; grid-template-columns:220px minmax(0,1fr); min-height:calc(100vh - 57px); }
+    .side { border-right:1px solid var(--line); background:#130f1d; padding:10px; display:grid; gap:6px; align-content:start; }
+    .side button { width:100%; text-align:left; border:1px solid var(--line); border-radius:8px; background:#1f1930; color:var(--ink); padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+    .side button.active { border-color:#6d46c6; background:#2a2140; }
+    .content { padding:10px; }
+    .frame-wrap { display:none; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#110d1a; }
+    .frame-wrap.active { display:block; }
+    iframe { width:100%; height:calc(100vh - 88px); border:0; background:#0f0b14; }
+    body.sidebar-collapsed .layout { grid-template-columns:70px minmax(0,1fr); }
+    body.sidebar-collapsed .side button { text-align:center; padding:8px 0; }
+    @media (max-width:1024px) {
+      .layout { grid-template-columns:1fr; }
+      .side { position:fixed; inset:57px 0 auto 0; z-index:30; transform:translateY(-120%); transition:transform .2s ease; max-height:calc(100vh - 57px); overflow:auto; }
+      body.menu-open .side { transform:translateY(0); }
+      body.sidebar-collapsed .layout { grid-template-columns:1fr; }
+      iframe { height:calc(100vh - 96px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <button id="menuBtn" class="hamburger" aria-label="menu">☰</button>
+    <strong style="font-size:14px;">Pogun Full Compact</strong>
+    <span style="font-size:11px; color:var(--muted);">One Page Admin Tool</span>
+  </div>
+
+  <div class="layout">
+    <aside class="side" id="sideNav">
+      <button data-view="admin" class="active">Admin</button>
+      <button data-view="login">Login</button>
+      <button data-view="notice">Notice</button>
+      <button data-view="dm">DM</button>
+      <button data-view="notification">Notification</button>
+      <button data-view="shelter">Shelter</button>
+    </aside>
+
+    <main class="content">
+      <section id="view-admin" class="frame-wrap active">
+        <iframe src="/full_compact/pages/admin-flow.html" title="admin"></iframe>
+      </section>
+      <section id="view-login" class="frame-wrap">
+        <iframe src="/full_compact/pages/login-flow.html" title="login"></iframe>
+      </section>
+      <section id="view-notice" class="frame-wrap">
+        <iframe src="/full_compact/pages/notice-flow.html" title="notice"></iframe>
+      </section>
+      <section id="view-dm" class="frame-wrap">
+        <iframe src="/full_compact/pages/dm-flow.html" title="dm"></iframe>
+      </section>
+      <section id="view-notification" class="frame-wrap">
+        <iframe src="/full_compact/pages/notification-flow.html" title="notification"></iframe>
+      </section>
+      <section id="view-shelter" class="frame-wrap">
+        <iframe src="/full_compact/pages/shelter-flow.html" title="shelter"></iframe>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const btn = document.getElementById("menuBtn");
+    const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
+    const activate = (view) => {
+      navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+      ["admin","login","notice","dm","notification","shelter"].forEach((k) => {
+        document.getElementById(`view-${k}`).classList.toggle("active", k === view);
+      });
+      if (window.matchMedia("(max-width:1024px)").matches) document.body.classList.remove("menu-open");
+    };
+    btn.addEventListener("click", () => {
+      if (window.matchMedia("(max-width:1024px)").matches) document.body.classList.toggle("menu-open");
+      else document.body.classList.toggle("sidebar-collapsed");
+    });
+    navButtons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.view)));
+  </script>
+</body>
+</html>

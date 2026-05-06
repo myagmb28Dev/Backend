@@ -40,6 +40,15 @@ public class CompositeFirebaseIdentityProvider implements FirebaseIdentityProvid
         try {
             return productionIdentityProvider.verifyIdToken(idToken, checkRevoked);
         } catch (FirebaseAuthException e) {
+            // 로컬/혼합 모드에서는 JWT 서명/클레임 기반 에뮬레이터 검증을 한 번 더 시도한다.
+            // 토큰 형태 감지가 누락된 경우에도 REST lookup(401)로 바로 가지 않게 한다.
+            if (firebaseAuthProperties.isAllowEmulator()) {
+                try {
+                    return emulatorIdentityProvider.verifyIdToken(idToken, checkRevoked);
+                } catch (RuntimeException ignored) {
+                    // no-op: production / lookup 분기를 계속 진행
+                }
+            }
             if (e.getAuthErrorCode() == AuthErrorCode.USER_NOT_FOUND) {
                 return lookupIdentityProvider.verifyIdToken(idToken, checkRevoked);
             }

@@ -102,7 +102,7 @@ public class AuthService {
 
             syncProviders(user, identity);
             pendingSocialSignupRepository.deleteByFirebaseUid(uid);
-            userPresenceService.touchFromAuthentication(uid);
+            touchPresenceSafely(uid);
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
@@ -160,7 +160,7 @@ public class AuthService {
         }
 
         pendingSocialSignupRepository.delete(pending);
-        userPresenceService.touchFromAuthentication(saved.getFirebaseUid());
+        touchPresenceSafely(saved.getFirebaseUid());
         log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
         return buildAuthResponse(saved);
     }
@@ -200,7 +200,7 @@ public class AuthService {
             User saved = userRepository.save(user);
 
             syncProviders(saved, identity);
-            userPresenceService.touchFromAuthentication(saved.getFirebaseUid());
+            touchPresenceSafely(saved.getFirebaseUid());
             return buildAuthResponse(saved);
         } catch (ApiException e) {
             throw e;
@@ -238,12 +238,20 @@ public class AuthService {
         log.info("사용자 로그아웃 처리 (RefreshToken 만료): userId={}", user.getId());
 
         try {
-            if (!firebaseAuthProperties.isEmulatorMode()) {
+            if (!firebaseAuthProperties.isEmulatorMode() && !firebaseAuthProperties.isAllowEmulator()) {
                 firebaseAuth.revokeRefreshTokens(user.getFirebaseUid());
             }
             firebaseIdentityService.revokeTokenLocally(currentIdToken);
-            userPresenceService.forceOffline(user.getFirebaseUid());
-            noticeChatServiceProvider.getObject().publishPresenceUpdates(user);
+            try {
+                userPresenceService.forceOffline(user.getFirebaseUid());
+            } catch (RuntimeException e) {
+                log.warn("로그아웃 presence forceOffline 실패(userId={}): {}", user.getId(), e.getClass().getSimpleName());
+            }
+            try {
+                noticeChatServiceProvider.getObject().publishPresenceUpdates(user);
+            } catch (RuntimeException e) {
+                log.warn("로그아웃 presence publish 실패(userId={}): {}", user.getId(), e.getClass().getSimpleName());
+            }
             return new LogoutResponse(true, "로그아웃 성공. 모든 세션이 만료되었습니다.");
         } catch (FirebaseAuthException e) {
             log.error("Firebase 로그아웃 처리 중 오류 발생: {}", e.getMessage());
@@ -499,6 +507,10 @@ public class AuthService {
             case "google", "apple", "facebook", "github", "email", "firebase" -> providerId.toUpperCase();
             default -> providerId.toUpperCase().replace('.', '_');
         };
+    }
+
+    private void touchPresenceSafely(String firebaseUid) {
+        userPresenceService.touchFromAuthenticationSafely(firebaseUid);
     }
 
 }
