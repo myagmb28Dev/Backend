@@ -7,9 +7,12 @@ import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.auth.OnboardingMapConfigResponse;
 import com.example.pogun.dto.auth.SocialUnlinkResponse;
+import com.example.pogun.dto.auth.TokenRefreshRequest;
+import com.example.pogun.dto.auth.TokenRefreshResponse;
 import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.config.KakaoLocalProperties;
 import com.example.pogun.service.auth.AuthService;
+import com.example.pogun.service.auth.FirebaseTokenRefreshService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,6 +40,7 @@ import org.springframework.util.StringUtils;
 public class AuthController {
 
     private final AuthService authService;
+    private final FirebaseTokenRefreshService firebaseTokenRefreshService;
     private final KakaoLocalProperties kakaoLocalProperties;
 
     @PostMapping("/login")
@@ -52,6 +56,13 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> adminSignIn(@Valid @RequestBody LoginRequest request) {
         AuthResponse data = authService.loginAdmin(request.getFirebaseIdToken());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그인 성공", data));
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Firebase 토큰 갱신", description = "Refresh Token으로 새 Firebase ID Token/Refresh Token을 발급합니다.")
+    public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshFirebaseToken(@Valid @RequestBody TokenRefreshRequest request) {
+        TokenRefreshResponse data = firebaseTokenRefreshService.refresh(request.getRefreshToken());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "토큰 갱신 성공", data));
     }
 
     @PostMapping("/onboarding/complete")

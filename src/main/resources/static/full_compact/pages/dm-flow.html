@@ -300,6 +300,7 @@ import { createAuthedRequest, fetchAuthedBlob, readJson, request } from "/js/api
 import { adoptTokenFromQuery, loadSession, removeSession, saveSession } from "/js/session-store.js";
 import { createDmApi } from "/js/api/dm-api.js";
 import { mountNotificationBell, refreshNotificationBell } from "/notification-web.js";
+import { refreshFirebaseSession } from "/js/auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
@@ -1068,7 +1069,15 @@ async function loadAuthenticatedImages(role = activeRole) {
 function dmApiFor(role) {
   const authedRequest = createAuthedRequest({
     baseUrl: BACKEND_BASE,
-    getToken: () => users[role]?.token || null
+    getToken: () => users[role]?.token || null,
+    refreshToken: async () => {
+      const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+      if (!refreshedSession?.firebaseIdToken) {
+        return false;
+      }
+      users[role].token = refreshedSession.firebaseIdToken;
+      return true;
+    }
   });
   return createDmApi({
     request: authedRequest,
@@ -1122,7 +1131,14 @@ async function login(role) {
   user.email = session.email || "";
   user.label = session.nickname || session.email || "Google 사용자";
   setStatus(`${user.label} 로그인 확인 중...`);
-  const loginResponse = await dmApiFor(role).loginWithFirebaseToken(user.token);
+  let loginResponse = await dmApiFor(role).loginWithFirebaseToken(user.token);
+  if (loginResponse.status === 401) {
+    const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+    if (refreshedSession?.firebaseIdToken) {
+      user.token = refreshedSession.firebaseIdToken;
+      loginResponse = await dmApiFor(role).loginWithFirebaseToken(user.token);
+    }
+  }
   if (loginResponse.status !== 200) {
     removeSession(REAL_SESSION_KEY);
     removeSession(ACTIVE_ROLE_KEY);
@@ -1130,16 +1146,18 @@ async function login(role) {
     return;
   }
   const data = loginResponse.body?.data || {};
+  const latestSession = loadSession(REAL_SESSION_KEY) || session;
   user.userId = data.id || session.userId || null;
   user.email = data.email || user.email;
   user.label = data.nickname || user.label;
   saveSession(REAL_SESSION_KEY, {
-    ...session,
+    ...latestSession,
     firebaseIdToken: user.token,
-    firebaseUid: data.firebaseUid || session.firebaseUid || "",
-    email: data.email || session.email || "",
-    nickname: data.nickname || session.nickname || "",
-    profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+    refreshToken: latestSession.refreshToken || "",
+    firebaseUid: data.firebaseUid || latestSession.firebaseUid || "",
+    email: data.email || latestSession.email || "",
+    nickname: data.nickname || latestSession.nickname || "",
+    profileImageUrl: data.profileImageUrl || latestSession.profileImageUrl || "",
     userId: user.userId,
     registrationStatus: data.registrationStatus
   });

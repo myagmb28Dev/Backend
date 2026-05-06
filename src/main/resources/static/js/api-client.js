@@ -12,14 +12,29 @@ export async function request(url, init = {}) {
   return { status: response.status, body: await readJson(response) };
 }
 
-export function createAuthedRequest({ baseUrl, getToken }) {
+export function createAuthedRequest({ baseUrl, getToken, refreshToken }) {
   return async function authedRequest(path, init = {}) {
-    const token = getToken?.();
+    let token = getToken?.();
     const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
-    return request(`${baseUrl}${path}`, { ...init, headers });
+    let result = await request(`${baseUrl}${path}`, { ...init, headers });
+    if (result.status !== 401 || typeof refreshToken !== "function") {
+      return result;
+    }
+
+    const refreshed = await refreshToken();
+    if (!refreshed) {
+      return result;
+    }
+    token = getToken?.();
+    if (!token) {
+      return result;
+    }
+    const retryHeaders = { ...headers, Authorization: `Bearer ${token}` };
+    result = await request(`${baseUrl}${path}`, { ...init, headers: retryHeaders });
+    return result;
   };
 }
 

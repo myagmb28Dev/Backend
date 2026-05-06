@@ -1,5 +1,6 @@
 import { request } from "./js/api-client.js";
 import { loadSession as loadStoredSession, removeSession } from "./js/session-store.js";
+import { refreshFirebaseSession } from "./js/auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 export const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
@@ -152,7 +153,7 @@ export function formatDateTime(value) {
 }
 
 export async function authRequest(path, init = {}) {
-  const session = getStoredSession();
+  let session = getStoredSession();
   if (!session?.firebaseIdToken) {
     throw new Error("로그인이 필요합니다.");
   }
@@ -161,7 +162,19 @@ export async function authRequest(path, init = {}) {
   if (!headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${session.firebaseIdToken}`);
   }
-  return request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  let response = await request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+  if (!refreshedSession?.firebaseIdToken) {
+    return response;
+  }
+  session = refreshedSession;
+  headers.set("Authorization", `Bearer ${session.firebaseIdToken}`);
+  response = await request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  return response;
 }
 
 export async function fetchUnreadCount() {

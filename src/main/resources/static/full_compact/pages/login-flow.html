@@ -153,6 +153,7 @@
 <script type="module">
 import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "/js/session-store.js";
+import { refreshFirebaseSession } from "/js/auth-refresh.js";
 import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     getAuth,
@@ -256,6 +257,7 @@ function restoreSession() {
 function buildSession(token, data, fallbackUser = {}) {
   return {
     firebaseIdToken: token,
+    refreshToken: data.refreshToken || fallbackUser.refreshToken || "",
     firebaseUid: data.firebaseUid || fallbackUser.uid || "",
     email: data.email || fallbackUser.email || "",
     nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || "Google 사용자",
@@ -283,6 +285,16 @@ async function syncBackendLogin(token, fallbackUser = {}) {
       }
     } catch {
       // ignore and keep original response
+    }
+  }
+
+  if (response.status !== 200) {
+    if (response.status === 401) {
+      const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+      if (refreshedSession?.firebaseIdToken) {
+        response = await loginRequest(refreshedSession.firebaseIdToken);
+        token = refreshedSession.firebaseIdToken;
+      }
     }
   }
 

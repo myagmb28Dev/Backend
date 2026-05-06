@@ -162,7 +162,7 @@ class AuthServiceTest {
         assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
         assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
-        verify(userPresenceService).touchFromAuthentication("firebase-uid");
+        verify(userPresenceService).touchFromAuthenticationSafely("firebase-uid");
         verify(pendingSocialSignupRepository).delete(pending);
     }
 
@@ -258,7 +258,7 @@ class AuthServiceTest {
         assertThat(response.role()).isEqualTo("ADMIN");
         assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
         assertThat(response.provider()).isEqualTo("EMAIL");
-        verify(userPresenceService).touchFromAuthentication("admin-uid");
+        verify(userPresenceService).touchFromAuthenticationSafely("admin-uid");
     }
 
     @Test

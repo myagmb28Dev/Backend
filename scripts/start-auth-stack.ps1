@@ -201,8 +201,7 @@ function Ensure-EmulatorUserAndGetToken {
     }
 
     try {
-        $response = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
-        return $response.idToken
+        return Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
     } catch {
         $errorText = Get-HttpErrorText -ErrorRecord $_
         if ($errorText -notmatch "EMAIL_NOT_FOUND") {
@@ -219,8 +218,7 @@ function Ensure-EmulatorUserAndGetToken {
         }
     }
 
-    $response = Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
-    return $response.idToken
+    return Invoke-AuthEmulatorRequest -Path "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" -Body $authBody
 }
 
 function Ensure-EmulatorEmailVerified {
@@ -277,18 +275,22 @@ function Bootstrap-LocalAdmin {
 function Write-TokenArtifacts {
     param(
         [string]$Token,
+        [string]$RefreshToken,
         [string]$TokenFileName,
         [string]$HeaderFileName,
-        [string]$LoginBodyFileName
+        [string]$LoginBodyFileName,
+        [string]$RefreshTokenFileName
     )
 
     $tokenPath = Join-Path $localDir $TokenFileName
     $authHeaderPath = Join-Path $localDir $HeaderFileName
     $loginBodyPath = Join-Path $localDir $LoginBodyFileName
+    $refreshTokenPath = Join-Path $localDir $RefreshTokenFileName
 
     [System.IO.File]::WriteAllText($tokenPath, $Token, [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllText($authHeaderPath, "Authorization: Bearer $Token", [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllText($loginBodyPath, "{`n  `"firebaseIdToken`": `"$Token`"`n}", [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($refreshTokenPath, $RefreshToken, [System.Text.UTF8Encoding]::new($false))
 }
 
 if ([string]::IsNullOrWhiteSpace($SpringProfile)) {
@@ -356,7 +358,9 @@ if (-not (Test-TcpPort -Port $BackendPort)) {
 
 Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds -Process $backendProcess
 
-$idToken = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
+$authTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
+$idToken = $authTokenResponse.idToken
+$refreshToken = $authTokenResponse.refreshToken
 Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
 
 $playwrightAccounts = @(
@@ -377,10 +381,12 @@ foreach ($legacyFile in $legacyFiles) {
     }
 }
 
-Write-TokenArtifacts -Token $idToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json"
+Write-TokenArtifacts -Token $idToken -RefreshToken $refreshToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json" -RefreshTokenFileName "emulator-refresh-token.txt"
 
 foreach ($account in $playwrightAccounts) {
-    $accountToken = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
+    $accountTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
+    $accountToken = $accountTokenResponse.idToken
+    $accountRefreshToken = $accountTokenResponse.refreshToken
     if ($account.Index -eq 1) {
         Ensure-EmulatorEmailVerified -TargetEmail $account.Email -Token $accountToken
     }
@@ -398,9 +404,11 @@ foreach ($account in $playwrightAccounts) {
     }
     Write-TokenArtifacts `
         -Token $accountToken `
+        -RefreshToken $accountRefreshToken `
         -TokenFileName ("emulator-user{0}-firebase-id-token.txt" -f $account.Index) `
         -HeaderFileName ("emulator-user{0}-authorization-header.txt" -f $account.Index) `
-        -LoginBodyFileName ("emulator-user{0}-login-request.json" -f $account.Index)
+        -LoginBodyFileName ("emulator-user{0}-login-request.json" -f $account.Index) `
+        -RefreshTokenFileName ("emulator-user{0}-refresh-token.txt" -f $account.Index)
 }
 
 $tokenPath = Join-Path $localDir "emulator-firebase-id-token.txt"

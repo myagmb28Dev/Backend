@@ -168,6 +168,7 @@
 <script type="module">
 import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, saveSession as saveStoredSession, removeSession } from "/js/session-store.js";
+import { refreshFirebaseSession } from "/js/auth-refresh.js";
 import {
   ACTIVE_ROLE_KEY,
   REAL_SESSION_KEY,
@@ -219,7 +220,18 @@ async function authApi(path, init = {}) {
   if (!(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  return request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  let response = await request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  if (response.status !== 401) {
+    return response;
+  }
+  const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+  if (!refreshedSession?.firebaseIdToken) {
+    return response;
+  }
+  state.token = refreshedSession.firebaseIdToken;
+  const retryHeaders = { ...headers, Authorization: `Bearer ${state.token}` };
+  response = await request(`${BACKEND_BASE}${path}`, { ...init, headers: retryHeaders });
+  return response;
 }
 
 function renderSessionInfo() {
@@ -238,11 +250,21 @@ async function login() {
   }
 
   setStatus("공유 세션 확인 중...");
-  const response = await request(`${BACKEND_BASE}/api/auth/login`, {
+  let response = await request(`${BACKEND_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ firebaseIdToken: session.firebaseIdToken })
   });
+  if (response.status === 401) {
+    const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+    if (refreshedSession?.firebaseIdToken) {
+      response = await request(`${BACKEND_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firebaseIdToken: refreshedSession.firebaseIdToken })
+      });
+    }
+  }
 
   if (response.status !== 200) {
     clearStoredSession();
@@ -253,12 +275,14 @@ async function login() {
 
   const data = response.body?.data || {};
 
-  state.token = session.firebaseIdToken;
+  const latestSession = loadStoredSession(REAL_SESSION_KEY) || session;
+  state.token = latestSession.firebaseIdToken || session.firebaseIdToken;
   state.user = data;
 
   saveStoredSession(REAL_SESSION_KEY, {
-    ...session,
+    ...latestSession,
     firebaseIdToken: state.token,
+    refreshToken: latestSession.refreshToken || "",
     firebaseUid: data.firebaseUid || session.firebaseUid || "",
     email: data.email || session.email || "",
     nickname: data.nickname || session.nickname || "",
