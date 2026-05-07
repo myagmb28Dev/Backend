@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pogun Login Flow</title>
+  <title>Pogun Access Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
     * { box-sizing:border-box; }
@@ -64,89 +64,89 @@
       .account-strip{grid-template-columns:1fr;}
     }
   </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
 <body>
 <main>
-  <section class="card">
-    <div class="page-head">
-      <div>
-        <h1>Login Flow</h1>
-        <p class="muted">이 페이지에서 로그인한 세션을 notice-flow, dm-flow, notification-flow가 공유합니다.</p>
-      </div>
-      <div class="page-tools">
-        <div id="notificationBellMount"></div>
-      </div>
+  <section class="hero">
+    <div>
+      <strong>Access Control</strong>
+      <h1>접속 및 세션 관리</h1>
+      <p class="muted">여기서 연결한 세션을 실종 공고, DM, 보호소 공고, 알림 화면이 함께 사용합니다.</p>
     </div>
-    <div id="status" class="status" style="margin-top:10px">준비 중</div>
+    <div class="page-tools">
+      <div id="notificationBellMount"></div>
+    </div>
   </section>
 
   <section class="card">
-    <h2>Google 로그인</h2>
-    <div id="accountHint" class="muted">실제 Firebase Google 계정으로 로그인하세요.</div>
-    <div class="actions">
-      <button id="googleLoginButton" type="button">Google로 로그인</button>
-      <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
-    </div>
-    <div id="onboardingPanel" class="onboarding">
-      <h2 style="margin-top:14px">온보딩 완료</h2>
-      <p class="muted">신규 계정은 지역 좌표를 저장해야 Notice Flow와 DM Flow에 들어갈 수 있습니다.</p>
-      <div class="map-shell">
-        <div id="mapStatus" class="map-status">지도 설정 확인 전입니다.</div>
-        <div id="onboardingMap" class="map-canvas" aria-label="온보딩 위치 선택 지도"></div>
-        <div class="actions">
-          <button id="useCurrentLocationButton" type="button" class="secondary">현재 위치 사용</button>
-          <button id="resetLocationButton" type="button" class="secondary">기본 위치로 이동</button>
-        </div>
-        <div class="selected-region">
-          <span>선택된 지역</span>
-          <strong id="selectedRegionName">지역명을 확인하는 중입니다.</strong>
-        </div>
-      </div>
-      <input id="onboardingX" type="hidden" value="127.1086228">
-      <input id="onboardingY" type="hidden" value="37.4012191">
+    <div id="status" class="status">준비 중</div>
+  </section>
+
+  <section class="workspace">
+    <section class="card">
+      <h2>로그인</h2>
+      <p id="accountHint" class="muted">로그인해주세요.</p>
       <div class="actions">
-        <button id="completeOnboardingButton" type="button">온보딩 완료</button>
+        <button id="playwrightLoginButton" type="button">Playwright1 로컬 로그인</button>
+        <button id="googleLoginButton" type="button">Google로 로그인</button>
+        <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
       </div>
-    </div>
-    <div class="actions">
-      <button id="goNoticeButton" class="secondary">Notice Flow 열기</button>
-      <button id="goDmButton" class="secondary">DM Flow 열기</button>
-      <button id="goNotificationFlowButton" class="secondary">Notification Flow 열기</button>
-      <button id="goAdminFlowButton" class="secondary">Admin Flow 열기</button>
-      <button id="goRedirectButton">요청된 경로로 이동</button>
-    </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <h2>웹 알림 준비</h2>
+          <p class="muted">로그인 후 브라우저 알림 권한을 허용하면 기존 알림 API와 연결된 실제 FCM 토큰 등록 상태를 검증할 수 있습니다.</p>
+        </div>
+      </div>
+      <div class="push-grid">
+        <div class="push-item">
+          <span>브라우저 지원</span>
+          <strong id="pushSupportState">확인 전</strong>
+        </div>
+        <div class="push-item">
+          <span>알림 권한</span>
+          <strong id="pushPermissionState">확인 전</strong>
+        </div>
+        <div class="push-item">
+          <span>토큰 등록 상태</span>
+          <strong id="pushRegistrationState">로그인 후 등록할 수 있습니다.</strong>
+        </div>
+        <div class="push-item">
+          <span>마지막 수신</span>
+          <strong id="pushForegroundState">아직 수신한 알림이 없습니다.</strong>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="registerWebPushButton" type="button" disabled>웹 알림 권한 허용 및 토큰 등록</button>
+        <button id="refreshPushStateButton" type="button" class="secondary">알림 상태 새로고침</button>
+      </div>
+      <div id="pushStatus" class="status" style="margin-top:10px">로그인 후 웹 알림 상태를 확인할 수 있습니다.</div>
+    </section>
   </section>
 
-  <section class="card">
-    <div class="section-head">
-      <div>
-        <h2>웹 알림 테스트</h2>
-        <p class="muted">온보딩 완료 후 브라우저 알림 권한을 허용하고, 실제 FCM 토큰을 기존 알림 API에 저장합니다.</p>
+  <section id="onboardingPanel" class="card onboarding">
+    <h2>온보딩 마무리</h2>
+    <p class="muted">신규 계정은 위치와 지역 좌표를 저장해야 실종 공고와 DM 흐름까지 정상적으로 검증할 수 있습니다.</p>
+    <div class="map-shell">
+      <div id="mapStatus" class="map-status">지도 설정 확인 전입니다.</div>
+      <div id="onboardingMap" class="map-canvas" aria-label="온보딩 위치 선택 지도"></div>
+      <div class="actions">
+        <button id="useCurrentLocationButton" type="button" class="secondary">현재 위치 사용</button>
+        <button id="resetLocationButton" type="button" class="secondary">기본 위치로 이동</button>
+      </div>
+      <div class="selected-region">
+        <span>선택된 지역</span>
+        <strong id="selectedRegionName">지역명을 확인하는 중입니다.</strong>
       </div>
     </div>
-    <div class="push-grid">
-      <div class="push-item">
-        <span>브라우저 지원</span>
-        <strong id="pushSupportState">확인 전</strong>
-      </div>
-      <div class="push-item">
-        <span>알림 권한</span>
-        <strong id="pushPermissionState">확인 전</strong>
-      </div>
-      <div class="push-item">
-        <span>토큰 등록 상태</span>
-        <strong id="pushRegistrationState">로그인 후 등록할 수 있습니다.</strong>
-      </div>
-      <div class="push-item">
-        <span>마지막 수신</span>
-        <strong id="pushForegroundState">아직 수신한 알림이 없습니다.</strong>
-      </div>
-    </div>
+    <input id="onboardingX" type="hidden" value="127.1086228">
+    <input id="onboardingY" type="hidden" value="37.4012191">
     <div class="actions">
-      <button id="registerWebPushButton" type="button" disabled>웹 알림 권한 허용 및 토큰 등록</button>
-      <button id="refreshPushStateButton" type="button" class="secondary">알림 상태 새로고침</button>
+      <button id="completeOnboardingButton" type="button">온보딩 완료</button>
     </div>
-    <div id="pushStatus" class="status" style="margin-top:10px">로그인 후 웹 알림 상태를 확인할 수 있습니다.</div>
   </section>
 </main>
 
@@ -154,18 +154,6 @@
 import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "/js/session-store.js";
 import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/auth-refresh.js";
-import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-  import {
-    getAuth,
-    GoogleAuthProvider,
-    browserLocalPersistence,
-    signInWithPopup,
-    getRedirectResult,
-    onAuthStateChanged,
-    setPersistence,
-    signOut
-  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { FIREBASE_WEB_CONFIG } from "/firebase-web-config.js";
 
   const BACKEND_BASE = window.location.origin;
     const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
@@ -173,8 +161,13 @@ import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebase
     const query = new URLSearchParams(window.location.search);
 const redirectPath = (query.get("redirect") || "").trim() || "/full_compact/pages/notice-flow.html";
 const REAL_ROLE = "google";
+const IS_LOCAL_AUTH_FLOW = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+const LOCAL_AUTH_PROJECT_ID = "pogun-local";
+const DEFAULT_USER_LABEL = IS_LOCAL_AUTH_FLOW ? "로컬 사용자" : "Google 사용자";
+const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
 let auth = null;
 let firebaseUser = null;
+let firebaseAuthFns = null;
 let currentSession = null;
 let activeRole = null;
 let pendingOnboardingRole = null;
@@ -188,7 +181,9 @@ let regionLookupSeq = 0;
 let authStateInitialized = false;
 let sessionResyncPromise = null;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
-const users = { [REAL_ROLE]: { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null } };
+const LOCAL_AUTH_EMULATOR_BASE = "http://127.0.0.1:9099";
+const LOCAL_PLAYWRIGHT_USER = { email: "playwright-user1@local.dev", password: "Test1234!" };
+const users = { [REAL_ROLE]: { label: DEFAULT_USER_LABEL, email: "", token: null, userId: null, registrationStatus: null } };
 
 const el = (id) => document.getElementById(id);
 function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
@@ -202,9 +197,11 @@ function renderSession() {
     ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
     : pendingUser
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
-      : "실제 Firebase Google 계정으로 로그인하세요.";
-  el("googleLoginButton").disabled = Boolean(activeRole || pendingOnboardingRole);
-  el("googleLogoutButton").disabled = !firebaseUser && !currentSession;
+      : "로그인해주세요.";
+  el("googleLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "none" : "";
+  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton").disabled = Boolean(activeRole || pendingOnboardingRole);
+  el("googleLogoutButton").disabled = !currentSession;
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
   if (pendingOnboardingRole) initOnboardingMap().catch((error) => setMapStatus(error.message || String(error), "bad"));
 }
@@ -220,11 +217,22 @@ function saveSessionStore(session) {
   saveStoredSession(REAL_SESSION_KEY, session);
 }
 
+function tokenAudience(token) {
+  try {
+    const payloadSegment = String(token || "").split(".")[1] || "";
+    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(padded)).aud || "";
+  } catch {
+    return "";
+  }
+}
+
 function clearSession() {
   currentSession = null;
   activeRole = null;
   pendingOnboardingRole = null;
-  users[REAL_ROLE] = { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null };
+  users[REAL_ROLE] = { label: DEFAULT_USER_LABEL, email: "", token: null, userId: null, registrationStatus: null };
   removeSession(REAL_SESSION_KEY);
   removeSession(ACTIVE_ROLE_KEY);
   clearRefreshToken();
@@ -235,9 +243,13 @@ function restoreSession() {
   try {
     const parsed = loadStoredSession(REAL_SESSION_KEY);
     if (!parsed) return null;
+    if (IS_LOCAL_AUTH_FLOW && tokenAudience(parsed.firebaseIdToken) !== LOCAL_AUTH_PROJECT_ID) {
+      clearSession();
+      return null;
+    }
     currentSession = parsed;
     users[REAL_ROLE] = {
-      label: parsed.nickname || parsed.email || "Google 사용자",
+      label: parsed.nickname || parsed.email || DEFAULT_USER_LABEL,
       email: parsed.email || "",
       token: parsed.firebaseIdToken,
       userId: parsed.userId || null,
@@ -258,13 +270,35 @@ function restoreSession() {
 function buildSession(token, data, fallbackUser = {}) {
   return {
     firebaseIdToken: token,
+    refreshToken: fallbackUser.refreshToken || "",
     firebaseUid: data.firebaseUid || fallbackUser.uid || "",
     email: data.email || fallbackUser.email || "",
-    nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || "Google 사용자",
+    nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || DEFAULT_USER_LABEL,
     profileImageUrl: data.profileImageUrl || fallbackUser.photoURL || "",
     userId: data.id || null,
     registrationStatus: data.registrationStatus || null
   };
+}
+
+function resolveTargetView() {
+  const redirect = String(redirectPath || "").trim();
+  if (redirect.includes("/dm-flow")) return "dm";
+  if (redirect.includes("/notification-flow")) return "notification";
+  if (redirect.includes("/shelter-flow")) return "shelter";
+  if (redirect.includes("/admin-flow")) return "admin";
+  if (redirect.includes("/login-flow")) return "login";
+  try {
+    return window.sessionStorage.getItem(PENDING_VIEW_KEY) || "notice";
+  } catch {
+    return "notice";
+  }
+}
+
+function openTargetView(view = resolveTargetView()) {
+  try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "pogun-open-view", view }, window.location.origin);
+  }
 }
 
 async function syncBackendLogin(token, fallbackUser = {}) {
@@ -276,7 +310,7 @@ async function syncBackendLogin(token, fallbackUser = {}) {
 
   let response = await loginRequest(token);
   // 오래된/폐기 토큰이면 1회 강제 갱신해서 재시도
-  if (response.status === 401 && auth?.currentUser) {
+  if (!IS_LOCAL_AUTH_FLOW && response.status === 401 && auth?.currentUser) {
     try {
       const refreshedToken = await auth.currentUser.getIdToken(true);
       if (refreshedToken && refreshedToken !== token) {
@@ -289,7 +323,7 @@ async function syncBackendLogin(token, fallbackUser = {}) {
   }
 
   if (response.status !== 200) {
-    if (response.status === 401) {
+    if (!IS_LOCAL_AUTH_FLOW && response.status === 401) {
       const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
       if (refreshedSession?.firebaseIdToken) {
         response = await loginRequest(refreshedSession.firebaseIdToken);
@@ -299,8 +333,8 @@ async function syncBackendLogin(token, fallbackUser = {}) {
   }
 
   if (response.status !== 200) {
-    if (response.status === 401 && auth?.currentUser) {
-      try { await signOut(auth); } catch {}
+    if (!IS_LOCAL_AUTH_FLOW && response.status === 401 && auth?.currentUser) {
+      try { await firebaseAuthFns?.signOut(auth); } catch {}
     }
     clearSession();
     renderSession();
@@ -310,7 +344,7 @@ async function syncBackendLogin(token, fallbackUser = {}) {
   const session = buildSession(token, data, fallbackUser);
   saveSession(session);
   users[REAL_ROLE] = {
-    label: session.nickname || session.email || "Google 사용자",
+    label: session.nickname || session.email || DEFAULT_USER_LABEL,
     email: session.email,
     token,
     userId: session.userId,
@@ -327,24 +361,75 @@ async function syncBackendLogin(token, fallbackUser = {}) {
   pendingOnboardingRole = null;
   renderSession();
   setStatus(`${users[REAL_ROLE].label} 로그인 완료`, "good");
+  openTargetView();
 }
 
-  async function loadFirebaseAuth() {
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  let parsed = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = null;
+  }
+  return { ok: response.ok, status: response.status, body: parsed, text };
+}
+
+async function signInLocalPlaywrightUser() {
+  setStatus("Playwright1 로컬 계정 로그인 중...");
+  const response = await postJson(
+    `${LOCAL_AUTH_EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
+    {
+      email: LOCAL_PLAYWRIGHT_USER.email,
+      password: LOCAL_PLAYWRIGHT_USER.password,
+      returnSecureToken: true
+    }
+  );
+  if (!response.ok || !response.body?.idToken) {
+    throw new Error(`Playwright1 로컬 로그인 실패: ${response.body?.error?.message || response.status}`);
+  }
+  if (response.body.refreshToken) {
+    setRefreshToken(response.body.refreshToken);
+  }
+  await syncBackendLogin(response.body.idToken, {
+    uid: response.body.localId || "",
+    email: LOCAL_PLAYWRIGHT_USER.email,
+    displayName: "Playwright1",
+    photoURL: "",
+    refreshToken: response.body.refreshToken || ""
+  });
+}
+
+async function loadFirebaseAuth() {
+  if (IS_LOCAL_AUTH_FLOW) {
+    throw new Error("로컬 디버그에서는 Google 로그인을 사용하지 않습니다. Playwright1 로컬 로그인을 사용하세요.");
+  }
   if (auth) return auth;
+  const { FIREBASE_WEB_CONFIG } = await import("/firebase-web-config.js");
   const config = FIREBASE_WEB_CONFIG;
   for (const key of ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"]) {
     if (!config[key]) throw new Error(`Firebase Web 설정 누락: ${key}`);
   }
-  const app = getApps().length > 0 ? getApp() : initializeApp(config);
-  auth = getAuth(app);
-  await setPersistence(auth, browserLocalPersistence);
+  if (!firebaseAuthFns) {
+    const appModule = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+    const authModule = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+    firebaseAuthFns = { ...appModule, ...authModule };
+  }
+  const app = firebaseAuthFns.getApps().length > 0 ? firebaseAuthFns.getApp() : firebaseAuthFns.initializeApp(config);
+  auth = firebaseAuthFns.getAuth(app);
+  await firebaseAuthFns.setPersistence(auth, firebaseAuthFns.browserLocalPersistence);
   return auth;
 }
 
 async function startGoogleLogin() {
   if (!auth) await loadFirebaseAuth();
   setStatus("Google 로그인 창을 여는 중입니다...");
-  const provider = new GoogleAuthProvider();
+  const provider = new firebaseAuthFns.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
   const popupProbe = window.open("", "pogun-google-login-probe", "popup=yes,width=520,height=720");
   if (!popupProbe) {
@@ -352,7 +437,7 @@ async function startGoogleLogin() {
   }
   popupProbe.close();
   try {
-    const result = await signInWithPopup(auth, provider);
+    const result = await firebaseAuthFns.signInWithPopup(auth, provider);
     if (!result?.user) throw new Error("Firebase 로그인 결과에 사용자가 없습니다.");
     await handleFirebaseUser(result.user, true);
   } catch (error) {
@@ -371,7 +456,7 @@ async function handleFirebaseUser(user, forceRefresh = false) {
     firebaseUser = null;
     if (!restoreSession()) {
       clearSession();
-      setStatus("Google로 로그인하세요.");
+      setStatus("로그인해주세요.");
     }
     renderSession();
     return;
@@ -395,6 +480,11 @@ async function handleFirebaseUser(user, forceRefresh = false) {
 async function resyncAuthenticatedSession(forceRefresh = false) {
   if (sessionResyncPromise) return sessionResyncPromise;
   sessionResyncPromise = (async () => {
+    if (IS_LOCAL_AUTH_FLOW) {
+      restoreSession();
+      renderSession();
+      return;
+    }
     if (!auth) {
       await loadFirebaseAuth();
     }
@@ -402,9 +492,16 @@ async function resyncAuthenticatedSession(forceRefresh = false) {
       await handleFirebaseUser(auth.currentUser, forceRefresh);
       return;
     }
-    if (restoreSession()) {
+    const restored = restoreSession();
+    if (restored) {
       renderSession();
-      setStatus("저장된 로그인 세션을 복원했습니다.", "good");
+      const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+      const tokenToVerify = refreshedSession?.firebaseIdToken || restored.firebaseIdToken;
+      if (tokenToVerify) {
+        await syncBackendLogin(tokenToVerify, restored);
+      } else {
+        setStatus("저장된 로그인 세션을 복원했습니다.", "good");
+      }
       return;
     }
     renderSession();
@@ -438,6 +535,7 @@ async function completeOnboarding() {
   pendingOnboardingRole = null;
   renderSession();
   setStatus(`${user.label} 온보딩 완료 · 로그인 준비됨`, "good");
+  openTargetView();
 }
 
 async function loadOnboardingMapConfig() {
@@ -564,12 +662,6 @@ function targetUrl(pathname) {
   return `${window.location.origin}${prefix}${pathname}${tail}`;
 }
 
-function goNotice() { assertCanNavigate(); window.location.href = targetUrl("/full_compact/pages/notice-flow.html"); }
-function goDm() { assertCanNavigate(); window.location.href = targetUrl("/full_compact/pages/dm-flow.html"); }
-function goNotificationFlow() { assertCanNavigate(); window.location.href = targetUrl("/full_compact/pages/notification-flow.html"); }
-function goAdminFlow() { window.location.href = "/full_compact/pages/admin-flow.html"; }
-function goRedirect() { assertCanNavigate(); window.location.href = targetUrl(redirectPath); }
-
 function run(handler) {
   return async () => {
     try { await handler(); }
@@ -577,15 +669,13 @@ function run(handler) {
   };
 }
 
-el("goNoticeButton").addEventListener("click", run(goNotice));
-el("goDmButton").addEventListener("click", run(goDm));
-el("goNotificationFlowButton").addEventListener("click", run(goNotificationFlow));
-el("goAdminFlowButton").addEventListener("click", run(goAdminFlow));
-el("goRedirectButton").addEventListener("click", run(goRedirect));
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
-el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+if (!IS_LOCAL_AUTH_FLOW) {
+  el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+}
+el("playwrightLoginButton").addEventListener("click", run(signInLocalPlaywrightUser));
 el("googleLogoutButton").addEventListener("click", run(async () => {
-  if (auth) await signOut(auth);
+  if (auth) await firebaseAuthFns?.signOut(auth);
   clearSession();
   renderSession();
   setStatus("로그아웃 완료", "good");
@@ -600,12 +690,18 @@ el("onboardingY").addEventListener("change", () => moveMapTo(currentLocationFrom
 
 restoreSession();
 renderSession();
-setStatus("Google로 로그인하세요.");
+setStatus("로그인해주세요.");
 
 run(async () => {
+  if (IS_LOCAL_AUTH_FLOW) {
+    restoreSession();
+    renderSession();
+    setStatus("로컬 디버그에서는 Playwright1 로컬 로그인을 사용하세요.");
+    return;
+  }
   await loadFirebaseAuth();
   try {
-    const result = await getRedirectResult(auth);
+    const result = await firebaseAuthFns.getRedirectResult(auth);
     if (result?.user) {
       await handleFirebaseUser(result.user, true);
       return;
@@ -614,7 +710,7 @@ run(async () => {
     clearSession();
     throw error;
   }
-  onAuthStateChanged(auth, (user) => {
+  firebaseAuthFns.onAuthStateChanged(auth, (user) => {
     authStateInitialized = true;
     handleFirebaseUser(user).catch((error) => {
       console.error(error);
@@ -703,14 +799,17 @@ async function refreshPushUi() {
       : "아직 등록하지 않았습니다.";
 }
 
-mountNotificationBell("notificationBellMount");
-initForegroundNotifications({
+async function initPushUi() {
+  mountNotificationBell("notificationBellMount");
+  initForegroundNotifications({
   onMessageReceived(payload, built) {
     el("pushForegroundState").textContent = `${built.title}${built.body ? ` · ${built.body}` : ""}`;
     setPushStatus(`포그라운드 알림 수신 · ${built.title}`, "good");
     refreshNotificationBell("notificationBellMount").catch(() => {});
   }
-}).catch(() => {});
+  }).catch(() => {});
+  await refreshPushUi();
+}
 
 el("registerWebPushButton").addEventListener("click", async () => {
   try {
@@ -736,7 +835,7 @@ window.addEventListener("focus", () => refreshPushUi().catch(() => {}));
 window.addEventListener("pogun-auth-session-changed", () => refreshPushUi().catch(() => {}));
 window.addEventListener("notification-web:message", () => refreshPushUi().catch(() => {}));
 
-refreshPushUi().catch((error) => setPushStatus(error.message || String(error), "bad"));
+initPushUi().catch((error) => setPushStatus(error.message || String(error), "bad"));
 </script>
 </body>
 </html>

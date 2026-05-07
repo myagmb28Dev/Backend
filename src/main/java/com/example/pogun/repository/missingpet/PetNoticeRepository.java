@@ -25,8 +25,8 @@ public interface PetNoticeRepository extends JpaRepository<PetNotice, UUID> {
               AND (:region IS NULL OR n.missingRegion = :region)
               AND (:breed IS NULL OR n.breed = :breed)
               AND (:status IS NULL OR n.status = :status)
-              AND (:from IS NULL OR n.missingDate >= :from)
-              AND (:to IS NULL OR n.missingDate <= :to)
+              AND n.missingDate >= COALESCE(:from, n.missingDate)
+              AND n.missingDate <= COALESCE(:to, n.missingDate)
             """)
     List<PetNotice> findNotices(
             @Param("region") String region,

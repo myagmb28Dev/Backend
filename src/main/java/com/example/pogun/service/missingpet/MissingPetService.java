@@ -72,25 +72,26 @@ public class MissingPetService {
         PetNoticeStatus requestedStatus = parseStatus(status);
         Instant requestedFrom = parseInstant(from);
         Instant requestedTo = parseInstant(to);
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
 
-        List<PetNotice> filteredNotices = petNoticeRepository.findAll().stream()
-                .filter(notice -> !Boolean.TRUE.equals(notice.getHidden()))
-                .filter(notice -> requestedRegion == null || requestedRegion.equals(notice.getMissingRegion()))
-                .filter(notice -> requestedBreed == null || requestedBreed.equals(notice.getBreed()))
-                .filter(notice -> requestedStatus == null || requestedStatus == notice.getStatus())
-                .filter(notice -> requestedFrom == null || !notice.getMissingDate().isBefore(requestedFrom))
-                .filter(notice -> requestedTo == null || !notice.getMissingDate().isAfter(requestedTo))
-                .toList();
-
+        List<PetNotice> filteredNotices = petNoticeRepository.findNotices(
+                requestedRegion,
+                requestedBreed,
+                requestedStatus,
+                requestedFrom,
+                requestedTo
+        );
         List<PetNotice> sortedNotices = sortNotices(filteredNotices, sort);
-        int fromIndex = Math.min(page * size, sortedNotices.size());
-        int toIndex = Math.min(fromIndex + size, sortedNotices.size());
+
+        int fromIndex = Math.min(normalizedPage * normalizedSize, sortedNotices.size());
+        int toIndex = Math.min(fromIndex + normalizedSize, sortedNotices.size());
         List<PetNotice> pageItems = sortedNotices.subList(fromIndex, toIndex);
 
         return new MissingPetListResponse(
-                new MissingPetListFiltersResponse(region, breed, status, from, to, sort, page, size),
+                new MissingPetListFiltersResponse(region, breed, status, from, to, sort, normalizedPage, normalizedSize),
                 sortedNotices.size(),
-                size == 0 ? 0 : (int) Math.ceil((double) sortedNotices.size() / size),
+                (int) Math.ceil((double) sortedNotices.size() / normalizedSize),
                 pageItems.stream().map(this::toNoticeSummary).toList()
         );
     }
@@ -199,7 +200,7 @@ public class MissingPetService {
                     NotificationTargetType.PET_NOTICE,
                     saved.getId(),
                     "즐겨찾기한 공고 상태가 변경되었습니다.",
-                    saved.getTitle() + " 공고 상태가 " + getStatusLabel(saved) + "로 변경되었습니다.",
+                    saved.getTitle() + " 공고 상태가 " + getStatusLabel(effectiveStatus(saved)) + "로 변경되었습니다.",
                     Map.of("status", saved.getStatus().name())
             );
         }
@@ -311,6 +312,8 @@ public class MissingPetService {
     }
 
     private MissingPetSummaryResponse toNoticeSummary(PetNotice notice) {
+        PetNoticeStatus status = effectiveStatus(notice);
+        User author = notice.getAuthor();
         return new MissingPetSummaryResponse(
                 notice.getId(),
                 notice.getTitle(),
@@ -318,25 +321,29 @@ public class MissingPetService {
                 notice.getBreed(),
                 notice.getMissingDate(),
                 notice.getMissingRegion(),
-                notice.getStatus().name(),
-                getStatusLabel(notice),
-                notice.getStatus() != PetNoticeStatus.OPEN,
-                notice.getViewCount(),
+                status.name(),
+                getStatusLabel(status),
+                status != PetNoticeStatus.OPEN,
+                notice.getViewCount() == null ? 0L : notice.getViewCount(),
                 noticeBookmarkRepository.countByNotice(notice),
                 isUrgent(notice),
-                notice.getAuthor().getId(),
-                displayAuthorName(notice.getAuthor()),
-                notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
+                author == null ? null : author.getId(),
+                displayAuthorName(author),
+                notice.getImages() == null
+                        ? List.of()
+                        : notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
         );
     }
 
     private MissingPetDetailResponse toNoticeDetail(PetNotice notice) {
+        PetNoticeStatus status = effectiveStatus(notice);
+        User author = notice.getAuthor();
         return new MissingPetDetailResponse(
                 notice.getId(),
                 notice.getTitle(),
                 notice.getAnimalType(),
                 notice.getBreed(),
-                notice.getGender().name(),
+                notice.getGender() == null ? PetGender.UNKNOWN.name() : notice.getGender().name(),
                 notice.getAge(),
                 notice.getColor(),
                 notice.getDescription(),
@@ -345,18 +352,20 @@ public class MissingPetService {
                 notice.getMissingAddress(),
                 notice.getRewardAmount(),
                 notice.getContactPhone(),
-                notice.getStatus().name(),
-                getStatusLabel(notice),
-                notice.getStatus() != PetNoticeStatus.OPEN,
-                notice.getViewCount(),
+                status.name(),
+                getStatusLabel(status),
+                status != PetNoticeStatus.OPEN,
+                notice.getViewCount() == null ? 0L : notice.getViewCount(),
                 noticeBookmarkRepository.countByNotice(notice),
                 isUrgent(notice),
                 notice.getHidden(),
-                notice.getAuthor().getId(),
-                displayAuthorName(notice.getAuthor()),
+                author == null ? null : author.getId(),
+                displayAuthorName(author),
                 notice.getCreatedAt(),
                 notice.getUpdatedAt(),
-                notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
+                notice.getImages() == null
+                        ? List.of()
+                        : notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
         );
     }
 
@@ -504,6 +513,17 @@ public class MissingPetService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    private int normalizePage(int page) {
+        return Math.max(page, 0);
+    }
+
+    private int normalizeSize(int size) {
+        if (size <= 0) {
+            return 20;
+        }
+        return Math.min(size, 100);
+    }
+
     private String normalizeCacheValue(String value) {
         if (value == null) {
             return "_";
@@ -526,7 +546,7 @@ public class MissingPetService {
 
     private int urgencyScore(PetNotice notice) {
         int score = 0;
-        if (notice.getStatus() == PetNoticeStatus.OPEN) {
+        if (effectiveStatus(notice) == PetNoticeStatus.OPEN) {
             score += 2;
         }
         if (notice.getMissingDate() != null && notice.getMissingDate().isAfter(Instant.now().minus(3, ChronoUnit.DAYS))) {
@@ -538,8 +558,15 @@ public class MissingPetService {
         return score;
     }
 
-    private String getStatusLabel(PetNotice notice) {
-        return switch (notice.getStatus()) {
+    private PetNoticeStatus effectiveStatus(PetNotice notice) {
+        if (notice == null || notice.getStatus() == null) {
+            return PetNoticeStatus.OPEN;
+        }
+        return notice.getStatus();
+    }
+
+    private String getStatusLabel(PetNoticeStatus status) {
+        return switch (status) {
             case OPEN -> "진행중";
             case RESOLVED -> "해결됨";
             case CLOSED -> "종료됨";
