@@ -1,0 +1,100 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.google.cloud.opentelemetry",
+    "module": "detector-resources-support",
+    "version": "0.32.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.6"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "files": [
+        {
+          "name": "detector-resources-support-0.32.0.jar",
+          "url": "detector-resources-support-0.32.0.jar",
+          "size": 18021,
+          "sha512": "346c6fdaf6b9d26b79e8c2c4f8fac0a1266e37fda0c338df08eca65df33247977bd9678908938884a4f42565b1648dafaaf2a7b9c0bc4831c258110d23a16eff",
+          "sha256": "56853ca1991334dd99cc4f01c0aa66f2d96a46c2191df9ba74898be2c12e17a1",
+          "sha1": "5b3340c991cf7793ee42d5a2e46192a466e94c3f",
+          "md5": "0dd0bc0737f8d67d8eafbecb100ff047"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "detector-resources-support-0.32.0.jar",
+          "url": "detector-resources-support-0.32.0.jar",
+          "size": 18021,
+          "sha512": "346c6fdaf6b9d26b79e8c2c4f8fac0a1266e37fda0c338df08eca65df33247977bd9678908938884a4f42565b1648dafaaf2a7b9c0bc4831c258110d23a16eff",
+          "sha256": "56853ca1991334dd99cc4f01c0aa66f2d96a46c2191df9ba74898be2c12e17a1",
+          "sha1": "5b3340c991cf7793ee42d5a2e46192a466e94c3f",
+          "md5": "0dd0bc0737f8d67d8eafbecb100ff047"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "detector-resources-support-0.32.0-javadoc.jar",
+          "url": "detector-resources-support-0.32.0-javadoc.jar",
+          "size": 408252,
+          "sha512": "afb00f2fcfda157bdbc5ba25d11df1d3e8142d68d143edfeedd6abd6986ed06bf412c39752e68c46d1989a7c4096d0766144bb7843a133f36f5a01398d0772e2",
+          "sha256": "7d2d4f72d0cf87eeeac5fb735593a592af9072b04d9dcfc9f4e9787cbffc00ad",
+          "sha1": "4aaa3bfbf0c678998f6e1f6f36618c5325a18435",
+          "md5": "98423e3d5d71dc00e72e4f88a1f0a31b"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "detector-resources-support-0.32.0-sources.jar",
+          "url": "detector-resources-support-0.32.0-sources.jar",
+          "size": 15299,
+          "sha512": "7a0144eb64315f0bcdbdc7faa81b15d8e85700c30dd92e60afc89681663852618cc348dffc34cfc39219dad3cafda9ed7fbd2d2171b23f6c9eecde16e0128b5a",
+          "sha256": "bcf6182e33cf41f3d50ff2c858efdd9486228e4da98bda28bb61a311b0f2c5b1",
+          "sha1": "c1110e38bb379f81f6ec84d32e6398622460ee19",
+          "md5": "8bfe4edab4a6381c351e2514b6b90534"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.gavlyukovskiy",
+    "module": "p6spy-spring-boot-starter",
+    "version": "1.9.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "7.6"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.gavlyukovskiy",
+          "module": "datasource-decorator-spring-boot-autoconfigure",
+          "version": {
+            "requires": "1.9.0"
+          }
+        },
+        {
+          "group": "p6spy",
+          "module": "p6spy",
+          "version": {
+            "requires": "3.9.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "p6spy-spring-boot-starter-1.9.0.jar",
+          "url": "p6spy-spring-boot-starter-1.9.0.jar",
+          "size": 4517,
+          "sha512": "2032acce5fc54348249c190f7cfa156cc7552f99711f3769a3581bf210d7aad98e7473b2a6bd32797e7ba9621e4485dc9004cea79847122f6818b985f40557e8",
+          "sha256": "cccef97cda851a8c23bb4f6c64d8bf61744c170a382acb978d38a5fcc97e77a0",
+          "sha1": "b51740224ed4f0cdca7ba93fe9167e7b97064f41",
+          "md5": "918350461f95634b86717e648f7c1b8e"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.gavlyukovskiy",
+          "module": "datasource-decorator-spring-boot-autoconfigure",
+          "version": {
+            "requires": "1.9.0"
+          }
+        },
+        {
+          "group": "p6spy",
+          "module": "p6spy",
+          "version": {
+            "requires": "3.9.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "p6spy-spring-boot-starter-1.9.0.jar",
+          "url": "p6spy-spring-boot-starter-1.9.0.jar",
+          "size": 4517,
+          "sha512": "2032acce5fc54348249c190f7cfa156cc7552f99711f3769a3581bf210d7aad98e7473b2a6bd32797e7ba9621e4485dc9004cea79847122f6818b985f40557e8",
+          "sha256": "cccef97cda851a8c23bb4f6c64d8bf61744c170a382acb978d38a5fcc97e77a0",
+          "sha1": "b51740224ed4f0cdca7ba93fe9167e7b97064f41",
+          "md5": "918350461f95634b86717e648f7c1b8e"
+        }
+      ]
+    }
+  ]
+}

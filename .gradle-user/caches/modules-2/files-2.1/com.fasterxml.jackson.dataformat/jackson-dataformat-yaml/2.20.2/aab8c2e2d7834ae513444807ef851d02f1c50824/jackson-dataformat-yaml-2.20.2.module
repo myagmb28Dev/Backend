@@ -1,0 +1,163 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.fasterxml.jackson.dataformat",
+    "module": "jackson-dataformat-yaml",
+    "version": "2.20.2",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "com.fasterxml.jackson.core",
+          "module": "jackson-databind",
+          "version": {
+            "requires": "2.20.2"
+          }
+        },
+        {
+          "group": "org.yaml",
+          "module": "snakeyaml",
+          "version": {
+            "requires": "2.4"
+          }
+        },
+        {
+          "group": "com.fasterxml.jackson.core",
+          "module": "jackson-core",
+          "version": {
+            "requires": "2.20.2"
+          }
+        },
+        {
+          "group": "com.fasterxml.jackson",
+          "module": "jackson-bom",
+          "version": {
+            "requires": "2.20.2"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        }
+      ],
+      "files": [
+        {
+          "name": "jackson-dataformat-yaml-2.20.2.jar",
+          "url": "jackson-dataformat-yaml-2.20.2.jar",
+          "size": 60090,
+          "sha512": "9e8adbfac21e04f719bb4738e51870aed080a91e2c68dc23fb868d453a613ef8193c8a8cfe21a9291d59534d30537ee6d4711793885412a248fd5b334b6c528f",
+          "sha256": "a62b5caa09de0b97e432d00c759b8b241791244bea0e82d64b146b6b490f779f",
+          "sha1": "16987565053394eb736ae08776ada2a713102926",
+          "md5": "d03053a6ceeddb7c63bb99d10485d993"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.fasterxml.jackson.core",
+          "module": "jackson-databind",
+          "version": {
+            "requires": "2.20.2"
+          }
+        },
+        {
+          "group": "org.yaml",
+          "module": "snakeyaml",
+          "version": {
+            "requires": "2.4"
+          }
+        },
+        {
+          "group": "com.fasterxml.jackson.core",
+          "module": "jackson-core",
+          "version": {
+            "requires": "2.20.2"
+          }
+        },
+        {
+          "group": "com.fasterxml.jackson",
+          "module": "jackson-bom",
+          "version": {
+            "requires": "2.20.2"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        }
+      ],
+      "files": [
+        {
+          "name": "jackson-dataformat-yaml-2.20.2.jar",
+          "url": "jackson-dataformat-yaml-2.20.2.jar",
+          "size": 60090,
+          "sha512": "9e8adbfac21e04f719bb4738e51870aed080a91e2c68dc23fb868d453a613ef8193c8a8cfe21a9291d59534d30537ee6d4711793885412a248fd5b334b6c528f",
+          "sha256": "a62b5caa09de0b97e432d00c759b8b241791244bea0e82d64b146b6b490f779f",
+          "sha1": "16987565053394eb736ae08776ada2a713102926",
+          "md5": "d03053a6ceeddb7c63bb99d10485d993"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [],
+      "files": [
+        {
+          "name": "jackson-dataformat-yaml-2.20.2-javadoc.jar",
+          "url": "jackson-dataformat-yaml-2.20.2-javadoc.jar",
+          "size": 193234,
+          "sha512": "c5409333f674ca69b24a5dead35237a6b53fe3c28a443a46dc90288c6624eca3666dcc39845c5f75ff4c2e18e4e181170950c20d1bc943284902de838eeb6f6a",
+          "sha256": "fc7684bd441f3d0030d7191ff7e49b4d599a958bb33780b8065e15064188cfbd",
+          "sha1": "58c7fa8205613887e6687d39d15c6cf770919170",
+          "md5": "5e2601367462c410d3bedb87a9930816"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [],
+      "files": [
+        {
+          "name": "jackson-dataformat-yaml-2.20.2-sources.jar",
+          "url": "jackson-dataformat-yaml-2.20.2-sources.jar",
+          "size": 48904,
+          "sha512": "1f3569996dffc3213a32085c45bd4f52c740c8db3a20bee38fa34cd0ecf216bd7b370d9b7f7301939977b0b8581b1cf8e53f3fa51423e35d67339619da55b734",
+          "sha256": "890241ec5b9d1fa6012b7ea7f6981a8ef8857840e59f09c1706de08c05a1ae1c",
+          "sha1": "bfa212500df6b989abee3037ce96024052f49582",
+          "md5": "632bcc5056fa7746d0ead25b95fd88dc"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.springframework",
+    "module": "spring-oxm",
+    "version": "7.0.5",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.3.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.springframework",
+          "module": "spring-beans",
+          "version": {
+            "requires": "7.0.5"
+          }
+        },
+        {
+          "group": "org.springframework",
+          "module": "spring-core",
+          "version": {
+            "requires": "7.0.5"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "spring-oxm-7.0.5.jar",
+          "url": "spring-oxm-7.0.5.jar",
+          "size": 59910,
+          "sha512": "b74ff2d53ed67c109b05fef1d097dc1741e766596936c7786f7b8801dc01e5b8f9c70ba7f44430cae5f59d2fbe5738981f07bfbf4a98770c87125a124a31aa36",
+          "sha256": "5682e6783f095d0258e8b142ac18f78fe22af12d81f440fdc3c8cfa5ea73bd2a",
+          "sha1": "6b94497f50a8bbec0f1a0d7c3e5d759a88df28a7",
+          "md5": "eda2fbe6c3479da9e7494b34ac95dd47"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "jakarta.xml.bind",
+          "module": "jakarta.xml.bind-api",
+          "version": {
+            "requires": "3.0.1"
+          }
+        },
+        {
+          "group": "org.springframework",
+          "module": "spring-beans",
+          "version": {
+            "requires": "7.0.5"
+          }
+        },
+        {
+          "group": "org.springframework",
+          "module": "spring-core",
+          "version": {
+            "requires": "7.0.5"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "spring-oxm-7.0.5.jar",
+          "url": "spring-oxm-7.0.5.jar",
+          "size": 59910,
+          "sha512": "b74ff2d53ed67c109b05fef1d097dc1741e766596936c7786f7b8801dc01e5b8f9c70ba7f44430cae5f59d2fbe5738981f07bfbf4a98770c87125a124a31aa36",
+          "sha256": "5682e6783f095d0258e8b142ac18f78fe22af12d81f440fdc3c8cfa5ea73bd2a",
+          "sha1": "6b94497f50a8bbec0f1a0d7c3e5d759a88df28a7",
+          "md5": "eda2fbe6c3479da9e7494b34ac95dd47"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.opentelemetry.instrumentation",
+    "module": "opentelemetry-grpc-1.6",
+    "version": "2.1.0-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.6"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry.instrumentation",
+          "module": "opentelemetry-instrumentation-api",
+          "version": {
+            "requires": "2.1.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.instrumentation",
+          "module": "opentelemetry-instrumentation-api-incubator",
+          "version": {
+            "requires": "2.1.0-alpha"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.35.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        }
+      ],
+      "files": [
+        {
+          "name": "opentelemetry-grpc-1.6-2.1.0-alpha.jar",
+          "url": "opentelemetry-grpc-1.6-2.1.0-alpha.jar",
+          "size": 36667,
+          "sha512": "29cb8462346caeeab293ca973d899c5ef4af3b4698f4ec97fc4532d698792ddc4a33cf1b4131d02842055a8ad9b4aaaf591518478c4371a0739b5b116a696d64",
+          "sha256": "7c033f0c8c8c8159c396b21922460ecfb7a5f004258f8fcdc4ce9979261e1ac9",
+          "sha1": "2b5664e141c3a2cfddc922d8ce3e8ac7aeb9ebc0",
+          "md5": "26eff9d2333781f00ec4b047e23820f0"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry.instrumentation",
+          "module": "opentelemetry-instrumentation-api",
+          "version": {
+            "requires": "2.1.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.instrumentation",
+          "module": "opentelemetry-instrumentation-api-incubator",
+          "version": {
+            "requires": "2.1.0-alpha"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.35.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry.instrumentation",
+              "module": "opentelemetry-instrumentation-bom-alpha"
+            }
+          ]
+        }
+      ],
+      "files": [
+        {
+          "name": "opentelemetry-grpc-1.6-2.1.0-alpha.jar",
+          "url": "opentelemetry-grpc-1.6-2.1.0-alpha.jar",
+          "size": 36667,
+          "sha512": "29cb8462346caeeab293ca973d899c5ef4af3b4698f4ec97fc4532d698792ddc4a33cf1b4131d02842055a8ad9b4aaaf591518478c4371a0739b5b116a696d64",
+          "sha256": "7c033f0c8c8c8159c396b21922460ecfb7a5f004258f8fcdc4ce9979261e1ac9",
+          "sha1": "2b5664e141c3a2cfddc922d8ce3e8ac7aeb9ebc0",
+          "md5": "26eff9d2333781f00ec4b047e23820f0"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "opentelemetry-grpc-1.6-2.1.0-alpha-javadoc.jar",
+          "url": "opentelemetry-grpc-1.6-2.1.0-alpha-javadoc.jar",
+          "size": 106528,
+          "sha512": "b7cd06c3ff756d7ec84fd30a9287fc3d0449d292697f6a878f84191dbda65cc6e163ea3fc76dbbb8956ea28126ed4136705bd660b429b833e10488ec4fb002bb",
+          "sha256": "844d0b8d9b695ae48d35602674fc363854d51de964a875ec733755a4b3d5014d",
+          "sha1": "8b03798188d1d744280dedeb6916c446bdd43615",
+          "md5": "d6a4f48212474d1b351c3c949eab88ad"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "opentelemetry-grpc-1.6-2.1.0-alpha-sources.jar",
+          "url": "opentelemetry-grpc-1.6-2.1.0-alpha-sources.jar",
+          "size": 17580,
+          "sha512": "33b02334eafbbcb410563e5209ee77f6fbbfd1994651fcb643632e08e9dad3486aef0de70408779e94397b8af6308a6ce4c4f41ef098ea2d9c18b601ce52519e",
+          "sha256": "a229b9ba650d3495fa4a60afe6667cd1e0e9647a8c32cc3eba7851d100fb6774",
+          "sha1": "2678b7049694196208388c17c0ce30b7d88dc0fc",
+          "md5": "5d0d9aca8fe3c1564eae594a20285d76"
+        }
+      ]
+    }
+  ]
+}
