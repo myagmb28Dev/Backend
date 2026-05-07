@@ -91,7 +91,6 @@ CSV 다운로드 API는 `Accept`를 따로 지정하지 않아도 서버가 CSV�
 | 400 | `INVALID_JSON` | JSON body 파싱 실패 | 요청 body 직렬화 확인 |
 | 400 | `MISSING_PARAMETER` | 필수 query/path 누락 | 입력값 확인 |
 | 401 | `ADMIN_SESSION_REQUIRED` | 관리자 세션 없음/만료/잘못된 토큰 | 로그인 화면 또는 패스키 단계로 이동 |
-| 401 | `TOKEN_REFRESH_REQUIRED` | `/api/auth/refresh` 요청에 refresh token 없음 | 저장된 refresh token 확인 또는 재로그인 |
 | 401 | `INVALID_CREDENTIALS` | Google Firebase ID Token 검증 실패 | Google 재로그인 유도 |
 | 403 | `ADMIN_ONLY` | 관리자 계정이 아님 | 접근 차단 안내 |
 | 403 | `GOOGLE_SIGN_IN_REQUIRED` | Google 소셜 로그인이 아님 | Google 로그인만 허용 안내 |
@@ -122,107 +121,43 @@ Authorization: Bearer {adminAccessToken}
 
 `adminAccessToken`은 JWT가 아닙니다. 백엔드가 48바이트 랜덤 토큰을 생성하고, DB에는 SHA-256 hash만 저장합니다.
 
-## 2-A. 일반 로그인 Refresh Token API
-
-관리자 API와 별개로, 일반 정적 페이지 로그인 세션은 Firebase ID Token 만료에 대비해 `/api/auth/refresh`를 사용합니다.
-
-### Firebase 토큰 갱신
+## 2-A. 관리자 세션 갱신
 
 ```http
-POST /api/auth/refresh
-Content-Type: application/json
+POST /api/admin/auth/refresh
+Authorization: Bearer {adminAccessToken}
 ```
 
-인증: 없음
+동작:
 
-Refresh Token 전달 방식은 두 가지입니다.
+- 현재 관리자 세션이 `AUTHENTICATED` 단계일 때 새로운 accessToken을 발급합니다.
+- 기존 세션은 즉시 revoke 처리됩니다.
 
-| 방식 | 설명 | 우선순위 |
-|---|---|---:|
-| 요청 body `refreshToken` | 프론트가 저장 중인 Firebase Refresh Token을 JSON body로 전달 | 1 |
-| HttpOnly cookie `pogun_refresh_token` | body가 비어 있으면 서버가 쿠키에서 refresh token을 읽음 | 2 |
-
-요청 body:
+성공 응답 data는 `AdminAuthSessionResponse`입니다.
 
 ```json
 {
-  "refreshToken": "AEu4IL1...firebase-refresh-token"
-}
-```
-
-요청 DTO: `TokenRefreshRequest`
-
-| 필드 | 타입 | 필수 | 제한 | 설명 |
-|---|---|---:|---|---|
-| `refreshToken` | string | N | 최대 4096자 | Firebase Refresh Token. body가 비어 있으면 `pogun_refresh_token` 쿠키를 사용 |
-
-성공 응답:
-
-```json
-{
-  "ok": true,
-  "status": 200,
-  "message": "토큰 갱신 성공",
-  "data": {
-    "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6...",
-    "refreshToken": "AEu4IL1...new-refresh-token",
-    "expiresIn": 3600,
-    "firebaseUid": "qMm6je2Jaec97hJ5DWV9wpwYeYp2",
-    "projectId": "pogun-local"
+  "accessToken": "new-admin-session-token",
+  "expiresAt": "2026-05-07T10:00:00Z",
+  "stage": "AUTHENTICATED",
+  "admin": {
+    "id": "uuid",
+    "email": "admin@example.com",
+    "name": "관리자",
+    "role": "ADMIN"
   },
-  "error": null,
-  "meta": {
-    "requestId": "req_123456789abc",
-    "timestamp": "2026-05-07T08:00:00Z"
-  }
+  "permissions": [
+    "AUDIT_READ"
+  ]
 }
 ```
 
-응답 DTO: `TokenRefreshResponse`
+실패:
 
-| 필드 | 타입 | nullable | 설명 |
-|---|---|---:|---|
-| `idToken` | string | N | 새 Firebase ID Token. 이후 `/api/auth/login` 또는 일반 인증 API의 bearer token으로 사용 |
-| `refreshToken` | string | N | 새 Firebase Refresh Token. 기존 refresh token을 이 값으로 교체 저장 |
-| `expiresIn` | number | N | ID Token 만료까지 남은 초. 보통 `3600` |
-| `firebaseUid` | string | N | Firebase UID |
-| `projectId` | string | N | Firebase project ID |
-
-성공 시 서버는 아래 쿠키도 같이 내려줍니다.
-
-```http
-Set-Cookie: pogun_refresh_token={newRefreshToken}; Path=/api/auth; Max-Age=2592000; HttpOnly; SameSite=Strict
-```
-
-HTTPS 또는 `X-Forwarded-Proto: https` 요청이면 `Secure` 속성도 붙습니다.
-
-프론트 처리 규칙:
-
-1. `data.idToken`을 현재 Firebase ID Token으로 즉시 교체합니다.
-2. `data.refreshToken`을 저장 중인 refresh token 값으로 갱신합니다.
-3. 기존 API 재시도는 새 `idToken`으로 수행합니다.
-4. 응답이 `401 TOKEN_REFRESH_REQUIRED`이면 저장된 refresh token이 없거나 쿠키가 없다는 뜻이므로 재로그인시킵니다.
-5. Firebase가 refresh token을 거절해도 401 계열로 보고 재로그인시키는 것이 안전합니다.
-
-실패 응답 예시:
-
-```json
-{
-  "ok": false,
-  "status": 401,
-  "message": "리프레시 토큰이 필요합니다.",
-  "data": null,
-  "error": {
-    "code": "TOKEN_REFRESH_REQUIRED",
-    "message": "리프레시 토큰이 필요합니다.",
-    "detail": null
-  },
-  "meta": {
-    "requestId": "req_123456789abc",
-    "timestamp": "2026-05-07T08:00:00Z"
-  }
-}
-```
+| status | code | 의미 | 프론트 처리 |
+|---:|---|---|---|
+| 401 | `ADMIN_SESSION_REQUIRED` | 세션 없음/만료 | 로그인 UI로 이동 |
+| 403 | `ADMIN_AUTH_STEP_INVALID` | `AUTHENTICATED` 단계 아님 | 로그인/패스키 단계로 이동 |
 
 ### 세션 단계
 

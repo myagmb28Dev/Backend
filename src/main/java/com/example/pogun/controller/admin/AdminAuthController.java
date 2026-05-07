@@ -104,4 +104,11 @@ public class AdminAuthController {
         adminAuthService.logout();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그아웃 성공", null));
     }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "관리자 세션 갱신", description = "현재 관리자 세션을 갱신하고 새 accessToken을 발급합니다.")
+    public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> refreshSession() {
+        AdminAuthSessionResponse data = adminAuthService.refreshSession();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 세션 갱신 성공", data));
+    }
 }
