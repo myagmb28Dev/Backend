@@ -15,11 +15,16 @@ import com.example.pogun.service.auth.AuthService;
 import com.example.pogun.service.auth.FirebaseTokenRefreshService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,6 +43,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 @Tag(name = "Auth", description = "인증 API")
 public class AuthController {
+    private static final String REFRESH_COOKIE_NAME = "pogun_refresh_token";
 
     private final AuthService authService;
     private final FirebaseTokenRefreshService firebaseTokenRefreshService;
@@ -60,9 +66,39 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @Operation(summary = "Firebase 토큰 갱신", description = "Refresh Token으로 새 Firebase ID Token/Refresh Token을 발급합니다.")
-    public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshFirebaseToken(@Valid @RequestBody TokenRefreshRequest request) {
-        TokenRefreshResponse data = firebaseTokenRefreshService.refresh(request.getRefreshToken());
+    public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshFirebaseToken(
+            @Valid @RequestBody TokenRefreshRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse response
+    ) {
+        String refreshToken = resolveRefreshToken(request, servletRequest);
+        TokenRefreshResponse data = firebaseTokenRefreshService.refresh(refreshToken);
+        boolean isSecureRequest = servletRequest.isSecure()
+                || "https".equalsIgnoreCase(servletRequest.getHeader("X-Forwarded-Proto"));
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE_NAME, data.refreshToken())
+                .httpOnly(true)
+                .secure(isSecureRequest)
+                .sameSite("Strict")
+                .path("/api/auth")
+                .maxAge(60L * 60L * 24L * 30L)
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "토큰 갱신 성공", data));
+    }
+
+    private String resolveRefreshToken(TokenRefreshRequest request, HttpServletRequest servletRequest) {
+        if (request != null && StringUtils.hasText(request.getRefreshToken())) {
+            return request.getRefreshToken().trim();
+        }
+        if (servletRequest.getCookies() == null) {
+            throw com.example.pogun.dto.common.ApiResponse.ApiException.unauthorized("TOKEN_REFRESH_REQUIRED", "리프레시 토큰이 필요합니다.");
+        }
+        for (var cookie : servletRequest.getCookies()) {
+            if (REFRESH_COOKIE_NAME.equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
+                return cookie.getValue().trim();
+            }
+        }
+        throw com.example.pogun.dto.common.ApiResponse.ApiException.unauthorized("TOKEN_REFRESH_REQUIRED", "리프레시 토큰이 필요합니다.");
     }
 
     @PostMapping("/onboarding/complete")
@@ -85,8 +121,16 @@ public class AuthController {
 
     @PostMapping("/logout")
     @Operation(summary = "로그아웃", description = "사용자를 로그아웃 처리합니다.")
-    public ResponseEntity<ApiResponse<LogoutResponse>> logout() {
+    public ResponseEntity<ApiResponse<LogoutResponse>> logout(HttpServletResponse response) {
         LogoutResponse data = authService.logout();
+        ResponseCookie expiredCookie = ResponseCookie.from(REFRESH_COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(false)
+                .sameSite("Strict")
+                .path("/api/auth")
+                .maxAge(0)
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, expiredCookie.toString());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그아웃 처리 완료", data));
     }
 

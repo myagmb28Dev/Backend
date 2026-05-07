@@ -6,6 +6,7 @@ import com.example.pogun.dto.common.ApiResponse.ApiException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
@@ -22,12 +23,15 @@ public class FirebaseTokenRefreshService {
     private final WebClient.Builder webClientBuilder;
 
     public TokenRefreshResponse refresh(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken)) {
+            throw ApiException.unauthorized("TOKEN_REFRESH_REQUIRED", "리프레시 토큰이 필요합니다.");
+        }
         String apiKey = resolveApiKey();
         String baseUrl = resolveBaseUrl();
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "refresh_token");
-        form.add("refresh_token", refreshToken);
+        form.add("refresh_token", refreshToken.trim());
 
         try {
             @SuppressWarnings("unchecked")

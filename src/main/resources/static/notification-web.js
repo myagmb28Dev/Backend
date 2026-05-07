@@ -1,6 +1,6 @@
 import { request } from "./js/api-client.js";
 import { loadSession as loadStoredSession, removeSession } from "./js/session-store.js";
-import { refreshFirebaseSession } from "./js/auth-refresh.js";
+import { clearRefreshToken, refreshFirebaseSession } from "./js/auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 export const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
@@ -109,6 +109,7 @@ export function getStoredSession() {
 export function clearStoredSession() {
   removeSession(REAL_SESSION_KEY);
   removeSession(ACTIVE_ROLE_KEY);
+  clearRefreshToken();
 }
 
 export function getOrCreateNotificationDeviceId() {

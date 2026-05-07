@@ -1153,7 +1153,6 @@ async function login(role) {
   saveSession(REAL_SESSION_KEY, {
     ...latestSession,
     firebaseIdToken: user.token,
-    refreshToken: latestSession.refreshToken || "",
     firebaseUid: data.firebaseUid || latestSession.firebaseUid || "",
     email: data.email || latestSession.email || "",
     nickname: data.nickname || latestSession.nickname || "",

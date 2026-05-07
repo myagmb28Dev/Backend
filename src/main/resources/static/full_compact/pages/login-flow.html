@@ -153,7 +153,7 @@
 <script type="module">
 import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "/js/session-store.js";
-import { refreshFirebaseSession } from "/js/auth-refresh.js";
+import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/auth-refresh.js";
 import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
     getAuth,
@@ -227,6 +227,7 @@ function clearSession() {
   users[REAL_ROLE] = { label: "Google 사용자", email: "", token: null, userId: null, registrationStatus: null };
   removeSession(REAL_SESSION_KEY);
   removeSession(ACTIVE_ROLE_KEY);
+  clearRefreshToken();
   window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
 }
 
@@ -257,7 +258,6 @@ function restoreSession() {
 function buildSession(token, data, fallbackUser = {}) {
   return {
     firebaseIdToken: token,
-    refreshToken: data.refreshToken || fallbackUser.refreshToken || "",
     firebaseUid: data.firebaseUid || fallbackUser.uid || "",
     email: data.email || fallbackUser.email || "",
     nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || "Google 사용자",
@@ -380,6 +380,10 @@ async function handleFirebaseUser(user, forceRefresh = false) {
   setStatus("Firebase 토큰 확인 중...");
   try {
     const token = await user.getIdToken(forceRefresh);
+    const rawRefreshToken = user?.stsTokenManager?.refreshToken || user?.refreshToken || "";
+    if (rawRefreshToken) {
+      setRefreshToken(rawRefreshToken);
+    }
     await syncBackendLogin(token, user);
   } catch (error) {
     clearSession();

@@ -305,7 +305,6 @@ async function login(role) {
   saveStoredSession(REAL_SESSION_KEY, {
     ...latestSession,
     firebaseIdToken: users[role].token,
-    refreshToken: latestSession.refreshToken || "",
     firebaseUid: data.firebaseUid || latestSession.firebaseUid || "",
     email: data.email || latestSession.email || "",
     nickname: data.nickname || latestSession.nickname || "",
