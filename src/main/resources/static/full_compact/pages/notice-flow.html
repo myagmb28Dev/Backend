@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pogun Notice Flow</title>
+  <title>Pogun Missing Notice Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --surface:#1f1930; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
     * { box-sizing:border-box; }
@@ -66,14 +66,15 @@
       .detail-images{grid-template-columns:1fr;}
     }
   </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
 <body>
 <main>
   <section class="card">
     <div class="page-head">
       <div>
-        <h1>Notice Flow</h1>
-        <p class="muted" style="margin-top:6px">실종동물 공고를 필드 입력 + 이미지 첨부로 생성하고, 생성 후 DM 테스트로 이동합니다.</p>
+        <h1>실종 공고 관리</h1>
+        <p class="muted" style="margin-top:6px">실종 공고를 조회하고, 새 공고를 등록하거나 기존 공고를 정리합니다.</p>
       </div>
       <div id="notificationBellMount"></div>
     </div>
@@ -81,90 +82,94 @@
   </section>
 
   <section class="card">
-    <h2>로그인 세션</h2>
-    <div id="accountHint" class="muted">login-flow.html에서 로그인 후 진입해 주세요.</div>
-    <div class="actions" style="margin-top:10px">
-      <button id="goLoginFlowButton" class="secondary">Login Flow로 이동</button>
-    </div>
+    <h2>세션 상태</h2>
+    <div id="accountHint" class="muted">로그인 탭에서 인증 후 이용하세요.</div>
   </section>
 
-  <section class="card">
-    <h2>공고 목록 조회</h2>
-    <div class="notice-list-controls">
-      <label>검색어<input id="listQuery" placeholder="제목/설명"></label>
-      <label>상태
-        <select id="listStatus">
-          <option value="">전체</option>
-          <option value="OPEN">OPEN</option>
-          <option value="RESOLVED">RESOLVED</option>
-          <option value="CLOSED">CLOSED</option>
-        </select>
-      </label>
-      <label>내 공고만
-        <select id="listMineOnly">
-          <option value="false" selected>전체</option>
-          <option value="true">내 공고만</option>
-        </select>
-      </label>
-      <label>개수
-        <select id="listSize">
-          <option value="10">10</option>
-          <option value="20" selected>20</option>
-          <option value="50">50</option>
-        </select>
-      </label>
-    </div>
-    <div class="actions">
-      <button id="loadNoticeListButton" class="secondary" disabled>공고 목록 불러오기</button>
-    </div>
-    <div id="noticeList" class="notice-list muted">로그인 후 목록을 조회할 수 있습니다.</div>
-  </section>
+  <section class="workspace">
+    <section class="card">
+      <h2>목록 및 필터</h2>
+      <p class="section-note">공개 상태와 키워드 기준으로 공고를 좁히고, 현재 작업할 공고를 선택합니다.</p>
+      <div class="notice-list-controls">
+        <label>검색어<input id="listQuery" placeholder="제목/설명"></label>
+        <label>상태
+          <select id="listStatus">
+            <option value="">전체</option>
+            <option value="OPEN">OPEN</option>
+            <option value="RESOLVED">RESOLVED</option>
+            <option value="CLOSED">CLOSED</option>
+          </select>
+        </label>
+        <label>내 공고만
+          <select id="listMineOnly">
+            <option value="false" selected>전체</option>
+            <option value="true">내 공고만</option>
+          </select>
+        </label>
+        <label>개수
+          <select id="listSize">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+          </select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="loadNoticeListButton" class="secondary" disabled>공고 목록 불러오기</button>
+        <button id="prevNoticePageButton" class="secondary" disabled>이전 페이지</button>
+        <button id="nextNoticePageButton" class="secondary" disabled>다음 페이지</button>
+      </div>
+      <div id="noticePageInfo" class="muted" style="margin-top:8px">페이지 정보 없음</div>
+      <div id="noticeList" class="notice-list muted">로그인 후 목록을 조회할 수 있습니다.</div>
+    </section>
 
-  <section class="card">
-    <h2>실종 공고 생성</h2>
-    <div id="editorMode" class="muted" style="margin-top:8px">새 공고 작성 모드</div>
-    <div class="grid" style="margin-top:10px">
-      <label>제목*<input id="title" placeholder="말티즈를 찾습니다"></label>
-      <label>동물 종류*<input id="animalType" value="DOG" placeholder="DOG"></label>
-      <label>품종<input id="breed" placeholder="말티즈"></label>
-      <label>성별
-        <select id="gender">
-          <option value="">선택 안 함</option>
-          <option value="MALE">MALE</option>
-          <option value="FEMALE">FEMALE</option>
-          <option value="UNKNOWN">UNKNOWN</option>
-        </select>
-      </label>
-      <label>나이<input id="age" type="number" min="0" placeholder="3"></label>
-      <label>색상<input id="color" placeholder="WHITE"></label>
-      <label class="full">설명<textarea id="description" placeholder="특징, 목줄 여부 등"></textarea></label>
-      <label>실종 시각(UTC ISO)*<input id="missingDate" placeholder="2026-03-18T10:00:00Z"></label>
-      <label>실종 지역*<input id="missingRegion" placeholder="서울 강남구"></label>
-      <label class="full">실종 상세 주소<input id="missingAddress" placeholder="역삼역 인근"></label>
-      <label>사례금<input id="rewardAmount" type="number" min="0" placeholder="300000"></label>
-      <label>연락처<input id="contactPhone" placeholder="010-1111-2222"></label>
-      <label>상태
-        <select id="statusField">
-          <option value="OPEN" selected>OPEN</option>
-          <option value="RESOLVED">RESOLVED</option>
-          <option value="CLOSED">CLOSED</option>
-        </select>
-      </label>
-      <label class="full">이미지<input id="images" type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" multiple></label>
-    </div>
-    <div class="actions">
-      <button id="createNoticeButton" disabled>공고 생성 후 DM 테스트로 이동</button>
-      <button id="saveEditButton" class="secondary" disabled style="display:none">수정 저장</button>
-      <button id="cancelEditButton" class="secondary" disabled style="display:none">수정 취소</button>
-      <button id="deleteNoticeButton" class="secondary" disabled style="display:none">공고 삭제</button>
-      <button id="toDmButton" class="secondary">DM 테스트로 이동</button>
-      <button id="loadDetailButton" class="secondary" disabled>현재 noticeId 상세 새로고침</button>
-    </div>
-  </section>
+    <div class="stack">
+      <section class="card">
+        <h2>공고 편집</h2>
+        <div id="editorMode" class="muted" style="margin-top:8px">새 공고 작성 모드</div>
+        <div class="grid" style="margin-top:10px">
+          <label>제목*<input id="title" placeholder="말티즈를 찾습니다"></label>
+          <label>동물 종류*<input id="animalType" value="DOG" placeholder="DOG"></label>
+          <label>품종<input id="breed" placeholder="말티즈"></label>
+          <label>성별
+            <select id="gender">
+              <option value="">선택 안 함</option>
+              <option value="MALE">MALE</option>
+              <option value="FEMALE">FEMALE</option>
+              <option value="UNKNOWN">UNKNOWN</option>
+            </select>
+          </label>
+          <label>나이<input id="age" type="number" min="0" placeholder="3"></label>
+          <label>색상<input id="color" placeholder="WHITE"></label>
+          <label class="full">설명<textarea id="description" placeholder="특징, 목줄 여부 등"></textarea></label>
+          <label>실종 시각(UTC ISO)*<input id="missingDate" placeholder="2026-03-18T10:00:00Z"></label>
+          <label>실종 지역*<input id="missingRegion" placeholder="서울 강남구"></label>
+          <label class="full">실종 상세 주소<input id="missingAddress" placeholder="역삼역 인근"></label>
+          <label>사례금<input id="rewardAmount" type="number" min="0" placeholder="300000"></label>
+          <label>연락처<input id="contactPhone" placeholder="010-1111-2222"></label>
+          <label>상태
+            <select id="statusField">
+              <option value="OPEN" selected>OPEN</option>
+              <option value="RESOLVED">RESOLVED</option>
+              <option value="CLOSED">CLOSED</option>
+            </select>
+          </label>
+          <label class="full">이미지<input id="images" type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" multiple></label>
+        </div>
+        <div class="actions">
+          <button id="createNoticeButton" disabled>공고 생성</button>
+          <button id="saveEditButton" class="secondary" disabled style="display:none">수정 저장</button>
+          <button id="cancelEditButton" class="secondary" disabled style="display:none">수정 취소</button>
+          <button id="deleteNoticeButton" class="secondary" disabled style="display:none">공고 삭제</button>
+          <button id="loadDetailButton" class="secondary" disabled>선택 공고 새로고침</button>
+        </div>
+      </section>
 
-  <section class="card">
-    <h2>공고 상세</h2>
-    <div id="detail" class="detail muted" style="margin-top:10px">noticeId가 있으면 여기서 상세를 확인할 수 있습니다.</div>
+      <section class="card">
+        <h2>선택 공고 상세</h2>
+        <div id="detail" class="detail muted" style="margin-top:10px">공고를 선택하면 여기서 상세를 확인할 수 있습니다.</div>
+      </section>
+    </div>
   </section>
 </main>
 
@@ -182,6 +187,9 @@ let currentNoticeId = (query.get("noticeId") || "").trim() || null;
 let activeRole = null;
 let currentNotice = null;
 let editingNoticeId = null;
+let noticeListPage = 0;
+let noticeListTotalPages = 0;
+let noticeListTotalElements = 0;
 
 const users = { [REAL_ROLE]: { label: "Google 사용자", email: "", token: null, userId: null } };
 
@@ -193,11 +201,22 @@ function renderSessionInfo() {
   const user = activeRole ? users[activeRole] : null;
   el("accountHint").textContent = user
     ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
-    : "login-flow.html에서 로그인 후 진입해 주세요.";
+    : "로그인 세션이 연결되지 않았습니다. 로그인 탭에서 다시 인증하세요.";
   el("createNoticeButton").disabled = !activeRole;
   el("loadNoticeListButton").disabled = !activeRole;
+  renderNoticePagination();
   el("loadDetailButton").disabled = !activeRole || !currentNoticeId;
   syncEditorButtons();
+}
+
+function renderNoticePagination() {
+  const hasSession = Boolean(activeRole);
+  const hasPages = noticeListTotalPages > 0;
+  el("prevNoticePageButton").disabled = !hasSession || !hasPages || noticeListPage <= 0;
+  el("nextNoticePageButton").disabled = !hasSession || !hasPages || noticeListPage >= noticeListTotalPages - 1;
+  el("noticePageInfo").textContent = hasPages
+    ? `${noticeListPage + 1} / ${noticeListTotalPages} 페이지 · 전체 ${noticeListTotalElements}건`
+    : "페이지 정보 없음";
 }
 
 function isOwnerNotice(notice = currentNotice) {
@@ -267,11 +286,20 @@ function loadRealSession() {
   return loadStoredSession(REAL_SESSION_KEY);
 }
 
+function requestLoginRecovery() {
+  activeRole = null;
+  renderSessionInfo();
+  setStatus("세션이 없습니다. 로그인 탭에서 다시 인증하세요.", "bad");
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "pogun-auth-required", view: "notice" }, window.location.origin);
+  }
+}
+
 async function login(role) {
   role = REAL_ROLE;
   const session = loadRealSession();
   if (!session) {
-    moveToLoginFlow();
+    requestLoginRecovery();
     return;
   }
   users[role].token = session.firebaseIdToken;
@@ -294,7 +322,7 @@ async function login(role) {
   }
   if (response.status !== 200) {
     removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
-    moveToLoginFlow();
+    requestLoginRecovery();
     return;
   }
   const data = response.body?.data || {};
@@ -320,18 +348,6 @@ async function login(role) {
   if (currentNoticeId) {
     await loadNoticeDetail(currentNoticeId);
   }
-}
-
-function moveToLoginFlow() {
-  const redirect = `/full_compact/pages/notice-flow.html${currentNoticeId ? `?noticeId=${encodeURIComponent(currentNoticeId)}` : ""}`;
-  window.location.href = `${window.location.origin}/full_compact/pages/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
-}
-
-function toDmTestUrl(noticeId = currentNoticeId) {
-  const params = new URLSearchParams();
-  if (noticeId) params.set("noticeId", noticeId);
-  if (activeRole) params.set("role", activeRole);
-  return `${window.location.origin}/full_compact/pages/dm-flow.html${params.toString() ? `?${params.toString()}` : ""}`;
 }
 
 function parseOptionalInt(raw) {
@@ -379,7 +395,7 @@ async function createNotice() {
   let response = await authApi("/api/missing-pets", { method: "POST", body: formData });
   if (response.status === 401) {
     removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
-    moveToLoginFlow();
+    requestLoginRecovery();
     return;
   }
   if (response.status !== 201) throw new Error(`공고 생성 실패: ${JSON.stringify(response.body)}`);
@@ -389,10 +405,12 @@ async function createNotice() {
   setStatus(`공고 생성 완료: ${response.body?.data?.title || currentNoticeId}`, "good");
   if (currentNoticeId) {
     await loadNoticeDetail(currentNoticeId);
-    await loadNoticeList();
-    setTimeout(() => {
-      window.location.href = toDmTestUrl(currentNoticeId);
-    }, 600);
+    try {
+      await loadNoticeList();
+    } catch (listError) {
+      console.warn("공지 목록 새로고침 실패", listError);
+      setStatus(`공고 생성 완료: ${response.body?.data?.title || currentNoticeId} (목록 새로고침 실패)`, "good");
+    }
   }
 }
 
@@ -408,7 +426,7 @@ async function updateNotice() {
   const response = await authApi(`/api/missing-pets/${editingNoticeId}`, { method: "PATCH", body: formData });
   if (response.status === 401) {
     removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
-    moveToLoginFlow();
+    requestLoginRecovery();
     return;
   }
   if (response.status !== 200) throw new Error(`공고 수정 실패: ${JSON.stringify(response.body)}`);
@@ -427,7 +445,7 @@ async function deleteNotice() {
   const response = await authApi(`/api/missing-pets/${currentNoticeId}`, { method: "DELETE" });
   if (response.status === 401) {
     removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
-    moveToLoginFlow();
+    requestLoginRecovery();
     return;
   }
   if (response.status !== 200) throw new Error(`공고 삭제 실패: ${JSON.stringify(response.body)}`);
@@ -523,12 +541,10 @@ async function loadNoticeDetail(noticeId) {
     <div class="actions">
       <button id="editCurrentNoticeButton" class="secondary" ${isOwnerNotice(notice) ? "" : "disabled"}>현재 공고 수정</button>
       <button id="deleteCurrentNoticeButton" class="secondary" ${isOwnerNotice(notice) ? "" : "disabled"}>현재 공고 삭제</button>
-      <button id="goCurrentDmButton" class="secondary">이 공고로 DM 보기</button>
     </div>
   `;
   detail.querySelector("#editCurrentNoticeButton")?.addEventListener("click", startEdit);
   detail.querySelector("#deleteCurrentNoticeButton")?.addEventListener("click", run(deleteNotice));
-  detail.querySelector("#goCurrentDmButton")?.addEventListener("click", () => { window.location.href = toDmTestUrl(notice.id); });
   await loadAuthenticatedImages();
   if (editingNoticeId === notice.id) {
     fillForm(notice);
@@ -542,6 +558,7 @@ function renderNoticeList(items) {
   if (!items.length) {
     list.className = "notice-list muted";
     list.textContent = "조회된 공고가 없습니다.";
+    renderNoticePagination();
     return;
   }
   list.className = "notice-list";
@@ -571,28 +588,38 @@ function renderNoticeList(items) {
       await loadNoticeDetail(noticeId);
     }));
   });
+  renderNoticePagination();
 }
 
-async function loadNoticeList() {
+async function loadNoticeList(page = noticeListPage) {
   if (!activeRole) throw new Error("먼저 로그인하세요.");
   const params = new URLSearchParams();
   const queryText = el("listQuery").value.trim();
   const status = el("listStatus").value;
   const size = String(el("listSize").value || "20");
+  noticeListPage = Math.max(Number(page) || 0, 0);
   if (queryText) params.set("query", queryText);
   if (status) params.set("status", status);
   params.set("size", size);
-  params.set("page", "0");
+  params.set("page", String(noticeListPage));
 
   setStatus("공고 목록 조회 중...");
   const response = await authApi(`/api/missing-pets?${params.toString()}`);
   if (response.status !== 200) throw new Error(`공고 목록 조회 실패: ${JSON.stringify(response.body)}`);
   const data = response.body?.data || {};
+  noticeListPage = Number(data.filters?.page ?? noticeListPage) || 0;
+  noticeListTotalPages = Number(data.totalPages || 0);
+  noticeListTotalElements = Number(data.totalElements || 0);
   const rawItems = Array.isArray(data.content) ? data.content : (Array.isArray(data.items) ? data.items : []);
   const mineOnly = el("listMineOnly").value === "true";
   const items = mineOnly ? rawItems.filter((item) => isOwnerNotice(item)) : rawItems;
   renderNoticeList(items);
   setStatus(`공고 목록 ${items.length}건 조회 완료`, "good");
+}
+
+async function loadNoticeListFromFirstPage() {
+  noticeListPage = 0;
+  await loadNoticeList(0);
 }
 
 function run(handler) {
@@ -606,23 +633,41 @@ el("createNoticeButton").addEventListener("click", run(createNotice));
 el("saveEditButton").addEventListener("click", run(updateNotice));
 el("cancelEditButton").addEventListener("click", cancelEdit);
 el("deleteNoticeButton").addEventListener("click", run(deleteNotice));
-el("toDmButton").addEventListener("click", () => { window.location.href = toDmTestUrl(); });
 el("loadDetailButton").addEventListener("click", run(() => loadNoticeDetail(currentNoticeId)));
-el("loadNoticeListButton").addEventListener("click", run(loadNoticeList));
-el("goLoginFlowButton").addEventListener("click", moveToLoginFlow);
+el("loadNoticeListButton").addEventListener("click", run(loadNoticeListFromFirstPage));
+el("prevNoticePageButton").addEventListener("click", run(() => loadNoticeList(noticeListPage - 1)));
+el("nextNoticePageButton").addEventListener("click", run(() => loadNoticeList(noticeListPage + 1)));
+el("listStatus").addEventListener("change", run(loadNoticeListFromFirstPage));
+el("listMineOnly").addEventListener("change", run(loadNoticeListFromFirstPage));
+el("listSize").addEventListener("change", run(loadNoticeListFromFirstPage));
 
 if (!el("missingDate").value) el("missingDate").value = new Date().toISOString();
 renderSessionInfo();
 setEditorMode(false);
-setStatus("login-flow에서 로그인한 계정으로 공고를 작성하세요.");
+setStatus("세션을 연결하면 실종 공고를 조회하고 편집할 수 있습니다.");
 
 const savedRole = (() => { try { return window.localStorage.getItem(ACTIVE_ROLE_KEY) || ""; } catch { return ""; } })();
 const initialRole = savedRole === REAL_ROLE ? REAL_ROLE : (loadRealSession() ? REAL_ROLE : "");
 if (initialRole) {
   run(() => login(REAL_ROLE))();
 } else {
-  moveToLoginFlow();
+  requestLoginRecovery();
 }
+window.addEventListener("storage", (event) => {
+  if (event.key !== REAL_SESSION_KEY && event.key !== ACTIVE_ROLE_KEY) {
+    return;
+  }
+  if (loadRealSession()?.firebaseIdToken) {
+    run(() => login(REAL_ROLE))();
+    return;
+  }
+  requestLoginRecovery();
+});
+window.addEventListener("focus", () => {
+  if (!activeRole && loadRealSession()?.firebaseIdToken) {
+    run(() => login(REAL_ROLE))();
+  }
+});
 </script>
 <script type="module" src="/global-presence.js"></script>
 <script type="module">

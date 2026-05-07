@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pogun Notification Flow</title>
+  <title>Pogun Notification Center</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --surface:#1f1930; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
     * { box-sizing:border-box; }
@@ -50,53 +50,60 @@
       .item-top{display:grid;gap:6px;}
     }
   </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
 <body>
 <main>
-  <section class="card">
-    <div class="page-head">
-      <div>
-        <h1>Notification Flow</h1>
-        <p class="muted" style="margin-top:6px">기존 알림 API로 목록, 읽음 처리, unread count를 확인합니다.</p>
-      </div>
+  <section class="hero">
+    <div>
+      <strong>Notification Center</strong>
+      <h1>알림 운영</h1>
+      <p class="muted" style="margin-top:8px">수신 알림을 확인하고 읽음 상태를 정리하며, DM과 연결된 이벤트를 즉시 점검합니다.</p>
+    </div>
+    <div class="stack" style="justify-items:end">
       <div id="notificationBellMount"></div>
-    </div>
-    <div id="status" class="status" style="margin-top:10px">준비 중</div>
-  </section>
-
-  <section class="card">
-    <h2>로그인 세션</h2>
-    <p id="accountHint" class="muted" style="margin-top:8px">login-flow.html에서 로그인 후 진입해 주세요.</p>
-    <div class="actions">
-      <a class="nav-link" href="/full_compact/pages/login-flow.html?redirect=/full_compact/pages/notification-flow.html">Login Flow로 이동</a>
-      <a class="nav-link" href="/full_compact/pages/notice-flow.html">Notice Flow</a>
-      <a class="nav-link" href="/full_compact/pages/dm-flow.html">DM Flow</a>
+      <div id="status" class="status">준비 중</div>
     </div>
   </section>
 
-  <section class="card">
-    <h2>알림 요약</h2>
-    <div class="summary-grid">
-      <div class="summary-item">
-        <span>읽지 않은 알림</span>
-        <strong id="unreadCountValue">-</strong>
+  <section class="workspace">
+    <div class="stack">
+      <section class="card">
+        <h2>세션 상태</h2>
+        <p id="accountHint" class="muted" style="margin-top:8px">로그인 세션 연결을 확인하는 중입니다.</p>
+      </section>
+
+      <section class="card">
+        <h2>알림 현황</h2>
+        <p class="section-note">읽지 않은 개수와 마지막 동기화 시점을 확인하고, 필요한 경우 전체 읽음 처리까지 바로 수행할 수 있습니다.</p>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span>읽지 않은 알림</span>
+            <strong id="unreadCountValue">-</strong>
+          </div>
+          <div class="summary-item">
+            <span>마지막 새로고침</span>
+            <strong id="lastRefreshValue">-</strong>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="refreshNotificationsButton" type="button">새로고침</button>
+          <button id="readAllNotificationsButton" type="button" class="secondary">전체 읽음 처리</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="page-head">
+        <div>
+          <h2>알림 수신함</h2>
+          <p class="section-note">최근 알림을 시간순으로 확인하고, 아직 읽지 않은 항목은 개별로 처리할 수 있습니다.</p>
+        </div>
       </div>
-      <div class="summary-item">
-        <span>마지막 새로고침</span>
-        <strong id="lastRefreshValue">-</strong>
+      <div id="notificationList" class="list" style="margin-top:10px">
+        <div class="empty">로그인 후 알림을 확인할 수 있습니다.</div>
       </div>
-    </div>
-    <div class="actions">
-      <button id="refreshNotificationsButton" type="button">새로고침</button>
-      <button id="readAllNotificationsButton" type="button" class="secondary">전체 읽음 처리</button>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>알림 목록</h2>
-    <div id="notificationList" class="list">
-      <div class="empty">로그인 후 알림을 확인할 수 있습니다.</div>
-    </div>
+    </section>
   </section>
 </main>
 
@@ -110,6 +117,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   mountNotificationBell,
+  REAL_SESSION_KEY,
   refreshNotificationBell
 } from "/notification-web.js";
 
@@ -121,11 +129,27 @@ function setStatus(message, tone = "") {
   node.className = `status${tone ? ` ${tone}` : ""}`;
 }
 
+function requestLoginRecovery() {
+  renderSession();
+  el("unreadCountValue").textContent = "-";
+  el("lastRefreshValue").textContent = formatDateTime(new Date().toISOString());
+  renderNotifications([]);
+  setStatus("세션이 없습니다. 로그인 탭에서 다시 인증하세요.", "bad");
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "pogun-auth-required", view: "notification" }, window.location.origin);
+  }
+}
+
+function isAuthFailure(error) {
+  const message = error?.message || String(error);
+  return message.includes("로그인이 필요") || message.includes("\"status\":401") || message.includes("\"status\":403");
+}
+
 function renderSession() {
   const session = getStoredSession();
   el("accountHint").textContent = session?.firebaseIdToken
     ? `${session.nickname || session.email || "Google 사용자"} 로그인됨 · ${session.email || "-"}${session.userId ? ` · ${session.userId}` : ""}`
-    : "login-flow.html에서 로그인 후 진입해 주세요.";
+    : "로그인 세션이 연결되지 않았습니다. 로그인 탭에서 다시 인증하세요.";
   el("readAllNotificationsButton").disabled = !session?.firebaseIdToken;
 }
 
@@ -169,6 +193,10 @@ function renderNotifications(items) {
         setStatus("알림 읽음 처리 완료", "good");
         await refreshAll();
       } catch (error) {
+        if (isAuthFailure(error)) {
+          requestLoginRecovery();
+          return;
+        }
         setStatus(error.message || String(error), "bad");
       }
     });
@@ -200,18 +228,25 @@ async function refreshAll() {
   const session = getStoredSession();
   await refreshNotificationBell("notificationBellMount");
   if (!session?.firebaseIdToken) {
-    el("unreadCountValue").textContent = "-";
-    el("lastRefreshValue").textContent = formatDateTime(new Date().toISOString());
-    renderNotifications([]);
-    setStatus("로그인 후 알림 목록을 확인할 수 있습니다.");
+    requestLoginRecovery();
     return;
   }
 
   setStatus("알림 목록을 불러오는 중...");
-  const [unreadCount, notificationPage] = await Promise.all([
-    fetchUnreadCount(),
-    fetchNotifications(0, 20)
-  ]);
+  let unreadCount;
+  let notificationPage;
+  try {
+    [unreadCount, notificationPage] = await Promise.all([
+      fetchUnreadCount(),
+      fetchNotifications(0, 20)
+    ]);
+  } catch (error) {
+    if (isAuthFailure(error)) {
+      requestLoginRecovery();
+      return;
+    }
+    throw error;
+  }
   el("unreadCountValue").textContent = String(unreadCount);
   el("lastRefreshValue").textContent = formatDateTime(new Date().toISOString());
   renderNotifications(notificationPage?.items || []);
@@ -228,12 +263,26 @@ el("readAllNotificationsButton").addEventListener("click", async () => {
     setStatus("전체 알림을 읽음 처리했습니다.", "good");
     await refreshAll();
   } catch (error) {
+    if (isAuthFailure(error)) {
+      requestLoginRecovery();
+      return;
+    }
     setStatus(error.message || String(error), "bad");
   }
 });
 
 window.addEventListener("focus", () => refreshAll().catch(() => {}));
 window.addEventListener("notification-web:message", () => refreshAll().catch(() => {}));
+window.addEventListener("storage", (event) => {
+  if (event.key !== REAL_SESSION_KEY) {
+    return;
+  }
+  if (event.newValue) {
+    refreshAll().catch((error) => setStatus(error.message || String(error), "bad"));
+    return;
+  }
+  requestLoginRecovery();
+});
 
 refreshAll().catch((error) => setStatus(error.message || String(error), "bad"));
 </script>

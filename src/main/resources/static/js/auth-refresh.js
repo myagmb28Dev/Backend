@@ -32,6 +32,9 @@ export function getRefreshToken() {
 export async function refreshFirebaseSession(storageKey, baseUrl = window.location.origin) {
   const session = loadSession(storageKey);
   const refreshToken = getRefreshToken() || session?.refreshToken || "";
+  if (!refreshToken) {
+    return null;
+  }
 
   const response = await request(`${baseUrl}/api/auth/refresh`, {
     method: "POST",

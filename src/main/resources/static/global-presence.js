@@ -1,5 +1,8 @@
+import { refreshFirebaseSession } from "./js/auth-refresh.js";
+
 const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
+const REFRESH_TOKEN_KEY = "pogun-refresh-token-v1";
 const CLIENT_SESSION_KEY = "pogun-global-presence-client-session-v1";
 const HEARTBEAT_INTERVAL_MS = 8000;
 
@@ -35,6 +38,7 @@ function clearExpiredSession() {
   try {
     window.localStorage.removeItem(REAL_SESSION_KEY);
     window.localStorage.removeItem(ACTIVE_ROLE_KEY);
+    window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   } catch {}
 }
 
@@ -44,11 +48,11 @@ async function sendGlobalPresenceHeartbeat(reason = "interval") {
 
   inFlight = true;
   try {
-    const response = await fetch("/api/presence/heartbeat", {
+    const requestHeartbeat = async (token) => fetch("/api/presence/heartbeat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${session.firebaseIdToken}`
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({
         clientSessionId: clientSessionId(),
@@ -56,11 +60,18 @@ async function sendGlobalPresenceHeartbeat(reason = "interval") {
         reason
       })
     });
+    let response = await requestHeartbeat(session.firebaseIdToken);
     if (response.status === 401 || response.status === 403) {
-      clearExpiredSession();
-      stopGlobalPresenceHeartbeat();
-      window.dispatchEvent(new CustomEvent("pogun:presence-expired"));
-      return null;
+      const refreshed = await refreshFirebaseSession(REAL_SESSION_KEY, window.location.origin);
+      if (refreshed?.firebaseIdToken) {
+        response = await requestHeartbeat(refreshed.firebaseIdToken);
+      }
+      if (response.status === 401 || response.status === 403) {
+        clearExpiredSession();
+        stopGlobalPresenceHeartbeat();
+        window.dispatchEvent(new CustomEvent("pogun:presence-expired"));
+        return null;
+      }
     }
     const payload = await response.json().catch(() => null);
     window.dispatchEvent(new CustomEvent("pogun:presence-heartbeat", { detail: payload?.data || null }));

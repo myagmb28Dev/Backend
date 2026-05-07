@@ -37,8 +37,17 @@ public class ShelterPetService {
     private long aiSourceCacheTtlSeconds;
 
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
-        ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, page, size);
-        List<ShelterPetSummaryResponse> items = result.items().stream()
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
+        ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, 0, 1000);
+        List<ShelterPublicApiClient.ShelterPublicApiAnimal> filteredItems = result.items().stream()
+                .filter(item -> matchesStatus(item, status))
+                .toList();
+
+        int fromIndex = Math.min(normalizedPage * normalizedSize, filteredItems.size());
+        int toIndex = Math.min(fromIndex + normalizedSize, filteredItems.size());
+
+        List<ShelterPetSummaryResponse> items = filteredItems.subList(fromIndex, toIndex).stream()
                 .map(item -> {
                     ShelterPet local = shelterPetRepository.findById(item.desertionNo()).orElse(null);
                     return new ShelterPetSummaryResponse(
@@ -59,8 +68,8 @@ public class ShelterPetService {
 
         return new ShelterPetListResponse(
                 "KOREA_ANIMAL_PROTECTION_API",
-                new ShelterPetListFiltersResponse(region, breed, status, sort, page, size),
-                result.totalCount(),
+                new ShelterPetListFiltersResponse(region, breed, status, sort, normalizedPage, normalizedSize),
+                filteredItems.size(),
                 items
         );
     }
@@ -201,6 +210,30 @@ public class ShelterPetService {
             }
         }
         return null;
+    }
+
+    private boolean matchesStatus(ShelterPublicApiClient.ShelterPublicApiAnimal item, String status) {
+        if (!StringUtils.hasText(status)) {
+            return true;
+        }
+        String normalized = status.trim().toLowerCase();
+        String processState = firstNonBlank(item.processState(), "").toLowerCase();
+        return switch (normalized) {
+            case "open", "notice", "noticed" -> processState.contains("공고") || processState.contains("notice");
+            case "protect", "protected", "resolved" -> processState.contains("보호") || processState.contains("종료") || processState.contains("returned") || processState.contains("protect");
+            default -> processState.equals(normalized) || processState.contains(normalized);
+        };
+    }
+
+    private int normalizePage(int page) {
+        return Math.max(page, 0);
+    }
+
+    private int normalizeSize(int size) {
+        if (size <= 0) {
+            return 20;
+        }
+        return Math.min(size, 100);
     }
 
     private String normalizeCacheValue(String value) {

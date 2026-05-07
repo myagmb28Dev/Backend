@@ -156,6 +156,7 @@ export function formatDateTime(value) {
 export async function authRequest(path, init = {}) {
   let session = getStoredSession();
   if (!session?.firebaseIdToken) {
+    clearStoredSession();
     throw new Error("로그인이 필요합니다.");
   }
 
@@ -170,11 +171,15 @@ export async function authRequest(path, init = {}) {
 
   const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
   if (!refreshedSession?.firebaseIdToken) {
+    clearStoredSession();
     return response;
   }
   session = refreshedSession;
   headers.set("Authorization", `Bearer ${session.firebaseIdToken}`);
   response = await request(`${BACKEND_BASE}${path}`, { ...init, headers });
+  if (response.status === 401 || response.status === 403) {
+    clearStoredSession();
+  }
   return response;
 }
 

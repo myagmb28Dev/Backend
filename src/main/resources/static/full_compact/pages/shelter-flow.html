@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pogun Shelter Flow</title>
+  <title>Pogun Shelter Notice Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --surface:#1f1930; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
     * { box-sizing:border-box; }
@@ -48,14 +48,15 @@
     @media (max-width:940px){ .layout,.detail-grid,.summary-grid,.filters-grid{grid-template-columns:1fr;} .hero,.section-head,.split{display:grid;} .status{min-width:0;} }
     @media (max-width:640px){ html,body{width:100%;max-width:100%;overflow-x:hidden;} main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;} .card,.hero{padding:14px;border-radius:12px;box-shadow:0 10px 24px rgba(0,0,0,.28);} .nav-links,.actions,.quick-links{display:grid;grid-template-columns:1fr;gap:7px;} .nav-link,button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;} .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));} }
   </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
 <body>
 <main>
   <section class="hero">
     <div>
-      <strong>Shelter Flow</strong>
-      <h1>보호 공고 탐색</h1>
-      <p class="muted" style="margin-top:8px">login-flow에서 로그인한 같은 세션으로 보호 공고 목록과 상세를 바로 점검한다.</p>
+      <strong>Shelter Notice</strong>
+      <h1>보호소 공고 탐색</h1>
+      <p class="muted" style="margin-top:8px">공유 로그인 세션으로 보호소 공고 목록과 상세를 조회하고, 필터링 결과를 빠르게 점검합니다.</p>
     </div>
     <div class="stack" style="justify-items:end">
       <div id="notificationBellMount"></div>
@@ -67,15 +68,9 @@
     <div class="section-head">
       <div>
         <h2>공유 세션</h2>
-        <p id="accountHint" class="muted" style="margin-top:8px">login-flow.html에서 로그인 후 진입해 주세요.</p>
+        <p id="accountHint" class="muted" style="margin-top:8px">로그인 세션 연결을 확인하는 중입니다.</p>
       </div>
       <div id="sessionBadge" class="pill">로그인 전</div>
-    </div>
-    <div class="nav-links" style="margin-top:10px">
-      <a class="nav-link" href="/full_compact/pages/login-flow.html?redirect=/full_compact/pages/shelter-flow.html">Login Flow</a>
-      <a class="nav-link" href="/full_compact/pages/notice-flow.html">Notice Flow</a>
-      <a class="nav-link" href="/full_compact/pages/dm-flow.html">DM Flow</a>
-      <a class="nav-link" href="/full_compact/pages/notification-flow.html">Notification Flow</a>
     </div>
   </section>
 
@@ -130,9 +125,9 @@
 
       <section class="card">
         <h2>필터 안내</h2>
-        <p class="muted" style="margin-top:8px">보조 조회 API 없이 `/api/shelter`의 서버 필터링과 페이지네이션만 사용한다.</p>
+        <p class="muted" style="margin-top:8px">보조 조회 API 없이 `/api/shelter` 하나로 서버 필터링과 페이지네이션을 모두 검증합니다.</p>
         <div class="summary-box" id="referenceSummaryBox" style="margin-top:10px">
-          region, breed, status, sort, page, size 값을 그대로 `/api/shelter`에 전달한다.
+          region, breed, status, sort, page, size 값을 그대로 `/api/shelter`에 전달합니다.
         </div>
       </section>
     </aside>
@@ -210,8 +205,13 @@ function getStoredSession() {
 }
 
 function redirectToLoginFlow() {
-  const redirect = `/full_compact/pages/shelter-flow.html${window.location.search || ""}`;
-  window.location.href = `${window.location.origin}/full_compact/pages/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
+  state.token = null;
+  state.user = null;
+  renderSessionInfo();
+  setStatus("세션이 없습니다. 로그인 탭에서 다시 인증하세요.", "bad");
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "pogun-auth-required", view: "shelter" }, window.location.origin);
+  }
 }
 
 async function authApi(path, init = {}) {
@@ -238,7 +238,7 @@ function renderSessionInfo() {
   const session = state.user;
   el("accountHint").textContent = session
     ? `${session.nickname || session.email || "사용자"} 로그인됨 · ${session.email || "이메일 없음"}${session.id ? ` · ${session.id}` : ""}`
-    : "login-flow.html에서 로그인 후 진입해 주세요.";
+    : "로그인 세션이 연결되지 않았습니다. 로그인 탭에서 다시 인증하세요.";
   el("sessionBadge").textContent = session ? `${session.nickname || session.email || "공유 세션"} 활성` : "로그인 전";
 }
 
@@ -539,13 +539,28 @@ el("resetButton").addEventListener("click", run(async () => {
 renderSessionInfo();
 renderActiveFilters({});
 renderSelectionSummary();
-setStatus("login-flow에서 로그인한 같은 세션으로 보호 공고를 불러온다.");
+setStatus("세션을 연결하면 보호소 공고 목록과 상세를 바로 확인할 수 있습니다.");
 
 if (getStoredSession()?.firebaseIdToken) {
   run(login)();
 } else {
   redirectToLoginFlow();
 }
+window.addEventListener("storage", (event) => {
+  if (event.key !== REAL_SESSION_KEY && event.key !== ACTIVE_ROLE_KEY) {
+    return;
+  }
+  if (getStoredSession()?.firebaseIdToken) {
+    run(login)();
+    return;
+  }
+  redirectToLoginFlow();
+});
+window.addEventListener("focus", () => {
+  if (!state.token && getStoredSession()?.firebaseIdToken) {
+    run(login)();
+  }
+});
 </script>
 <script type="module" src="/global-presence.js"></script>
 </body>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pogun DM Flow</title>
+  <title>Pogun Message Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --surface:#1f1930; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
     * { box-sizing:border-box; }
@@ -193,12 +193,13 @@
       .message-line .message{max-width:calc(100% - 58px);}
     }
   </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
 <body>
 <main>
   <section class="hero">
     <div class="hero-main">
-      <strong>Notice DM Flow</strong>
+      <strong>Conversation Desk</strong>
       <h1>공고 기반 1:1 DM</h1>
       <p>로그인한 계정으로 공고 작성자와 1:1 문의를 열고, 대화 흐름과 방 설정을 바로 점검합니다.</p>
     </div>
@@ -211,10 +212,10 @@
   <section class="card">
     <div class="chat-head">
       <h2>로그인 세션</h2>
-      <p>login-flow.html에서 로그인한 실제 Firebase 세션을 그대로 사용합니다. 다른 계정으로 다시 로그인하면 이 탭의 세션도 함께 전환됩니다.</p>
+      <p>공유 로그인 세션을 그대로 사용합니다. 다른 계정으로 다시 로그인하면 이 화면도 같은 세션으로 즉시 전환됩니다.</p>
     </div>
     <div id="accountGrid" class="account-strip"></div>
-    <div id="accountHint" class="account-hint">login-flow.html에서 로그인 후 진입해 주세요.</div>
+    <div id="accountHint" class="account-hint">로그인 세션이 연결되지 않았습니다. 로그인 탭에서 다시 인증하세요.</div>
   </section>
 
   <section class="card">
@@ -233,13 +234,6 @@
 
     <div class="layout">
       <aside class="sidebar">
-        <div>
-          <div class="section-title">공고 작성(Notice Flow)</div>
-          <div class="selector">
-            <button id="createNoticeButton" class="secondary" disabled>Notice Flow에서 공고 작성</button>
-            <div id="createNoticeState" class="mini">로그인 후 Notice Flow로 이동해 공고를 작성할 수 있습니다.</div>
-          </div>
-        </div>
         <div>
           <div class="section-title">내 공고</div>
           <div class="selector">
@@ -270,7 +264,6 @@
           <button id="roomSettingsButton" class="secondary" disabled>방 설정</button>
           <button id="reportRoomButton" class="secondary" disabled>방 신고 테스트</button>
           <button id="reportNoticeButton" class="secondary" disabled>선택 공고 신고</button>
-          <button id="openNoticeFlowButton" class="secondary" disabled>선택 공고 상세(Notice Flow)</button>
         </div>
         <div id="roomSettingsPanel" class="room-settings">
           <input id="customRoomNameInput" type="text" maxlength="100" placeholder="사용자별 방 이름">
@@ -457,7 +450,7 @@ function renderAccountGrid() {
   const activeUser = activeRole ? users[activeRole] : null;
   el("accountHint").textContent = activeUser
     ? `${activeUser.label} 로그인됨 · ${activeUser.email}${activeUser.userId ? ` · ${activeUser.userId}` : ""}`
-    : "login-flow.html에서 로그인 후 진입해 주세요.";
+    : "로그인 세션이 연결되지 않았습니다. 로그인 탭에서 다시 인증하세요.";
 }
 function updateIds() {
   if (!roomId) {
@@ -475,22 +468,11 @@ function updateIds() {
   el("roomSettingsButton").disabled = !roomReady || !activeRole || !roomId;
   el("reportRoomButton").disabled = !roomReady || !activeRole || !roomId;
   el("reportNoticeButton").disabled = !activeRole || !resolveCurrentNoticeId();
-  el("openNoticeFlowButton").disabled = !activeRole || !resolveCurrentNoticeId();
   renderRoomSettingsPanel();
 }
 function resolveCurrentNoticeId() {
   const currentRoom = roomSummaries.find((item) => item.roomId === roomId);
   return currentRoom?.noticeId || selectedTargetNoticeId || selectedOwnNoticeId || null;
-}
-function toNoticeFlowUrl(noticeId = null) {
-  const params = new URLSearchParams();
-  if (noticeId) params.set("noticeId", noticeId);
-  if (activeRole) params.set("role", activeRole);
-  const query = params.toString();
-  return `${window.location.origin}/full_compact/pages/notice-flow.html${query ? `?${query}` : ""}`;
-}
-function moveToNoticeFlow(noticeId = null) {
-  window.location.href = toNoticeFlowUrl(noticeId);
 }
 function formatBytes(size) {
   const bytes = Number(size) || 0;
@@ -708,11 +690,9 @@ function renderNoticeSelectors() {
     targetSelect.innerHTML = '<option value="">로그인 후 확인할 수 있습니다</option>';
     ownSelect.disabled = true;
     targetSelect.disabled = true;
-    el("createNoticeButton").disabled = true;
     el("startDmButton").disabled = true;
     return;
   }
-  el("createNoticeButton").disabled = false;
   if (ownNotices.length === 0) {
     ownSelect.innerHTML = '<option value="">내 공고가 아직 없습니다</option>';
     ownSelect.disabled = true;
@@ -1106,8 +1086,14 @@ async function saveAvailability(role = activeRole) {
   await refreshContext(role);
 }
 function redirectToLoginFlow() {
-  const redirect = `/full_compact/pages/dm-flow.html${window.location.search || ""}`;
-  window.location.href = `${window.location.origin}/full_compact/pages/login-flow.html?redirect=${encodeURIComponent(redirect)}`;
+  activeRole = null;
+  renderAccountGrid();
+  el("accountHint").textContent = "세션이 없습니다. 로그인 탭에서 다시 인증하세요.";
+  el("currentUserState").textContent = "현재 로그인 계정: 로그인 필요";
+  setStatus("세션이 없습니다. 로그인 탭에서 다시 인증하세요.", "bad");
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "pogun-auth-required", view: "dm" }, window.location.origin);
+  }
 }
 function loadRealSession() { return loadSession(REAL_SESSION_KEY); }
 function adoptRealSessionToken() {
@@ -1239,11 +1225,6 @@ async function loadRooms(role) {
       await openRoom(role, matchedRoom);
     }
   }
-}
-async function createTestNotice(role = activeRole) {
-  if (!role) throw new Error("먼저 로그인하세요.");
-  setStatus("Notice Flow로 이동합니다.", "good");
-  moveToNoticeFlow(resolveCurrentNoticeId());
 }
 async function startDm(role = activeRole) {
   if (!role) throw new Error("먼저 로그인하세요.");
@@ -2287,16 +2268,26 @@ function stopTyping(role) {
   users[role].typingSent = false;
 }
 window.addEventListener("storage", (event) => {
-  if (event.key !== KNOWN_USER_LABELS_KEY || !event.newValue) return;
-  try {
-    const parsed = JSON.parse(event.newValue);
-    if (!parsed || typeof parsed !== "object") return;
-    Object.assign(knownUserLabels, parsed);
-    renderRoomList();
-    renderFeed();
-    renderReplyDraft();
-    updateConversationTitle();
-  } catch {}
+  if (event.key === KNOWN_USER_LABELS_KEY && event.newValue) {
+    try {
+      const parsed = JSON.parse(event.newValue);
+      if (!parsed || typeof parsed !== "object") return;
+      Object.assign(knownUserLabels, parsed);
+      renderRoomList();
+      renderFeed();
+      renderReplyDraft();
+      updateConversationTitle();
+    } catch {}
+    return;
+  }
+  if (event.key !== REAL_SESSION_KEY && event.key !== ACTIVE_ROLE_KEY) {
+    return;
+  }
+  if (loadRealSession()?.firebaseIdToken) {
+    run(() => login(REAL_ROLE))();
+    return;
+  }
+  redirectToLoginFlow();
 });
 document.addEventListener("visibilitychange", () => {
   if (!activeRole) return;
@@ -2320,7 +2311,6 @@ window.addEventListener("offline", () => {
   setSocketStatus(activeRole, "network-offline");
 });
 function run(handler) { return async () => { try { await handler(); } catch (error) { console.error(error); setStatus(error.message || String(error), "bad"); } }; }
-el("createNoticeButton").addEventListener("click", run(() => createTestNotice(activeRole)));
 el("startDmButton").addEventListener("click", run(() => startDm(activeRole)));
 el("leaveRoomButton").addEventListener("click", run(() => leaveCurrentRoom(activeRole)));
 el("roomSettingsButton").addEventListener("click", () => {
@@ -2331,14 +2321,6 @@ el("saveRoomSettingsButton").addEventListener("click", run(() => saveRoomSetting
 el("clearRoomSettingsButton").addEventListener("click", run(() => clearRoomSettings(activeRole)));
 el("reportRoomButton").addEventListener("click", run(() => reportCurrentRoom(activeRole)));
 el("reportNoticeButton").addEventListener("click", run(() => reportCurrentNotice(activeRole)));
-el("openNoticeFlowButton").addEventListener("click", () => {
-  const noticeId = resolveCurrentNoticeId();
-  if (!noticeId) {
-    setStatus("먼저 공고를 선택하거나 방을 열어 주세요.", "bad");
-    return;
-  }
-  moveToNoticeFlow(noticeId);
-});
 el("ownNoticeSelect").addEventListener("change", (event) => { selectedOwnNoticeId = event.target.value || null; updateConversationTitle(); });
 el("targetNoticeSelect").addEventListener("change", (event) => { selectedTargetNoticeId = event.target.value || null; renderNoticeSelectors(); updateConversationTitle(); });
 el("saveAvailabilityButton").addEventListener("click", run(() => saveAvailability(activeRole)));
@@ -2380,7 +2362,7 @@ window.addEventListener("paste", (event) => {
 window.__dmTestState = () => ({ activeRole, roomId, roomReady, selectedOwnNoticeId, selectedTargetNoticeId, ownNoticeCount: ownNotices.length, targetNoticeCount: targetNotices.length, roomSummaries, messagesCount: messages.length, debugFrames: debugFrames.slice(-40) });
 renderAccountGrid();
 setAvailabilityControlsEnabled(false);
-setStatus("Google 로그인 세션으로 DM을 시작하세요.");
+setStatus("세션을 연결하면 공고 기반 DM을 바로 확인할 수 있습니다.");
 renderNoticeSelectors(); renderRoomList(); renderFeed(); renderReplyDraft(); renderEditDraft(); renderImagePreview(); updateIds();
 mountNotificationBell("notificationBellMount");
 refreshNotificationBell("notificationBellMount").catch(() => {});

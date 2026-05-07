@@ -5,48 +5,84 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pogun Full Compact</title>
   <style>
-    :root { --bg:#0f0b14; --panel:#171220; --line:#2d2540; --ink:#f5f3ff; --muted:#a59bb9; --accent:#8b5cf6; }
+    :root { --bg:#0b0b0c; --panel:#151515; --line:#2f2f32; --ink:#f6f6f3; --muted:#a7a7aa; --active:#e9e9e6; --active-ink:#0a0a0a; --danger:#ef7777; }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); }
-    .top { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); background:#130f1d; position:sticky; top:0; z-index:20; }
-    .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#1f1930; color:var(--ink); font-size:18px; }
-    .layout { display:grid; grid-template-columns:220px minmax(0,1fr); min-height:calc(100vh - 57px); }
-    .side { border-right:1px solid var(--line); background:#130f1d; padding:10px; display:grid; gap:6px; align-content:start; }
-    .side button { width:100%; text-align:left; border:1px solid var(--line); border-radius:8px; background:#1f1930; color:var(--ink); padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; }
-    .side button.active { border-color:#6d46c6; background:#2a2140; }
-    .content { padding:10px; }
-    .frame-wrap { display:none; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#110d1a; }
+    body { margin:0; font-family:"Pretendard","Noto Sans KR","Segoe UI","Malgun Gothic",sans-serif; letter-spacing:-.02em; background:var(--bg); color:var(--ink); overflow:hidden; }
+    .app { display:grid; grid-template-columns:320px minmax(0,1fr); min-height:100vh; }
+    .brand { height:64px; display:flex; align-items:center; padding:0 30px; border-bottom:1px solid var(--line); font-size:24px; font-weight:900; }
+    .top { height:64px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 30px; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:0; z-index:20; }
+    .top strong { font-size:19px; font-weight:900; }
+    .top-tools { display:flex; align-items:center; gap:22px; color:var(--ink); font-size:16px; }
+    .tool-pill { min-width:130px; height:40px; display:inline-flex; align-items:center; justify-content:space-between; gap:12px; padding:0 14px; border:1px solid var(--line); border-radius:10px; background:#0a0a0a; color:var(--ink); }
+    .bell { position:relative; font-size:20px; color:var(--muted); }
+    .bell::after { content:""; position:absolute; right:-2px; top:0; width:9px; height:9px; border-radius:999px; background:var(--danger); }
+    .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#202020; color:var(--ink); font-size:18px; display:none; }
+    .shell-side { background:#151515; border-right:1px solid var(--line); }
+    .layout { min-height:100vh; display:grid; grid-template-rows:64px minmax(0,1fr); }
+    .side { padding:20px 14px; display:grid; gap:8px; align-content:start; }
+    .nav-group { margin:0 0 12px; color:#cfcfd2; font-size:15px; font-weight:800; }
+    .side button { width:100%; min-width:0; min-height:48px; display:flex; align-items:center; gap:14px; text-align:left; border:1px solid transparent; border-radius:10px; background:transparent; color:#c6c6c9; padding:0 16px; font-size:19px; font-weight:700; cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .side button .icon { width:22px; display:inline-flex; justify-content:center; color:#a7a7aa; }
+    .side button.active { border-color:#fff; background:var(--active); color:var(--active-ink); }
+    .side button.active .icon { color:var(--active-ink); }
+    .content { min-width:0; min-height:0; background:var(--bg); }
+    .frame-wrap { display:none; height:100%; overflow:hidden; background:var(--bg); }
     .frame-wrap.active { display:block; }
-    iframe { width:100%; height:calc(100vh - 88px); border:0; background:#0f0b14; }
-    body.sidebar-collapsed .layout { grid-template-columns:70px minmax(0,1fr); }
-    body.sidebar-collapsed .side button { text-align:center; padding:8px 0; }
+    iframe { width:100%; height:calc(100vh - 64px); border:0; background:var(--bg); }
+    body.sidebar-collapsed .app { grid-template-columns:84px minmax(0,1fr); }
+    body.sidebar-collapsed .brand { justify-content:center; padding:0; font-size:0; }
+    body.sidebar-collapsed .brand::before { content:"PG"; font-size:18px; }
+    body.sidebar-collapsed .side { padding:20px 10px; }
+    body.sidebar-collapsed .nav-group { display:none; }
+    body.sidebar-collapsed .side button { justify-content:center; padding:0; }
+    body.sidebar-collapsed .side button .label { display:none; }
     @media (max-width:1024px) {
-      .layout { grid-template-columns:1fr; }
-      .side { position:fixed; inset:57px 0 auto 0; z-index:30; transform:translateY(-120%); transition:transform .2s ease; max-height:calc(100vh - 57px); overflow:auto; }
-      body.menu-open .side { transform:translateY(0); }
-      body.sidebar-collapsed .layout { grid-template-columns:1fr; }
-      iframe { height:calc(100vh - 96px); }
+      body { overflow:auto; }
+      .app { grid-template-columns:1fr; }
+      .shell-side { position:fixed; inset:0 auto 0 0; width:300px; z-index:30; transform:translateX(-105%); transition:transform .2s ease; }
+      body.menu-open .shell-side { transform:translateX(0); }
+      .hamburger { display:inline-flex; align-items:center; justify-content:center; }
+      .top { padding:0 16px; }
+      .top-tools .tool-pill, .top-tools .lang-label { display:none; }
+      iframe { height:calc(100vh - 64px); }
+      body.sidebar-collapsed .app { grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="top">
-    <button id="menuBtn" class="hamburger" aria-label="menu">☰</button>
-    <strong style="font-size:14px;">Pogun Full Compact</strong>
-    <span style="font-size:11px; color:var(--muted);">One Page Admin Tool</span>
-  </div>
-
-  <div class="layout">
-    <aside class="side" id="sideNav">
-      <button data-view="admin" class="active">Admin</button>
-      <button data-view="login">Login</button>
-      <button data-view="notice">Notice</button>
-      <button data-view="dm">DM</button>
-      <button data-view="notification">Notification</button>
-      <button data-view="shelter">Shelter</button>
+  <div class="app">
+    <aside class="shell-side">
+      <div class="brand">Pogun Admin</div>
+      <nav class="side" id="sideNav">
+        <div class="nav-group">개요</div>
+        <button data-view="admin" data-short="A" aria-label="Admin" class="active"><span class="icon">▦</span><span class="label">Admin</span></button>
+        <button data-view="login" data-short="L" aria-label="Login"><span class="icon">⎋</span><span class="label">Login</span></button>
+        <div class="nav-group">운영</div>
+        <button data-view="notice" data-short="N" aria-label="Notice"><span class="icon">⌕</span><span class="label">실종 공고</span></button>
+        <button data-view="shelter" data-short="S" aria-label="Shelter"><span class="icon">□</span><span class="label">보호소 공고</span></button>
+        <button data-view="dm" data-short="D" aria-label="DM"><span class="icon">▱</span><span class="label">DM</span></button>
+        <div class="nav-group">시스템 & 로그</div>
+        <button data-view="notification" data-short="F" aria-label="Notification"><span class="icon">♢</span><span class="label">알림</span></button>
+      </nav>
     </aside>
 
-    <main class="content">
+    <div class="layout">
+      <header class="top">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <button id="menuBtn" class="hamburger" aria-label="menu">☰</button>
+          <strong>환영합니다, Local Admin</strong>
+        </div>
+        <div class="top-tools">
+          <span class="bell">♧</span>
+          <span class="lang-label">언어</span>
+          <span class="tool-pill">한국어 <span>⌄</span></span>
+          <span class="lang-label">테마</span>
+          <span class="tool-pill">다크 <span>⌄</span></span>
+          <span>로그아웃</span>
+        </div>
+      </header>
+
+      <main class="content">
       <section id="view-admin" class="frame-wrap active">
         <iframe src="/full_compact/pages/admin-flow.html" title="admin"></iframe>
       </section>
@@ -65,12 +101,14 @@
       <section id="view-shelter" class="frame-wrap">
         <iframe src="/full_compact/pages/shelter-flow.html" title="shelter"></iframe>
       </section>
-    </main>
+      </main>
+    </div>
   </div>
 
   <script>
     const btn = document.getElementById("menuBtn");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
+    const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
     const activate = (view) => {
       navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
       ["admin","login","notice","dm","notification","shelter"].forEach((k) => {
@@ -83,6 +121,21 @@
       else document.body.classList.toggle("sidebar-collapsed");
     });
     navButtons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.view)));
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data || {};
+      if (data.type === "pogun-auth-required") {
+        try { window.sessionStorage.setItem(PENDING_VIEW_KEY, data.view || "notice"); } catch {}
+        activate("login");
+      }
+      if (data.type === "pogun-open-view") {
+        const targetView = data.view || (() => {
+          try { return window.sessionStorage.getItem(PENDING_VIEW_KEY) || "notice"; } catch { return "notice"; }
+        })();
+        try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
+        activate(targetView);
+      }
+    });
   </script>
 </body>
 </html>
