@@ -56,8 +56,7 @@
     .cell-muted { color:var(--muted); }
     .row-actions { display:flex; gap:6px; }
     .row-actions button { padding:6px 8px; border-radius:8px; font-size:11px; }
-    .debug-pane { display:none; }
-    body.debug-on .debug-pane { display:block; }
+    .debug-pane { display:block; }
     @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
     @media (max-width:980px) { .toolbar-grid,.toolbar-grid.compact { grid-template-columns:1fr 1fr; } }
     @media (max-width:640px) { .toolbar-grid,.toolbar-grid.compact { grid-template-columns:1fr; } }
@@ -75,7 +74,6 @@
       <div class="actions">
         <button id="logoutButton" class="secondary" style="display:none;">로그아웃</button>
         <button id="localAdminButton" class="secondary" style="display:none; padding:7px 10px; font-size:12px;">로컬 테스트 로그인</button>
-        <label style="margin-top:0; display:flex; align-items:center; gap:6px; font-size:11px;"><input id="debugToggleInput" type="checkbox" style="width:auto;"> 디버그 출력</label>
       </div>
     </div>
     <div id="status" class="status">관리자 로그인이 필요합니다.</div>
@@ -998,6 +996,7 @@
       print(res.body);
       return;
     }
+    el("referenceOutput").textContent = JSON.stringify(res.body.data, null, 2);
     setStatus("설정 저장 성공", "good");
     print(res.body.data);
   }
@@ -1016,7 +1015,6 @@
       print(res.body);
       return;
     }
-    el("referenceOutput").textContent = JSON.stringify(res.body.data, null, 2);
   }
 
   async function createReferenceData() {
@@ -1467,10 +1465,6 @@
   el("mfaButton").onclick = handleMfa;
   el("refreshReportsButton").onclick = loadReports;
   el("statusFilter").onchange = loadReports;
-  el("debugToggleInput").addEventListener("change", () => {
-    if (el("debugToggleInput").checked) document.body.classList.add("debug-on");
-    else document.body.classList.remove("debug-on");
-  });
   el("reviewButton").onclick = reviewReport;
   el("promoteButton").onclick = promoteUser;
   el("usersCsvButton").onclick = () => downloadCsv("/api/admin/users/export.csv", "admin-users.csv");

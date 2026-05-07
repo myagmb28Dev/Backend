@@ -8,7 +8,12 @@ param(
     [int]$BackendPort = 8081,
     [int]$UiPort = 4000,
     [int]$TimeoutSeconds = 180,
-    [string]$SpringProfile = ""
+    [string]$SpringProfile = "",
+    [switch]$ElevateGradle,
+    [switch]$NoDocker,
+    [string[]]$DockerServices = @("redis"),
+    [switch]$NoAutoOpen,
+    [switch]$NoKeepAlive
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +34,115 @@ function Get-ExecutablePath {
         }
     }
     throw "Required command not found: $($Names -join ', ')"
+}
+
+function Import-EnvFile {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) {
+        return
+    }
+    Get-Content $Path | ForEach-Object {
+        $line = $_.Trim()
+        if ([string]::IsNullOrWhiteSpace($line)) { return }
+        if ($line.StartsWith("#")) { return }
+        $idx = $line.IndexOf("=")
+        if ($idx -lt 1) { return }
+        $key = $line.Substring(0, $idx).Trim()
+        $value = $line.Substring($idx + 1)
+        if ([string]::IsNullOrWhiteSpace($key)) { return }
+        [Environment]::SetEnvironmentVariable($key, $value, "Process")
+    }
+}
+
+function Resolve-DockerComposeCommand {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($docker) {
+        try {
+            & $docker.Source compose version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                return @($docker.Source, "compose")
+            }
+        } catch {
+        }
+    }
+    $dockerCompose = Get-Command docker-compose -ErrorAction SilentlyContinue
+    if ($dockerCompose) {
+        return @($dockerCompose.Source)
+    }
+    throw "Docker Compose command not found. Install Docker Desktop or docker-compose."
+}
+
+function Ensure-ExistingContainerStarted {
+    param([string]$ContainerName)
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        return $false
+    }
+    $nameFilter = "^/$ContainerName$"
+    $existingId = (& $docker.Source ps -a --filter "name=$nameFilter" --format "{{.ID}}" | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($existingId)) {
+        return $false
+    }
+    $runningId = (& $docker.Source ps --filter "name=$nameFilter" --format "{{.ID}}" | Select-Object -First 1)
+    if (-not [string]::IsNullOrWhiteSpace($runningId)) {
+        Write-Host "Reusing running container: $ContainerName"
+        return $true
+    }
+    Write-Host "Starting existing container: $ContainerName"
+    & $docker.Source start $ContainerName | Out-Null
+    return $LASTEXITCODE -eq 0
+}
+
+function Start-DockerServices {
+    param(
+        [string[]]$Services,
+        [string]$ComposeFilePath,
+        [string]$EnvFilePath,
+        [int]$TimeoutSec
+    )
+
+    if (-not $Services -or $Services.Count -eq 0) {
+        return
+    }
+
+    $composeCmd = Resolve-DockerComposeCommand
+    $serviceArgs = @()
+    foreach ($svc in $Services) {
+        if (-not [string]::IsNullOrWhiteSpace($svc)) {
+            $serviceArgs += $svc.Trim()
+        }
+    }
+    if ($serviceArgs -contains "redis") {
+        if (Ensure-ExistingContainerStarted -ContainerName "pogun-redis") {
+            $serviceArgs = @($serviceArgs | Where-Object { $_ -ne "redis" })
+        }
+    }
+    if ($serviceArgs.Count -eq 0) {
+        if ($Services -contains "redis") {
+            Wait-TcpPort -Port 6379 -Name "Docker Redis" -TimeoutSec $TimeoutSec
+        }
+        return
+    }
+
+    Write-Host "Starting Docker services: $($serviceArgs -join ', ')"
+    $upArgs = @()
+    if ($composeCmd.Count -eq 2) {
+        $upArgs += $composeCmd[1]
+    }
+    $upArgs += @("-f", $ComposeFilePath)
+    if (-not [string]::IsNullOrWhiteSpace($EnvFilePath) -and (Test-Path $EnvFilePath)) {
+        $upArgs += @("--env-file", $EnvFilePath)
+    }
+    $upArgs += @("up", "-d")
+    $upArgs += $serviceArgs
+    & $composeCmd[0] @upArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose up failed with exit code $LASTEXITCODE"
+    }
+
+    if ($serviceArgs -contains "redis") {
+        Wait-TcpPort -Port 6379 -Name "Docker Redis" -TimeoutSec $TimeoutSec
+    }
 }
 
 function Test-TcpPort {
@@ -123,16 +237,61 @@ function Ensure-PortReadyWithRetry {
 function Start-DetachedPowerShell {
     param(
         [string]$Title,
-        [string]$CommandText
+        [string]$CommandText,
+        [switch]$RunAsAdmin
     )
 
     $powershellExe = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"
     $fullCommand = "`$host.UI.RawUI.WindowTitle = '$Title'; `$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); chcp 65001 > `$null; $CommandText"
-    return Start-Process -FilePath $powershellExe -WorkingDirectory $repoRoot -WindowStyle Normal -PassThru -ArgumentList @(
-        "-NoExit",
+    $startParams = @{
+        FilePath = $powershellExe
+        WorkingDirectory = $repoRoot
+        WindowStyle = "Hidden"
+        PassThru = $true
+        ArgumentList = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
         "-Command",
         $fullCommand
+        )
+    }
+    if ($RunAsAdmin) {
+        $startParams["Verb"] = "RunAs"
+    }
+    return Start-Process @startParams
+}
+
+function Stop-ProcessesListeningOnPort {
+    param(
+        [int]$Port,
+        [string]$Name = "service"
     )
+
+    $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    if (-not $listeners) {
+        return
+    }
+
+    $owningProcessIds = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
+    foreach ($procId in $owningProcessIds) {
+        if (-not $procId) { continue }
+        try {
+            $proc = Get-Process -Id $procId -ErrorAction Stop
+            Write-Host "Stopping existing $Name process on port ${Port}: $($proc.ProcessName) (PID $procId)"
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Failed to stop PID $procId on port ${Port}: $($_.Exception.Message)"
+        }
+    }
+
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-TcpPort -Port $Port)) {
+            return
+        }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "Port $Port is still in use after stopping existing $Name process(es)."
 }
 
 function Get-HttpErrorText {
@@ -303,6 +462,29 @@ if ([string]::IsNullOrWhiteSpace($SpringProfile)) {
 
 $gradleUserHome = Resolve-PogunGradleUserHome -RepoRoot $repoRoot
 
+if ($Mode -eq "local") {
+    $localEnvPath = Join-Path $repoRoot ".env.local"
+    $baseEnvPath = Join-Path $repoRoot ".env"
+    if (Test-Path $localEnvPath) {
+        Import-EnvFile -Path $localEnvPath
+    } elseif (Test-Path $baseEnvPath) {
+        Import-EnvFile -Path $baseEnvPath
+    }
+}
+
+if (-not $NoDocker -and $Mode -eq "local") {
+    $composePath = Join-Path $repoRoot "docker-compose.yml"
+    $composeEnvPath = Join-Path $repoRoot ".env.local"
+    if (-not (Test-Path $composeEnvPath)) {
+        $composeEnvPath = Join-Path $repoRoot ".env"
+    }
+    if (Test-Path $composePath) {
+        Start-DockerServices -Services $DockerServices -ComposeFilePath $composePath -EnvFilePath $composeEnvPath -TimeoutSec $TimeoutSeconds
+    } else {
+        Write-Warning "docker-compose.yml not found at $composePath. Skipping docker startup."
+    }
+}
+
 if ($Mode -eq "real") {
     Set-PogunWindowTitle -Title "Pogun Backend Real"
     Set-Location $repoRoot
@@ -335,28 +517,30 @@ Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -Timeou
     Start-DetachedPowerShell -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
 }
 
-$backendProcess = $null
-if (-not (Test-TcpPort -Port $BackendPort)) {
-    $backendCommand = @(
-        "`$env:PORT = '$BackendPort'",
-        "`$env:SERVER_PORT = '$BackendPort'",
-        "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
-        "`$env:SPRING_PROFILES_ACTIVE = '$SpringProfile'",
-        "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
-        "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
-        "`$env:APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID = '$ProjectId'",
-        "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
-        "`$env:GCLOUD_PROJECT = '$ProjectId'",
-        "`$env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:$AuthPort'",
-        "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
-        "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
-        "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
-        "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
-        "& '.\\gradlew.bat' bootRun"
-    ) -join "; "
+Stop-ProcessesListeningOnPort -Port $BackendPort -Name "backend"
 
-    $backendProcess = Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand
-}
+$backendCommand = @(
+    "`$env:PORT = '$BackendPort'",
+    "`$env:SERVER_PORT = '$BackendPort'",
+    "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
+    "`$env:SPRING_PROFILES_ACTIVE = '$SpringProfile'",
+    "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
+    "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
+    "`$env:APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID = '$ProjectId'",
+    "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
+    "`$env:GCLOUD_PROJECT = '$ProjectId'",
+    "`$env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:$AuthPort'",
+    "`$env:FIREBASE_ALLOW_AUTH_EMULATOR = 'true'",
+    "`$env:SPRING_WEB_RESOURCES_STATIC_LOCATIONS = 'file:$($repoRoot.Replace('\', '/'))/src/main/resources/static/,classpath:/static/'",
+    "`$env:SPRING_WEB_RESOURCES_CACHE_PERIOD = '0'",
+    "`$env:SPRING_WEB_RESOURCES_CACHE_CACHECONTROL_NO_STORE = 'true'",
+    "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
+    "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
+    "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
+    "& '.\\gradlew.bat' bootRun"
+) -join "; "
+
+$backendProcess = Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand -RunAsAdmin:$ElevateGradle
 
 Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds -Process $backendProcess
 
@@ -431,3 +615,29 @@ Write-Host "Header file   : $authHeaderPath"
 Write-Host "Login body    : $loginBodyPath"
 Write-Host ""
 Write-Host "Login payload values are stored in the local files above and are not echoed to the terminal." -ForegroundColor Yellow
+
+if (-not $NoAutoOpen) {
+    try {
+        Start-Process "http://localhost:$BackendPort/Full_Compact.html" | Out-Null
+        Write-Host "Opened: http://localhost:$BackendPort/Full_Compact.html"
+    } catch {
+        Write-Warning "Failed to auto-open browser: $($_.Exception.Message)"
+    }
+}
+
+if (-not $NoKeepAlive) {
+    Write-Host ""
+    Write-Host "Launcher is now monitoring. Press Ctrl+C to stop this terminal watcher." -ForegroundColor Cyan
+    Write-Host "Note: Auth/Backend child processes keep running in their own windows." -ForegroundColor DarkGray
+    while ($true) {
+        Start-Sleep -Seconds 5
+        $authReady = Test-TcpPort -Port $AuthPort
+        $backendReady = Test-TcpPort -Port $BackendPort
+        if (-not $authReady -or -not $backendReady) {
+            $down = @()
+            if (-not $authReady) { $down += "Auth:$AuthPort" }
+            if (-not $backendReady) { $down += "Backend:$BackendPort" }
+            Write-Warning ("Detected down service(s): " + ($down -join ", "))
+        }
+    }
+}

@@ -74,6 +74,28 @@ function notifyNotificationEvent(detail = null) {
   window.dispatchEvent(new CustomEvent("notification-web:message", { detail }));
 }
 
+function isEmbeddedInShell() {
+  return window.parent && window.parent !== window;
+}
+
+function notificationHref() {
+  return isEmbeddedInShell() ? "#" : "/Full_Compact.html?view=notification";
+}
+
+function bindNotificationBellNavigation(bell) {
+  if (!bell || bell.dataset.shellNavigationBound === "true") {
+    return;
+  }
+  bell.dataset.shellNavigationBound = "true";
+  bell.addEventListener("click", (event) => {
+    if (!isEmbeddedInShell()) {
+      return;
+    }
+    event.preventDefault();
+    window.parent.postMessage({ type: "pogun-open-view", view: "notification" }, window.location.origin);
+  });
+}
+
 function initializeNotificationBridge() {
   if (notificationBridgeInitialized || typeof window === "undefined") {
     return;
@@ -227,7 +249,7 @@ export function mountNotificationBell(target, options = {}) {
 
   initializeNotificationBridge();
   injectBellStyles();
-  const href = options.href || "/Full_Compact.html";
+  const href = options.href || notificationHref();
   container.innerHTML = `
     <a class="notification-bell" href="${href}" title="알림 보기" aria-label="알림 보기">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -238,7 +260,9 @@ export function mountNotificationBell(target, options = {}) {
     </a>
   `;
   mountedBellTargets.add(target);
-  return container.querySelector(".notification-bell");
+  const bell = container.querySelector(".notification-bell");
+  bindNotificationBellNavigation(bell);
+  return bell;
 }
 
 export async function refreshNotificationBell(target) {
@@ -250,7 +274,8 @@ export async function refreshNotificationBell(target) {
   }
 
   const session = getStoredSession();
-  bell.href = `${window.location.origin}/Full_Compact.html`;
+  bell.href = notificationHref();
+  bindNotificationBellNavigation(bell);
   if (!session?.firebaseIdToken) {
     badge.hidden = true;
     bell.title = "로그인 후 알림 보기";

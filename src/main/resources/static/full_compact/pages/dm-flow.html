@@ -66,10 +66,8 @@
     .message.other { background:#262b35; }
     .message small { display:block; margin-bottom:4px; color:var(--muted); font-size:11px; font-weight:800; }
     .edited-badge { display:inline-flex; align-items:center; margin-left:6px; padding:2px 6px; border-radius:999px; background:rgba(31,41,51,.08); color:var(--muted); font-size:10px; font-weight:900; vertical-align:middle; }
-    .reply-button { width:28px; min-width:28px; height:28px; padding:0; border-radius:999px; background:rgba(31,41,51,.09); color:var(--muted); font-size:13px; line-height:28px; }
-    .reply-button:hover { background:rgba(31,41,51,.18); color:var(--ink); }
     .message-meta { margin-top:4px; color:var(--muted); font-size:11px; font-weight:700; }
-    .read-receipt { margin-top:2px; color:var(--muted); font-size:10px; font-weight:800; }
+    .read-receipt { margin-top:2px; color:var(--muted); font-size:10px; font-weight:800; user-select:none; -webkit-user-select:none; }
     .typing-inline { display:flex; min-height:24px; align-items:center; margin:6px 2px 0; color:var(--muted); font-size:12px; font-weight:700; opacity:0; transition:opacity .18s ease; }
     .typing-inline.on { opacity:1; }
     .typing-inline .name { margin-right:4px; color:var(--accent); font-weight:800; }
@@ -98,9 +96,7 @@
     .message-status { margin-top:4px; color:var(--muted); font-size:10px; font-weight:900; }
     .message-failed { margin-top:4px; color:var(--bad); font-size:10px; font-weight:800; }
     .retry-send { width:auto; min-width:0; margin-top:5px; padding:5px 9px; border-radius:999px; background:rgba(180,35,24,.12); color:var(--bad); font-size:11px; }
-    .message-options { position:relative; }
-    .message-menu-button { width:28px; min-width:28px; height:28px; padding:0; border-radius:999px; background:rgba(31,41,51,.09); color:var(--muted); font-size:17px; line-height:28px; }
-    .message-menu { position:absolute; z-index:5; top:32px; right:0; min-width:92px; padding:6px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:0 10px 24px rgba(0,0,0,.35); display:grid; gap:4px; }
+    .message-menu { position:fixed; z-index:90; min-width:112px; padding:6px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:0 10px 24px rgba(0,0,0,.35); display:grid; gap:4px; }
     .message-menu button { width:100%; padding:8px 10px; border-radius:9px; background:transparent; color:var(--ink); text-align:left; font-size:12px; }
     .message-menu button.danger { color:var(--bad); }
     .edit-draft { display:none; align-items:center; justify-content:space-between; gap:8px; margin:10px 0 6px; padding:9px 11px; border:1px solid rgba(192,95,44,.32); border-radius:14px; background:rgba(192,95,44,.09); color:var(--accent); font-size:12px; font-weight:900; }
@@ -167,7 +163,6 @@
       .message-row.mine .message-line{justify-content:flex-end;}
       .message{max-width:86%;padding:9px 10px;border-radius:12px;font-size:13px;}
       .message-line .message{max-width:calc(100% - 64px);}
-      .reply-button,.message-menu-button{width:28px;min-width:28px;height:28px;border-radius:8px;}
       .message-menu{right:0;max-width:150px;}
       .message-images img,.message-images video{width:100%;max-width:220px;}
       .room-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
@@ -355,7 +350,8 @@ let pendingLatestReadMessageId = null;
 let pendingRoomSelection = null;
 let replyTargetMessageId = null;
 let editingMessageId = null;
-let openMessageMenuId = null;
+let openMessageMenu = null;
+let longPressState = null;
 let roomOpenVersion = 0;
 let openingRoomId = null;
 let roomSettingsOpen = false;
@@ -386,6 +382,82 @@ function setSocketStatus(role, status) {
   if (role === activeRole) updateIds();
 }
 function escapeHtml(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;"); }
+function closeMessageContextMenu() {
+  if (!openMessageMenu) return;
+  const existing = document.getElementById("messageContextMenu");
+  if (existing) existing.remove();
+  openMessageMenu = null;
+}
+function openMessageContextMenu(message, x, y) {
+  if (!message || !message.id || deletingMessageIds.has(message.id)) return;
+  closeMessageContextMenu();
+  openMessageMenu = { messageId: message.id };
+  const menu = document.createElement("div");
+  menu.id = "messageContextMenu";
+  menu.className = "message-menu";
+  const addItem = (label, action, danger = false) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    if (danger) button.className = "danger";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMessageContextMenu();
+      action();
+    });
+    menu.appendChild(button);
+  };
+  addItem("답장", () => { replyTargetMessageId = message.id; renderReplyDraft(); });
+  if (message.mine && message.messageType === "TEXT") addItem("수정", () => startEditMessage(message.id));
+  if (message.mine) addItem("삭제", () => run(() => deleteMessage(message.id))(), true);
+  menu.addEventListener("contextmenu", (event) => event.preventDefault());
+  document.body.appendChild(menu);
+  const margin = 8;
+  const width = menu.offsetWidth || 130;
+  const height = menu.offsetHeight || 120;
+  const left = Math.min(Math.max(margin, x), window.innerWidth - width - margin);
+  const top = Math.min(Math.max(margin, y), window.innerHeight - height - margin);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+function bindMessageContextMenuTarget(target, message) {
+  target.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    openMessageContextMenu(message, event.clientX, event.clientY);
+  });
+  target.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.pointerType === "mouse") return;
+    closeMessageContextMenu();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const timerId = window.setTimeout(() => {
+      if (!longPressState || longPressState.pointerId !== event.pointerId) return;
+      longPressState.fired = true;
+      openMessageContextMenu(message, startX, startY);
+    }, 550);
+    longPressState = { pointerId: event.pointerId, startX, startY, timerId, fired: false };
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (!longPressState || longPressState.pointerId !== event.pointerId) return;
+    const movedX = Math.abs(event.clientX - longPressState.startX);
+    const movedY = Math.abs(event.clientY - longPressState.startY);
+    if (Math.max(movedX, movedY) > 10) {
+      window.clearTimeout(longPressState.timerId);
+      longPressState = null;
+    }
+  });
+  const clearLongPress = (event) => {
+    if (!longPressState || longPressState.pointerId !== event.pointerId) return;
+    window.clearTimeout(longPressState.timerId);
+    const fired = longPressState.fired;
+    longPressState = null;
+    if (fired) event.preventDefault();
+  };
+  target.addEventListener("pointerup", clearLongPress);
+  target.addEventListener("pointercancel", clearLongPress);
+}
 function loadKnownUserLabels() {
   try {
     const raw = window.localStorage.getItem(KNOWN_USER_LABELS_KEY);
@@ -781,12 +853,6 @@ function renderFeed(options = {}) {
     }
     const row = document.createElement("div"); row.className = `message-row ${message.mine ? "mine" : "other"}`;
     const line = document.createElement("div"); line.className = "message-line";
-    const replyButton = document.createElement("button");
-    replyButton.type = "button";
-    replyButton.className = "reply-button";
-    replyButton.textContent = "↩";
-    replyButton.title = "답장";
-    replyButton.addEventListener("click", () => { replyTargetMessageId = message.id; renderReplyDraft(); });
     const bubble = document.createElement("div"); bubble.className = `message ${message.mine ? "mine" : "other"}${message.pending ? " pending" : ""}`;
     const senderName = normalizeTestNickname(message.senderNickname, message.senderUserId);
     const editedBadge = message.editedAt
@@ -821,14 +887,8 @@ function renderFeed(options = {}) {
       retryButton.addEventListener("click", () => retryPendingTextMessage(message.clientMessageId));
     }
     const meta = document.createElement("div"); meta.className = "message-meta"; meta.textContent = messageTimeFormatter.format(createdAt);
-    if (message.mine) {
-      if (!message.pending) line.appendChild(renderMessageOptions(message));
-      line.appendChild(replyButton);
-      line.appendChild(bubble);
-    } else {
-      line.appendChild(bubble);
-      line.appendChild(replyButton);
-    }
+    line.appendChild(bubble);
+    if (!message.pending) bindMessageContextMenuTarget(line, message);
     row.appendChild(line); row.appendChild(meta);
     if (message.mine && message.id === latestReadMineMessageId) { const read = document.createElement("div"); read.className = "read-receipt"; read.textContent = "읽음"; row.appendChild(read); }
     feed.appendChild(row);
@@ -841,41 +901,6 @@ function renderFeed(options = {}) {
     feed.scrollTop = Math.min(previousScrollTop, Math.max(0, feed.scrollHeight - feed.clientHeight));
   }
   loadAuthenticatedImages(activeRole).catch((error) => console.warn(error));
-}
-function renderMessageOptions(message) {
-  const wrap = document.createElement("div");
-  wrap.className = "message-options";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "message-menu-button";
-  button.textContent = "︙";
-  button.title = "메시지 옵션";
-  button.disabled = deletingMessageIds.has(message.id);
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openMessageMenuId = openMessageMenuId === message.id ? null : message.id;
-    renderFeed({ preserveScroll: true, scrollToBottom: false });
-  });
-  wrap.appendChild(button);
-  if (openMessageMenuId === message.id) {
-    const menu = document.createElement("div");
-    menu.className = "message-menu";
-    if (message.messageType === "TEXT") {
-      const editButton = document.createElement("button");
-      editButton.type = "button";
-      editButton.textContent = "수정";
-      editButton.addEventListener("click", () => startEditMessage(message.id));
-      menu.appendChild(editButton);
-    }
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "danger";
-    deleteButton.textContent = "삭제";
-    deleteButton.addEventListener("click", run(() => deleteMessage(message.id)));
-    menu.appendChild(deleteButton);
-    wrap.appendChild(menu);
-  }
-  return wrap;
 }
 function renderReplyDraft() {
   const node = el("replyDraft");
@@ -925,7 +950,7 @@ function startEditMessage(messageId) {
   if (!target || target.messageType !== "TEXT") return;
   editingMessageId = messageId;
   replyTargetMessageId = null;
-  openMessageMenuId = null;
+  closeMessageContextMenu();
   el("messageInput").value = target.message || "";
   renderReplyDraft();
   renderEditDraft();
@@ -1246,6 +1271,7 @@ async function startDm(role = activeRole) {
 async function openRoom(role, roomSummary) {
   if (!role || !roomSummary) return;
   if (openingRoomId === roomSummary.roomId) return;
+  closeMessageContextMenu();
   openingRoomId = roomSummary.roomId;
   const version = ++roomOpenVersion;
   const previousRoomId = roomId;
@@ -1279,6 +1305,7 @@ async function openRoom(role, roomSummary) {
 async function leaveCurrentRoom(role = activeRole) {
   if (!role) throw new Error("먼저 로그인하세요.");
   if (!roomId) throw new Error("나갈 DM 방을 먼저 선택하세요.");
+  closeMessageContextMenu();
   const leavingRoomId = roomId;
   const response = await dmApiFor(role).request(`/api/chat/rooms/${leavingRoomId}/leave`, { method: "POST" });
   if (response.status !== 200) throw new Error(`채팅방 나가기 실패: ${JSON.stringify(response.body)}`);
@@ -2112,6 +2139,7 @@ function upsertRoomSummary(nextRoom, currentRooms) {
 async function sendMessage(role = activeRole) {
   if (!role) throw new Error("먼저 로그인하세요.");
   if (!roomId || !users[role].sendFrame) throw new Error("먼저 공고 문의방을 열어 주세요.");
+  closeMessageContextMenu();
   const input = el("messageInput");
   const message = input.value.trim();
   if (editingMessageId) {
@@ -2146,6 +2174,7 @@ async function sendMessage(role = activeRole) {
   setStatus(`${users[role].label} 메시지 전송`, "good");
 }
 async function updateMessage(role, messageId, message) {
+  closeMessageContextMenu();
   const response = await dmApiFor(role).request(`/api/chat/rooms/${roomId}/messages/${messageId}`, {
     method: "PATCH",
     body: JSON.stringify({ message })
@@ -2155,7 +2184,7 @@ async function updateMessage(role, messageId, message) {
   syncRepliesForUpdatedTarget(response.body.data);
   el("messageInput").value = "";
   editingMessageId = null;
-  openMessageMenuId = null;
+  closeMessageContextMenu();
   renderEditDraft();
   renderFeed({ preserveScroll: true, scrollToBottom: false });
   el("messageInput").focus();
@@ -2165,7 +2194,7 @@ async function deleteMessage(messageId) {
   if (!activeRole || !roomId) return;
   const deletedTarget = messages.find((message) => message.id === messageId);
   deletingMessageIds.add(messageId);
-  openMessageMenuId = null;
+  closeMessageContextMenu();
   renderFeed();
   const response = await dmApiFor(activeRole).request(`/api/chat/rooms/${roomId}/messages/${messageId}`, { method: "DELETE" });
   if (response.status !== 200) {
@@ -2310,6 +2339,15 @@ window.addEventListener("offline", () => {
   if (!activeRole) return;
   setSocketStatus(activeRole, "network-offline");
 });
+document.addEventListener("click", (event) => {
+  if (!openMessageMenu) return;
+  const menu = document.getElementById("messageContextMenu");
+  if (!menu || !menu.contains(event.target)) closeMessageContextMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMessageContextMenu();
+});
+el("feed").addEventListener("scroll", () => closeMessageContextMenu(), { passive: true });
 function run(handler) { return async () => { try { await handler(); } catch (error) { console.error(error); setStatus(error.message || String(error), "bad"); } }; }
 el("startDmButton").addEventListener("click", run(() => startDm(activeRole)));
 el("leaveRoomButton").addEventListener("click", run(() => leaveCurrentRoom(activeRole)));

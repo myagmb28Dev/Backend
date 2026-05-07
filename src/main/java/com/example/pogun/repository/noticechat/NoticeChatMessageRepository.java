@@ -75,5 +75,7 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
             """)
     void clearReplyTargets(@Param("messages") List<NoticeChatMessage> messages);
 
+    List<NoticeChatMessage> findByRoomIn(List<NoticeChatRoom> rooms);
+
     void deleteByRoomIn(List<NoticeChatRoom> rooms);
 }

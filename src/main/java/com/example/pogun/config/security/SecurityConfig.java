@@ -139,7 +139,8 @@ public class SecurityConfig {
                 "http://43.201.1.61",
                 "http://43.201.1.61:8080",
                 "http://paw.gbsw.hs.kr",
-                "https://paw.gbsw.hs.kr"
+                "https://paw.gbsw.hs.kr",
+                "https://pawgen.kro.kr"
         ));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));

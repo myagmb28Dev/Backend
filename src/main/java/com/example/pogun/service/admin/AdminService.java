@@ -8,6 +8,7 @@ import com.example.pogun.dto.admin.AdminVisibilityResponse;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
+import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
@@ -21,6 +22,8 @@ import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageImageRepository;
 import com.example.pogun.repository.noticechat.NoticeChatMessageRepository;
+import com.example.pogun.repository.noticechat.NoticeChatReadReceiptRepository;
+import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRepository;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.report.ReportRepository;
@@ -59,6 +62,8 @@ public class AdminService {
     private final NoticeChatRoomRepository noticeChatRoomRepository;
     private final NoticeChatMessageRepository noticeChatMessageRepository;
     private final NoticeChatMessageImageRepository noticeChatMessageImageRepository;
+    private final NoticeChatReadReceiptRepository noticeChatReadReceiptRepository;
+    private final NoticeChatRoomParticipantStateRepository noticeChatRoomParticipantStateRepository;
     private final AdminSecurityService adminSecurityService;
     private final AdminAuditService adminAuditService;
     private final AdminPermissionService adminPermissionService;
@@ -174,7 +179,13 @@ public class AdminService {
         String title = notice.getTitle();
         List<NoticeChatRoom> chatRooms = noticeChatRoomRepository.findByNotice(notice);
         if (!chatRooms.isEmpty()) {
+            List<NoticeChatMessage> chatMessages = noticeChatMessageRepository.findByRoomIn(chatRooms);
             noticeChatMessageImageRepository.deleteByMessageRoomIn(chatRooms);
+            noticeChatReadReceiptRepository.deleteByRoomIn(chatRooms);
+            noticeChatRoomParticipantStateRepository.deleteByRoomIn(chatRooms);
+            if (!chatMessages.isEmpty()) {
+                noticeChatMessageRepository.clearReplyTargets(chatMessages);
+            }
             noticeChatMessageRepository.deleteByRoomIn(chatRooms);
             noticeChatRoomRepository.deleteAll(chatRooms);
         }
