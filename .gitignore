@@ -70,4 +70,5 @@ node_modules/
 /bootrun.out.log
 /bootrun.err.log
 /.gradle-home/
+.gradle-user/
 .env.local

@@ -279,6 +279,33 @@ public class AdminAuthService {
         auditSafely("ADMIN_LOGOUT", "ADMIN_USER", session.getUser().getId().toString(), null, null, null);
     }
 
+        @Transactional
+        public AdminAuthSessionResponse refreshSession() {
+        AdminPrincipal principal = adminSecurityService.getCurrentPrincipal();
+        AdminSession session = adminSessionRepository.findById(principal.sessionId())
+            .orElseThrow(() -> ApiException.unauthorized("ADMIN_SESSION_REQUIRED", "관리자 세션이 필요합니다."));
+        if (session.getStage() != AdminSessionStage.AUTHENTICATED) {
+            throw ApiException.forbidden("ADMIN_AUTH_STEP_INVALID", "현재 단계에서는 세션을 갱신할 수 없습니다.");
+        }
+
+        User admin = session.getUser();
+        AdminSessionTokenService.IssuedSession issuedSession = adminSessionTokenService.issue(
+            admin,
+            AdminSessionStage.AUTHENTICATED,
+            adminConsoleProperties.getSessionTtlSeconds()
+        );
+        adminSessionTokenService.revoke(session);
+        auditSafely(
+            "ADMIN_SESSION_REFRESHED",
+            "ADMIN_USER",
+            admin.getId().toString(),
+            null,
+            Map.of("previousSessionId", session.getId().toString()),
+            null
+        );
+        return toSessionResponse(issuedSession.rawToken(), issuedSession.session(), adminPermissionService.getPermissions(admin));
+        }
+
     @Transactional
     public AdminPasskeyOptionsResponse startPendingPasskeyAssertion(HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.MFA_PENDING);

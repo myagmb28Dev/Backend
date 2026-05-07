@@ -201,6 +201,17 @@ test.describe.serial('admin local small-step flow', () => {
     expect(Array.isArray(reports.body?.data?.items)).toBe(true);
   });
 
+  test('step3b: admin refresh rotates token', async () => {
+    const refresh = await api('/api/admin/auth/refresh', { method: 'POST', token: adminAccessToken });
+    expect(refresh.status).toBe(200);
+    expect(refresh.body?.data?.accessToken).toBeTruthy();
+    adminAccessToken = refresh.body.data.accessToken;
+
+    const session = await api('/api/admin/auth/session', { token: adminAccessToken });
+    expect(session.status).toBe(200);
+    expect(session.body?.data?.authenticated).toBe(true);
+  });
+
   test('step4: logout then mfa passkey login works', async ({ page }) => {
     await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
     const { cdp, authenticatorId } = await installVirtualAuthenticator(page);

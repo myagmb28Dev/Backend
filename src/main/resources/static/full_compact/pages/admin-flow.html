@@ -414,6 +414,8 @@
 
   const BACKEND_BASE = window.location.origin;
   const ADMIN_ACCESS_TOKEN_KEY = "pogun-admin-access-token-v1";
+  const ADMIN_SESSION_EXPIRES_KEY = "pogun-admin-session-expires-at-v1";
+  const ADMIN_REFRESH_LEEWAY_MS = 60000;
   const LOCAL_ADMIN_EMAIL = "playwright-user1@local.dev";
 
   const el = (id) => document.getElementById(id);
@@ -498,10 +500,69 @@
   let currentGoogleUser = null;
   let passkeyRegisterRetrying = false;
   let adminLoginInProgress = false;
-  const adminRequest = createJsonAuthedRequest({
+  let adminRefreshTimer = null;
+  const rawAdminRequest = createJsonAuthedRequest({
     baseUrl: BACKEND_BASE,
     getToken: () => bootstrapToken || adminAccessToken || null
   });
+
+  async function refreshAdminSession() {
+    if (!adminAccessToken) return null;
+    const res = await rawAdminRequest("/api/admin/auth/refresh", { method: "POST" });
+    if (!res.ok) return null;
+    const data = res.body?.data;
+    if (!data?.accessToken) return null;
+    adminAccessToken = data.accessToken;
+    localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+    storeAdminSessionExpiry(data.expiresAt);
+    scheduleAdminRefresh(data.expiresAt);
+    return data;
+  }
+
+  async function adminRequest(path, init = {}) {
+    let result = await rawAdminRequest(path, init);
+    if (result.status !== 401 || !adminAccessToken) {
+      return result;
+    }
+    const refreshed = await refreshAdminSession();
+    if (!refreshed) {
+      return result;
+    }
+    return rawAdminRequest(path, init);
+  }
+
+  function storeAdminSessionExpiry(expiresAt) {
+    if (!expiresAt) {
+      localStorage.removeItem(ADMIN_SESSION_EXPIRES_KEY);
+      return;
+    }
+    localStorage.setItem(ADMIN_SESSION_EXPIRES_KEY, String(expiresAt));
+  }
+
+  function scheduleAdminRefresh(expiresAt) {
+    if (adminRefreshTimer) {
+      clearTimeout(adminRefreshTimer);
+      adminRefreshTimer = null;
+    }
+    if (!expiresAt) return;
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) return;
+    const delay = Math.max(0, expiresAtMs - Date.now() - ADMIN_REFRESH_LEEWAY_MS);
+    adminRefreshTimer = setTimeout(() => {
+      refreshAdminSession().catch(() => {});
+    }, delay);
+  }
+
+  function clearAdminSession() {
+    adminAccessToken = null;
+    bootstrapToken = null;
+    localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_SESSION_EXPIRES_KEY);
+    if (adminRefreshTimer) {
+      clearTimeout(adminRefreshTimer);
+      adminRefreshTimer = null;
+    }
+  }
 
   function isLocalAdminShortcutAllowed() {
     const host = window.location.hostname;
@@ -569,6 +630,8 @@
     if (data.nextStep === "PASSKEY_REGISTRATION_REQUIRED") {
       adminAccessToken = null;
       localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+      storeAdminSessionExpiry(data.session?.expiresAt);
+      scheduleAdminRefresh(data.session?.expiresAt);
       bootstrapToken = data.session.accessToken;
       el("loginForm").style.display = "none";
       el("passkeySection").style.display = "flex";
@@ -587,6 +650,8 @@
     if (data.nextStep === "PASSKEY_REQUIRED") {
       adminAccessToken = null;
       localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+      storeAdminSessionExpiry(data.session?.expiresAt);
+      scheduleAdminRefresh(data.session?.expiresAt);
       bootstrapToken = data.session.accessToken;
       el("loginForm").style.display = "none";
       el("passkeySection").style.display = "flex";
@@ -600,6 +665,8 @@
       bootstrapToken = null;
       adminAccessToken = data.accessToken;
       localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+      storeAdminSessionExpiry(data.expiresAt);
+      scheduleAdminRefresh(data.expiresAt);
       finalizeLogin();
     }
   }
@@ -668,6 +735,8 @@
         if (verifyRes.ok) {
             adminAccessToken = verifyRes.body.data.accessToken || verifyRes.body.data.session?.accessToken;
             localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+          storeAdminSessionExpiry(verifyRes.body.data.expiresAt);
+          scheduleAdminRefresh(verifyRes.body.data.expiresAt);
             finalizeLogin();
         } else {
             setStatus("패스키 검증 실패", "bad");
@@ -706,6 +775,8 @@
         if (verifyRes.ok) {
             adminAccessToken = verifyRes.body.data.accessToken || verifyRes.body.data.session?.accessToken;
             localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+            storeAdminSessionExpiry(verifyRes.body.data.expiresAt);
+            scheduleAdminRefresh(verifyRes.body.data.expiresAt);
             finalizeLogin();
         } else {
           setStatus("MFA 검증 실패, 패스키 재등록으로 전환합니다.", "bad");
@@ -742,6 +813,7 @@
     el("adminPanel").style.display = "block";
     el("logoutButton").style.display = "inline-block";
     setStatus("관리자 인증 완료", "good");
+    scheduleAdminRefresh(localStorage.getItem(ADMIN_SESSION_EXPIRES_KEY));
     loadReports();
     loadDashboardSummary();
     loadServicesOverview();
@@ -756,7 +828,7 @@
       trafficPollTimer = null;
     }
     await adminRequest("/api/admin/auth/logout", { method: "POST" });
-    localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+    clearAdminSession();
     location.reload();
   }
 
@@ -1510,11 +1582,13 @@
   if (savedToken) {
       adminAccessToken = savedToken;
       adminRequest("/api/admin/auth/session").then(res => {
-          if (res.ok && res.body.data.authenticated) finalizeLogin();
+          if (res.ok && res.body.data.authenticated) {
+            storeAdminSessionExpiry(res.body.data.expiresAt);
+            scheduleAdminRefresh(res.body.data.expiresAt);
+            finalizeLogin();
+          }
           else {
-            adminAccessToken = null;
-            bootstrapToken = null;
-            localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY);
+            clearAdminSession();
             setStatus("세션이 만료되었습니다.");
           }
       });
