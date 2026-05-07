@@ -3,6 +3,7 @@ package com.example.pogun.service.auth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.example.pogun.config.FirebaseAuthProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FirebaseIdentityService {
 
     private final FirebaseIdentityProvider firebaseIdentityProvider;
@@ -23,6 +25,7 @@ public class FirebaseIdentityService {
     }
 
     public FirebaseIdentity verifyIdToken(String idToken, boolean checkRevoked) throws FirebaseAuthException {
+        long startTime = System.currentTimeMillis();
         if (checkRevoked && !firebaseAuthProperties.isAllowEmulator()) {
             cleanupExpiredRevokedTokens();
             Instant revokedAt = locallyRevokedTokens.get(idToken);
@@ -31,8 +34,14 @@ public class FirebaseIdentityService {
             }
         }
         try {
-            return firebaseIdentityProvider.verifyIdToken(idToken, checkRevoked);
+            long providerStart = System.currentTimeMillis();
+            FirebaseIdentityService.FirebaseIdentity result = firebaseIdentityProvider.verifyIdToken(idToken, checkRevoked);
+            long providerEnd = System.currentTimeMillis();
+            log.info("[FirebaseTokenVerify] provider_verified_in_{}ms", providerEnd - providerStart);
+            return result;
         } catch (FirebaseAuthException | RuntimeException e) {
+            long errorTime = System.currentTimeMillis();
+            log.warn("[FirebaseTokenVerify] provider_failed_after_{}ms: {}", errorTime - startTime, e.getClass().getSimpleName());
             if (!checkRevoked) {
                 throw e;
             }

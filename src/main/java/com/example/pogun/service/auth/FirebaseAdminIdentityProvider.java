@@ -16,7 +16,10 @@ public class FirebaseAdminIdentityProvider implements FirebaseIdentityProvider {
 
     @Override
     public FirebaseIdentityService.FirebaseIdentity verifyIdToken(String idToken, boolean checkRevoked) throws FirebaseAuthException {
+        long startTime = System.currentTimeMillis();
         FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken, checkRevoked);
+        long endTime = System.currentTimeMillis();
+        System.out.println("[FirebaseAdmin] verifyIdToken completed in " + (endTime - startTime) + "ms");
         String provider = extractProvider(decodedToken);
         List<FirebaseIdentityService.ProviderIdentity> providers = resolveProviders(decodedToken);
         String displayName = decodedToken.getName();
