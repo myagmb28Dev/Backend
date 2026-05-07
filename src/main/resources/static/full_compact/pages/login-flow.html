@@ -181,6 +181,7 @@ let kakaoMapLoadPromise = null;
 let regionLookupSeq = 0;
 let authStateInitialized = false;
 let sessionResyncPromise = null;
+let firebaseUserSyncPromise = null;
 let googleLoginInProgress = false;
 const FIREBASE_TOKEN_CHECK_TIMEOUT_MS = 15000;
 const BACKEND_LOGIN_TIMEOUT_MS = 60000;
@@ -497,27 +498,33 @@ async function handleFirebaseUser(user, forceRefresh = false) {
     renderSession();
     return;
   }
-  firebaseUser = user;
-  setStatus("Firebase 토큰 확인 중...");
-  try {
-    const token = await withTimeout(
-      user.getIdToken(forceRefresh),
-      FIREBASE_TOKEN_CHECK_TIMEOUT_MS,
-      "Firebase 토큰 확인"
-    );
-    const rawRefreshToken = user?.stsTokenManager?.refreshToken || user?.refreshToken || "";
-    if (rawRefreshToken) {
-      setRefreshToken(rawRefreshToken);
+  if (firebaseUserSyncPromise) return firebaseUserSyncPromise;
+  firebaseUserSyncPromise = (async () => {
+    firebaseUser = user;
+    setStatus("Firebase 토큰 확인 중...");
+    try {
+      const token = await withTimeout(
+        user.getIdToken(forceRefresh),
+        FIREBASE_TOKEN_CHECK_TIMEOUT_MS,
+        "Firebase 토큰 확인"
+      );
+      const rawRefreshToken = user?.stsTokenManager?.refreshToken || user?.refreshToken || "";
+      if (rawRefreshToken) {
+        setRefreshToken(rawRefreshToken);
+      }
+      await syncBackendLogin(token, user);
+    } catch (error) {
+      if (!IS_LOCAL_AUTH_FLOW && auth) {
+        try { await firebaseAuthFns?.signOut(auth); } catch {}
+      }
+      clearSession();
+      renderSession();
+      throw error;
     }
-    await syncBackendLogin(token, user);
-  } catch (error) {
-    if (!IS_LOCAL_AUTH_FLOW && auth) {
-      try { await firebaseAuthFns?.signOut(auth); } catch {}
-    }
-    clearSession();
-    renderSession();
-    throw error;
-  }
+  })().finally(() => {
+    firebaseUserSyncPromise = null;
+  });
+  return firebaseUserSyncPromise;
 }
 
 async function resyncAuthenticatedSession(forceRefresh = false) {
