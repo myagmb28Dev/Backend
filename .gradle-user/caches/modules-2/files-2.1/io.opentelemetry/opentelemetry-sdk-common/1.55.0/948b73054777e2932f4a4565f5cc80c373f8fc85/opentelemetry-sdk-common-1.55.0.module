@@ -1,0 +1,118 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.opentelemetry",
+    "module": "opentelemetry-sdk-common",
+    "version": "1.55.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.55.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "opentelemetry-sdk-common-1.55.0.jar",
+          "url": "opentelemetry-sdk-common-1.55.0.jar",
+          "size": 74539,
+          "sha512": "45817de808f491051a89d9e6c6b39d567a2eaef51c772ae5ccf24e74b13c7640970bc1136a1ae0a978680eb3793c9e7f13f4ad75b0cf09b07dd86373f3634624",
+          "sha256": "e28bb83d0ae5a760ba95952daf820180ee7defb0c5783c9d21f9c00ada80020e",
+          "sha1": "c43e69b259fe060b67520e4f011fa776a2dcca58",
+          "md5": "d2b6d07f9a62cc3011ab97d903e68acc"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.55.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "opentelemetry-sdk-common-1.55.0.jar",
+          "url": "opentelemetry-sdk-common-1.55.0.jar",
+          "size": 74539,
+          "sha512": "45817de808f491051a89d9e6c6b39d567a2eaef51c772ae5ccf24e74b13c7640970bc1136a1ae0a978680eb3793c9e7f13f4ad75b0cf09b07dd86373f3634624",
+          "sha256": "e28bb83d0ae5a760ba95952daf820180ee7defb0c5783c9d21f9c00ada80020e",
+          "sha1": "c43e69b259fe060b67520e4f011fa776a2dcca58",
+          "md5": "d2b6d07f9a62cc3011ab97d903e68acc"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "opentelemetry-sdk-common-1.55.0-javadoc.jar",
+          "url": "opentelemetry-sdk-common-1.55.0-javadoc.jar",
+          "size": 135051,
+          "sha512": "5d02a9c95ba3ed659f0e5c659ef5a14659fa5066fbe0a99d0c07ba6c7d5b0c16f7e7d293aa443643682eabd6e2a81c5f4885e1aec1647d64efbfd7f5a817784e",
+          "sha256": "24867a982121373db25e8fa126fea0da2aa7eadf227f977fb656d05173e4be1f",
+          "sha1": "90daacd40a6287f0ea3925f7a33ec0878d47487a",
+          "md5": "3b37f6a6a3eaba9f0a9933d7bed527d2"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "opentelemetry-sdk-common-1.55.0-sources.jar",
+          "url": "opentelemetry-sdk-common-1.55.0-sources.jar",
+          "size": 44922,
+          "sha512": "db07bb9e05bf08216b2934637474a44ff88fe8602cb146f17a62e08dcae6aab0006715c044182c0e9dcb46a7d15f2c209410d6f57b3190301aac65946eef5d4d",
+          "sha256": "cb9423298f9c42ac2c568af5271d335e468d7730b21d7ca6c246c16c6eca25f7",
+          "sha1": "d1875437a17d16fddbf8a30de92e04329fd9a3e0",
+          "md5": "0d16e8bbb1fb236209288279ebe6b1ff"
+        }
+      ]
+    }
+  ]
+}

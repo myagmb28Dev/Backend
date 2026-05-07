@@ -1,0 +1,146 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.springframework.boot",
+    "module": "spring-boot-starter-reactor-netty",
+    "version": "4.0.3",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.3.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-starter",
+          "version": {
+            "requires": "4.0.3"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-reactor",
+          "version": {
+            "requires": "4.0.3"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-reactor-netty",
+          "version": {
+            "requires": "4.0.3"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "spring-boot-starter-reactor-netty-4.0.3.jar",
+          "url": "spring-boot-starter-reactor-netty-4.0.3.jar",
+          "size": 4743,
+          "sha512": "717e77a8d8cfd0182af0638d4a1f7e3ef71aa3fee33fe3a33ba1e21c7ff9cbe238d792bc662f20939c492bdc8907135985606a7c05ec4979e3dada9b5538d0f3",
+          "sha256": "c41a9330e38bcc1f114c0936d09b4aa425067cf3495c7395c1f49325261c790f",
+          "sha1": "7e8cb82ea1c383307e2c44e4762796cdb6eaaf58",
+          "md5": "2e49b8f30934a2417ff1d1386b82a230"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-starter",
+          "version": {
+            "requires": "4.0.3"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-reactor",
+          "version": {
+            "requires": "4.0.3"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-reactor-netty",
+          "version": {
+            "requires": "4.0.3"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "spring-boot-starter-reactor-netty-4.0.3.jar",
+          "url": "spring-boot-starter-reactor-netty-4.0.3.jar",
+          "size": 4743,
+          "sha512": "717e77a8d8cfd0182af0638d4a1f7e3ef71aa3fee33fe3a33ba1e21c7ff9cbe238d792bc662f20939c492bdc8907135985606a7c05ec4979e3dada9b5538d0f3",
+          "sha256": "c41a9330e38bcc1f114c0936d09b4aa425067cf3495c7395c1f49325261c790f",
+          "sha1": "7e8cb82ea1c383307e2c44e4762796cdb6eaaf58",
+          "md5": "2e49b8f30934a2417ff1d1386b82a230"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "spring-boot-starter-reactor-netty-4.0.3-javadoc.jar",
+          "url": "spring-boot-starter-reactor-netty-4.0.3-javadoc.jar",
+          "size": 4743,
+          "sha512": "717e77a8d8cfd0182af0638d4a1f7e3ef71aa3fee33fe3a33ba1e21c7ff9cbe238d792bc662f20939c492bdc8907135985606a7c05ec4979e3dada9b5538d0f3",
+          "sha256": "c41a9330e38bcc1f114c0936d09b4aa425067cf3495c7395c1f49325261c790f",
+          "sha1": "7e8cb82ea1c383307e2c44e4762796cdb6eaaf58",
+          "md5": "2e49b8f30934a2417ff1d1386b82a230"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "spring-boot-starter-reactor-netty-4.0.3-sources.jar",
+          "url": "spring-boot-starter-reactor-netty-4.0.3-sources.jar",
+          "size": 4743,
+          "sha512": "717e77a8d8cfd0182af0638d4a1f7e3ef71aa3fee33fe3a33ba1e21c7ff9cbe238d792bc662f20939c492bdc8907135985606a7c05ec4979e3dada9b5538d0f3",
+          "sha256": "c41a9330e38bcc1f114c0936d09b4aa425067cf3495c7395c1f49325261c790f",
+          "sha1": "7e8cb82ea1c383307e2c44e4762796cdb6eaaf58",
+          "md5": "2e49b8f30934a2417ff1d1386b82a230"
+        }
+      ]
+    }
+  ]
+}

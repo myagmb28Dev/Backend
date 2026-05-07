@@ -1,0 +1,83 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.gavlyukovskiy",
+    "module": "datasource-decorator-spring-boot-autoconfigure",
+    "version": "1.9.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "7.6"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "files": [
+        {
+          "name": "datasource-decorator-spring-boot-autoconfigure-1.9.0.jar",
+          "url": "datasource-decorator-spring-boot-autoconfigure-1.9.0.jar",
+          "size": 62898,
+          "sha512": "b159589be4d22b9400e6aed0c24aa1fcfd2d6773a224d075010f29dacee2be481b24971d36d0997ade5c3255472365d649337cb9bac4ddb5e31af06bb30b459c",
+          "sha256": "1da7d715e7aa8ac947fb43b54fb015216ea9ab00cf183ec6f79b6f891751a16f",
+          "sha1": "831a15b04e176cd41c0539cda6194ac3e6b715ff",
+          "md5": "7302f8947ba4962deb35a0362f1273f8"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot",
+          "version": {
+            "requires": "3.0.2"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-autoconfigure",
+          "version": {
+            "requires": "3.0.2"
+          }
+        },
+        {
+          "group": "org.springframework.boot",
+          "module": "spring-boot-starter-jdbc",
+          "version": {
+            "requires": "3.0.2"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "datasource-decorator-spring-boot-autoconfigure-1.9.0.jar",
+          "url": "datasource-decorator-spring-boot-autoconfigure-1.9.0.jar",
+          "size": 62898,
+          "sha512": "b159589be4d22b9400e6aed0c24aa1fcfd2d6773a224d075010f29dacee2be481b24971d36d0997ade5c3255472365d649337cb9bac4ddb5e31af06bb30b459c",
+          "sha256": "1da7d715e7aa8ac947fb43b54fb015216ea9ab00cf183ec6f79b6f891751a16f",
+          "sha1": "831a15b04e176cd41c0539cda6194ac3e6b715ff",
+          "md5": "7302f8947ba4962deb35a0362f1273f8"
+        }
+      ]
+    }
+  ]
+}
