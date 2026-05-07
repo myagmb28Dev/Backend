@@ -21,6 +21,8 @@
     .account-toggle.active { border-color:#6d46c6; background:#2b2140; box-shadow:0 0 0 2px rgba(139,92,246,.25); }
     .muted { color:var(--muted); font-size:12px; margin-top:8px; }
     .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .actions.compact { align-items:center; }
+    button.small { padding:7px 9px; font-size:12px; min-height:0; }
     .onboarding { display:none; }
     .onboarding.visible { display:block; }
     .map-shell { margin-top:10px; display:grid; gap:8px; }
@@ -91,6 +93,7 @@
         <button id="playwrightLoginButton" type="button">Playwright1 로컬 로그인</button>
         <button id="googleLoginButton" type="button">Google로 로그인</button>
         <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
+        <button id="refreshLoginButton" type="button" class="secondary small">Refresh</button>
       </div>
     </section>
 
@@ -216,17 +219,20 @@ function renderSession() {
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
   el("googleLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "none" : "";
+  el("playwrightLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "" : "none";
   el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton").disabled = Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
+  el("refreshLoginButton").disabled = Boolean(googleLoginInProgress || firebaseUserSyncPromise || sessionResyncPromise);
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
   if (pendingOnboardingRole) initOnboardingMap().catch((error) => setMapStatus(error.message || String(error), "bad"));
 }
 
 function setLoginButtonsBusy(isBusy) {
   el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = isBusy || !currentSession;
+  el("refreshLoginButton").disabled = isBusy;
 }
 
 function saveSession(session) {
@@ -260,6 +266,34 @@ function clearSession() {
   removeSession(ACTIVE_ROLE_KEY);
   clearRefreshToken();
   window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
+}
+
+async function performLogout() {
+  const token = currentSession?.firebaseIdToken || users[REAL_ROLE]?.token || "";
+  if (token) {
+    try {
+      await request(`${BACKEND_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {
+      // Local cleanup below is still the source of truth for the static pages.
+    }
+  }
+  if (!IS_LOCAL_AUTH_FLOW) {
+    try {
+      if (!auth) await loadFirebaseAuth();
+      await firebaseAuthFns?.signOut(auth);
+    } catch {
+      // Firebase can already be signed out or unavailable; clear local state anyway.
+    }
+  }
+  clearSession();
+  try {
+    document.cookie = "pogun_refresh_token=; Max-Age=0; path=/api/auth; SameSite=Strict";
+  } catch {}
+  renderSession();
+  setStatus("로그아웃 완료", "good");
 }
 
 function restoreSession() {
@@ -408,6 +442,9 @@ async function postJson(url, body) {
 }
 
 async function signInLocalPlaywrightUser() {
+  if (!IS_LOCAL_AUTH_FLOW) {
+    throw new Error("Playwright 로컬 로그인은 localhost에서만 사용할 수 있습니다.");
+  }
   setStatus("Playwright1 로컬 계정 로그인 중...");
   const response = await postJson(
     `${LOCAL_AUTH_EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
@@ -724,12 +761,13 @@ if (!IS_LOCAL_AUTH_FLOW) {
   el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
 }
 el("playwrightLoginButton").addEventListener("click", run(signInLocalPlaywrightUser));
-el("googleLogoutButton").addEventListener("click", run(async () => {
-  if (auth) await firebaseAuthFns?.signOut(auth);
-  clearSession();
+el("refreshLoginButton").addEventListener("click", run(async () => {
+  setStatus("로그인 세션 새로고침 중...");
+  await resyncAuthenticatedSession(true);
   renderSession();
-  setStatus("로그아웃 완료", "good");
+  setStatus(currentSession ? "로그인 세션 새로고침 완료" : "로그인해주세요.", currentSession ? "good" : "");
 }));
+el("googleLogoutButton").addEventListener("click", run(performLogout));
 el("useCurrentLocationButton").addEventListener("click", run(useCurrentLocation));
 el("resetLocationButton").addEventListener("click", run(() => {
   moveMapTo(DEFAULT_LOCATION.x, DEFAULT_LOCATION.y);
