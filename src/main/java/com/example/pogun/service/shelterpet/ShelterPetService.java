@@ -18,6 +18,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.Duration;
+import java.util.Locale;
 
 /**
  * 도메인 비즈니스 로직을 담당하는 ShelterPetService이다.
@@ -39,9 +40,22 @@ public class ShelterPetService {
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
         int normalizedPage = normalizePage(page);
         int normalizedSize = normalizeSize(size);
-        ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(region, breed, status, sort, 0, 1000);
+        String requestedRegion = normalizeTextFilter(region);
+        String requestedBreed = normalizeTextFilter(breed);
+        boolean regionCodeFilter = isCodeFilter(requestedRegion);
+        boolean breedCodeFilter = isCodeFilter(requestedBreed);
+        ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(
+                regionCodeFilter ? requestedRegion : null,
+                breedCodeFilter ? requestedBreed : null,
+                status,
+                sort,
+                0,
+                1000
+        );
         List<ShelterPublicApiClient.ShelterPublicApiAnimal> filteredItems = result.items().stream()
                 .filter(item -> matchesStatus(item, status))
+                .filter(item -> matchesRegion(item, requestedRegion, regionCodeFilter))
+                .filter(item -> matchesBreed(item, requestedBreed, breedCodeFilter))
                 .toList();
 
         int fromIndex = Math.min(normalizedPage * normalizedSize, filteredItems.size());
@@ -223,6 +237,39 @@ public class ShelterPetService {
             case "protect", "protected", "resolved" -> processState.contains("보호") || processState.contains("종료") || processState.contains("returned") || processState.contains("protect");
             default -> processState.equals(normalized) || processState.contains(normalized);
         };
+    }
+
+    private boolean matchesRegion(ShelterPublicApiClient.ShelterPublicApiAnimal item, String region, boolean codeFilter) {
+        if (!StringUtils.hasText(region) || codeFilter) {
+            return true;
+        }
+        return containsIgnoreCase(item.organizationName(), region)
+                || containsIgnoreCase(item.careAddress(), region)
+                || containsIgnoreCase(item.careName(), region)
+                || containsIgnoreCase(item.happenPlace(), region);
+    }
+
+    private boolean matchesBreed(ShelterPublicApiClient.ShelterPublicApiAnimal item, String breed, boolean codeFilter) {
+        if (!StringUtils.hasText(breed) || codeFilter) {
+            return true;
+        }
+        return containsIgnoreCase(item.kindName(), breed)
+                || containsIgnoreCase(item.kindFullName(), breed);
+    }
+
+    private boolean containsIgnoreCase(String value, String keyword) {
+        if (!StringUtils.hasText(value) || !StringUtils.hasText(keyword)) {
+            return false;
+        }
+        return value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean isCodeFilter(String value) {
+        return StringUtils.hasText(value) && value.chars().allMatch(Character::isDigit);
+    }
+
+    private String normalizeTextFilter(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private int normalizePage(int page) {

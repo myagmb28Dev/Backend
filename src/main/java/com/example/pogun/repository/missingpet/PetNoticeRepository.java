@@ -22,15 +22,11 @@ public interface PetNoticeRepository extends JpaRepository<PetNotice, UUID> {
     @Query("""
             SELECT n FROM PetNotice n
             WHERE n.hidden = false
-              AND (:region IS NULL OR n.missingRegion = :region)
-              AND (:breed IS NULL OR n.breed = :breed)
               AND (:status IS NULL OR n.status = :status)
               AND n.missingDate >= COALESCE(:from, n.missingDate)
               AND n.missingDate <= COALESCE(:to, n.missingDate)
             """)
     List<PetNotice> findNotices(
-            @Param("region") String region,
-            @Param("breed") String breed,
             @Param("status") PetNoticeStatus status,
             @Param("from") Instant from,
             @Param("to") Instant to

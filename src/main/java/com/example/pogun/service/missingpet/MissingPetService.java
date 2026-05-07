@@ -41,6 +41,7 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 /**
@@ -67,8 +68,8 @@ public class MissingPetService {
 
     @Transactional(readOnly = true)
     public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
-        String requestedRegion = blankToNull(region);
-        String requestedBreed = blankToNull(breed);
+        String requestedRegion = normalizeTextFilter(region);
+        String requestedBreed = normalizeTextFilter(breed);
         PetNoticeStatus requestedStatus = parseStatus(status);
         Instant requestedFrom = parseInstant(from);
         Instant requestedTo = parseInstant(to);
@@ -76,12 +77,13 @@ public class MissingPetService {
         int normalizedSize = normalizeSize(size);
 
         List<PetNotice> filteredNotices = petNoticeRepository.findNotices(
-                requestedRegion,
-                requestedBreed,
                 requestedStatus,
                 requestedFrom,
                 requestedTo
-        );
+        ).stream()
+                .filter(notice -> containsIgnoreCase(notice.getMissingRegion(), requestedRegion))
+                .filter(notice -> containsIgnoreCase(notice.getBreed(), requestedBreed))
+                .toList();
         List<PetNotice> sortedNotices = sortNotices(filteredNotices, sort);
 
         int fromIndex = Math.min(normalizedPage * normalizedSize, sortedNotices.size());
@@ -511,6 +513,21 @@ public class MissingPetService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeTextFilter(String value) {
+        String normalized = blankToNull(value);
+        return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean containsIgnoreCase(String value, String keyword) {
+        if (keyword == null) {
+            return true;
+        }
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.toLowerCase(Locale.ROOT).contains(keyword);
     }
 
     private int normalizePage(int page) {
