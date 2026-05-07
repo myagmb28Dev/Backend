@@ -193,6 +193,11 @@ function loadToken(index) {
   return fs.readFileSync(tokenPath, 'utf8').trim();
 }
 
+function loadRefreshToken(index) {
+  const refreshPath = path.join(repoRoot, '.local', `emulator-user${index}-refresh-token.txt`);
+  return fs.readFileSync(refreshPath, 'utf8').trim();
+}
+
 async function readJsonSafe(response) {
   const text = await response.text();
   try {
@@ -234,20 +239,20 @@ async function loginWithToken(token) {
   };
 }
 
-async function ensureReadySession(token) {
-  let login = await loginWithToken(token);
+async function ensureReadySession(authBundle) {
+  let login = await loginWithToken(authBundle.idToken);
   if (login.status !== 200) {
     throw new Error(`login failed: ${JSON.stringify(login.body)}`);
   }
   if (login.body?.data?.registrationStatus === 'PENDING_ONBOARDING' || !login.body?.data?.id) {
-    const onboarding = await api('/api/auth/onboarding/complete', token, {
+    const onboarding = await api('/api/auth/onboarding/complete', authBundle.idToken, {
       method: 'POST',
       body: JSON.stringify({ x: 127.1086228, y: 37.4012191 })
     });
     if (onboarding.status !== 200) {
       throw new Error(`onboarding failed: ${JSON.stringify(onboarding.body)}`);
     }
-    login = await loginWithToken(token);
+    login = await loginWithToken(authBundle.idToken);
     if (login.status !== 200 || !login.body?.data?.id) {
       throw new Error(`login after onboarding failed: ${JSON.stringify(login.body)}`);
     }
@@ -255,7 +260,8 @@ async function ensureReadySession(token) {
 
   const data = login.body.data;
   return {
-    firebaseIdToken: token,
+    firebaseIdToken: authBundle.idToken,
+    refreshToken: authBundle.refreshToken || '',
     firebaseUid: data.firebaseUid || '',
     email: data.email || '',
     nickname: data.nickname || data.email || 'Google 사용자',
@@ -263,6 +269,12 @@ async function ensureReadySession(token) {
     userId: data.id,
     registrationStatus: data.registrationStatus
   };
+}
+
+async function loadUserSession(index) {
+  const idToken = loadToken(index);
+  const refreshToken = loadRefreshToken(index);
+  return ensureReadySession({ idToken, refreshToken });
 }
 
 async function seedSession(page, session) {
@@ -346,7 +358,7 @@ test.describe.serial('local user1 service flows', () => {
   });
 
   test('login flow keeps user1 session across static pages', async ({ page }) => {
-    const user1Session = await ensureReadySession(loadToken(1));
+    const user1Session = await loadUserSession(1);
     await seedSession(page, user1Session);
 
     await page.goto(`${baseURL}/full_compact/pages/login-flow.html`, { waitUntil: 'domcontentloaded' });
@@ -359,7 +371,7 @@ test.describe.serial('local user1 service flows', () => {
   });
 
   test('shelter flow reuses login session and loads shelter detail tools', async ({ page }) => {
-    const user1Session = await ensureReadySession(loadToken(1));
+    const user1Session = await loadUserSession(1);
     await seedSession(page, user1Session);
 
     await page.goto(`${baseURL}/full_compact/pages/shelter-flow.html`, { waitUntil: 'domcontentloaded' });
@@ -380,7 +392,7 @@ test.describe.serial('local user1 service flows', () => {
   });
 
   test('notice flow creates a notice and redirects to dm flow', async ({ page }) => {
-    const user1Session = await ensureReadySession(loadToken(1));
+    const user1Session = await loadUserSession(1);
     await seedSession(page, user1Session);
 
     const title = `playwright-user1-notice-${Date.now()}`;
@@ -401,8 +413,8 @@ test.describe.serial('local user1 service flows', () => {
   test('dm flow lets user1 start a room and send a message', async ({ page }) => {
     const user1Token = loadToken(1);
     const user2Token = loadToken(2);
-    const user1Session = await ensureReadySession(user1Token);
-    await ensureReadySession(user2Token);
+    const user1Session = await loadUserSession(1);
+    await loadUserSession(2);
 
     const notice = await createNotice(user2Token, `playwright-user2-notice-${Date.now()}`);
     const room = await createRoom(user1Token, notice.id);
@@ -414,8 +426,7 @@ test.describe.serial('local user1 service flows', () => {
   });
 
   test('dm flow accepts token query bootstrap without login page redirect', async ({ page }) => {
-    const user1Token = loadToken(1);
-    const user1Session = await ensureReadySession(user1Token);
+    const user1Session = await loadUserSession(1);
     const tokenParam = encodeURIComponent(user1Session.firebaseIdToken);
 
     await page.goto(`${baseURL}/full_compact/pages/dm-flow.html?token=${tokenParam}`, { waitUntil: 'domcontentloaded' });
@@ -428,8 +439,8 @@ test.describe.serial('local user1 service flows', () => {
     test.setTimeout(90000);
     const user1Token = loadToken(1);
     const user2Token = loadToken(3);
-    const user1Session = await ensureReadySession(user1Token);
-    const user2Session = await ensureReadySession(user2Token);
+    const user1Session = await loadUserSession(1);
+    const user2Session = await loadUserSession(3);
 
     const notice = await createNotice(user2Token, `playwright-user3-presence-${Date.now()}`);
     const room = await createRoom(user1Token, notice.id);
@@ -458,8 +469,8 @@ test.describe.serial('local user1 service flows', () => {
 
     const user1Token = loadToken(1);
     const user2Token = loadToken(2);
-    const user1Session = await ensureReadySession(user1Token);
-    const user2Session = await ensureReadySession(user2Token);
+    const user1Session = await loadUserSession(1);
+    const user2Session = await loadUserSession(2);
 
     const notice = await createNotice(user2Token, `playwright-user2-session-leave-${Date.now()}`);
     const room = await createRoom(user1Token, notice.id);
@@ -479,7 +490,7 @@ test.describe.serial('local user1 service flows', () => {
 
   test('notification flow shows user1 unread notification and clears it', async ({ page }) => {
     const user1Token = loadToken(1);
-    const user1Session = await ensureReadySession(user1Token);
+    const user1Session = await loadUserSession(1);
     await markAllNotificationsRead(user1Token);
     expect(await fetchUnreadCount(user1Token)).toBe(0);
     const notice = await createNotice(user1Token, `playwright-user1-notify-${Date.now()}`);
@@ -496,5 +507,24 @@ test.describe.serial('local user1 service flows', () => {
 
     await page.click('#readAllNotificationsButton');
     await expect(page.locator('#unreadCountValue')).toHaveText('0', { timeout: 10000 });
+  });
+
+  test('refresh api issues a new id token and keeps auth usable', async () => {
+    const session = await loadUserSession(1);
+    const refreshResponse = await fetch(`${baseURL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken })
+    });
+    const refreshBody = await readJsonSafe(refreshResponse);
+    expect(refreshResponse.status).toBe(200);
+    expect(typeof refreshBody?.data?.idToken).toBe('string');
+    expect(refreshBody?.data?.idToken?.length).toBeGreaterThan(100);
+    expect(typeof refreshBody?.data?.refreshToken).toBe('string');
+    expect(refreshBody?.data?.refreshToken?.length).toBeGreaterThan(20);
+
+    const relogin = await loginWithToken(refreshBody.data.idToken);
+    expect(relogin.status).toBe(200);
+    expect(relogin.body?.data?.email).toBe('playwright-user1@local.dev');
   });
 });

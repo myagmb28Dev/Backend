@@ -171,6 +171,7 @@
 <script type="module">
 import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "/js/session-store.js";
+import { refreshFirebaseSession } from "/js/auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
@@ -245,10 +246,21 @@ async function authApi(path, init = {}) {
   if (!(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  return request(`${BACKEND_BASE}${path}`, {
+  let response = await request(`${BACKEND_BASE}${path}`, {
     ...init,
     headers
   });
+  if (response.status !== 401) {
+    return response;
+  }
+  const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+  if (!refreshedSession?.firebaseIdToken) {
+    return response;
+  }
+  users[activeRole].token = refreshedSession.firebaseIdToken;
+  const retryHeaders = { ...headers, Authorization: `Bearer ${users[activeRole].token}` };
+  response = await request(`${BACKEND_BASE}${path}`, { ...init, headers: retryHeaders });
+  return response;
 }
 
 function loadRealSession() {
@@ -266,25 +278,37 @@ async function login(role) {
   users[role].email = session.email || "";
   users[role].label = session.nickname || session.email || "Google 사용자";
   setStatus(`${users[role].label} 로그인 중...`);
-  const response = await request(`${BACKEND_BASE}/api/auth/login`, {
+  let response = await request(`${BACKEND_BASE}/api/auth/login`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firebaseIdToken: users[role].token })
   });
+  if (response.status === 401) {
+    const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+    if (refreshedSession?.firebaseIdToken) {
+      users[role].token = refreshedSession.firebaseIdToken;
+      response = await request(`${BACKEND_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firebaseIdToken: users[role].token })
+      });
+    }
+  }
   if (response.status !== 200) {
     removeSession(REAL_SESSION_KEY); removeSession(ACTIVE_ROLE_KEY);
     moveToLoginFlow();
     return;
   }
   const data = response.body?.data || {};
+  const latestSession = loadStoredSession(REAL_SESSION_KEY) || session;
   users[role].userId = data.id || session.userId || null;
   users[role].email = data.email || users[role].email;
   users[role].label = data.nickname || users[role].label;
   saveStoredSession(REAL_SESSION_KEY, {
-    ...session,
+    ...latestSession,
     firebaseIdToken: users[role].token,
-    firebaseUid: data.firebaseUid || session.firebaseUid || "",
-    email: data.email || session.email || "",
-    nickname: data.nickname || session.nickname || "",
-    profileImageUrl: data.profileImageUrl || session.profileImageUrl || "",
+    firebaseUid: data.firebaseUid || latestSession.firebaseUid || "",
+    email: data.email || latestSession.email || "",
+    nickname: data.nickname || latestSession.nickname || "",
+    profileImageUrl: data.profileImageUrl || latestSession.profileImageUrl || "",
     userId: users[role].userId,
     registrationStatus: data.registrationStatus
   });
