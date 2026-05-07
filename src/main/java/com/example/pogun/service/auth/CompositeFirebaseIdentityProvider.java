@@ -50,7 +50,11 @@ public class CompositeFirebaseIdentityProvider implements FirebaseIdentityProvid
                 }
             }
             if (e.getAuthErrorCode() == AuthErrorCode.USER_NOT_FOUND) {
-                return lookupIdentityProvider.verifyIdToken(idToken, checkRevoked);
+                try {
+                    return lookupIdentityProvider.verifyIdToken(idToken, checkRevoked);
+                } catch (RuntimeException ignored) {
+                    throw e;
+                }
             }
             throw e;
         }

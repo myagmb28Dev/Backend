@@ -155,10 +155,11 @@ import { request } from "/js/api-client.js";
 import { loadSession as loadStoredSession, removeSession, saveSession as saveStoredSession } from "/js/session-store.js";
 import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/auth-refresh.js";
 
-  const BACKEND_BASE = window.location.origin;
+    const query = new URLSearchParams(window.location.search);
+  const backendBaseOverride = (query.get("backendBase") || query.get("apiBase") || "").trim();
+  const BACKEND_BASE = backendBaseOverride || window.location.origin;
     const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
     const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
-    const query = new URLSearchParams(window.location.search);
 const redirectPath = (query.get("redirect") || "").trim() || "/full_compact/pages/notice-flow.html";
 const REAL_ROLE = "google";
 const IS_LOCAL_AUTH_FLOW = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
@@ -180,6 +181,7 @@ let kakaoMapLoadPromise = null;
 let regionLookupSeq = 0;
 let authStateInitialized = false;
 let sessionResyncPromise = null;
+let googleLoginInProgress = false;
 const FIREBASE_TOKEN_CHECK_TIMEOUT_MS = 15000;
 const BACKEND_LOGIN_TIMEOUT_MS = 60000;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
@@ -213,11 +215,17 @@ function renderSession() {
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
   el("googleLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "none" : "";
-  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || Boolean(activeRole || pendingOnboardingRole);
+  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
   el("playwrightLoginButton").disabled = Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
   if (pendingOnboardingRole) initOnboardingMap().catch((error) => setMapStatus(error.message || String(error), "bad"));
+}
+
+function setLoginButtonsBusy(isBusy) {
+  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("googleLogoutButton").disabled = isBusy || !currentSession;
 }
 
 function saveSession(session) {
@@ -445,16 +453,22 @@ async function loadFirebaseAuth() {
 }
 
 async function startGoogleLogin() {
-  if (!auth) await loadFirebaseAuth();
-  setStatus("Google 로그인 창을 여는 중입니다...");
-  const provider = new firebaseAuthFns.GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-  const popupProbe = window.open("", "pogun-google-login-probe", "popup=yes,width=520,height=720");
-  if (!popupProbe) {
-    throw new Error("브라우저가 로그인 팝업을 차단했습니다. 주소창 또는 브라우저 설정에서 팝업을 허용한 뒤 다시 시도하세요.");
+  if (googleLoginInProgress) {
+    setStatus("이미 Google 로그인 진행 중입니다. 팝업을 완료하거나 닫은 뒤 다시 시도하세요.", "bad");
+    return;
   }
-  popupProbe.close();
+  googleLoginInProgress = true;
+  setLoginButtonsBusy(true);
+  if (!auth) await loadFirebaseAuth();
   try {
+    setStatus("Google 로그인 창을 여는 중입니다...");
+    const provider = new firebaseAuthFns.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const popupProbe = window.open("", "pogun-google-login-probe", "popup=yes,width=520,height=720");
+    if (!popupProbe) {
+      throw new Error("브라우저가 로그인 팝업을 차단했습니다. 주소창 또는 브라우저 설정에서 팝업을 허용한 뒤 다시 시도하세요.");
+    }
+    popupProbe.close();
     const result = await firebaseAuthFns.signInWithPopup(auth, provider);
     if (!result?.user) throw new Error("Firebase 로그인 결과에 사용자가 없습니다.");
     await handleFirebaseUser(result.user, true);
@@ -466,6 +480,10 @@ async function startGoogleLogin() {
       throw new Error("Google 로그인 창이 닫혔습니다. 다시 시도하세요.");
     }
     throw error;
+  } finally {
+    googleLoginInProgress = false;
+    setLoginButtonsBusy(false);
+    renderSession();
   }
 }
 
@@ -493,6 +511,9 @@ async function handleFirebaseUser(user, forceRefresh = false) {
     }
     await syncBackendLogin(token, user);
   } catch (error) {
+    if (!IS_LOCAL_AUTH_FLOW && auth) {
+      try { await firebaseAuthFns?.signOut(auth); } catch {}
+    }
     clearSession();
     renderSession();
     throw error;

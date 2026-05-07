@@ -20,6 +20,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AdminSessionTokenService {
 
+    private static final long TOUCH_THROTTLE_SECONDS = 30L;
+
     private final AdminSessionRepository adminSessionRepository;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -52,7 +54,12 @@ public class AdminSessionTokenService {
         if (session == null) {
             return;
         }
-        session.setLastUsedAt(Instant.now());
+        Instant now = Instant.now();
+        if (session.getLastUsedAt() != null
+                && session.getLastUsedAt().isAfter(now.minusSeconds(TOUCH_THROTTLE_SECONDS))) {
+            return;
+        }
+        session.setLastUsedAt(now);
         adminSessionRepository.save(session);
     }
 
