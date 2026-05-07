@@ -163,7 +163,7 @@ import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/
   const BACKEND_BASE = backendBaseOverride || window.location.origin;
     const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
     const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
-const redirectPath = (query.get("redirect") || "").trim() || "/full_compact/pages/notice-flow.html";
+const redirectPath = (query.get("redirect") || "").trim();
 const REAL_ROLE = "google";
 const IS_LOCAL_AUTH_FLOW = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const LOCAL_AUTH_PROJECT_ID = "pogun-local";
@@ -223,7 +223,7 @@ function renderSession() {
   el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
   el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
-  el("refreshLoginButton").disabled = Boolean(googleLoginInProgress || firebaseUserSyncPromise || sessionResyncPromise);
+  el("refreshLoginButton").disabled = Boolean(sessionResyncPromise);
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
   if (pendingOnboardingRole) initOnboardingMap().catch((error) => setMapStatus(error.message || String(error), "bad"));
 }
@@ -232,7 +232,7 @@ function setLoginButtonsBusy(isBusy) {
   el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = isBusy || !currentSession;
-  el("refreshLoginButton").disabled = isBusy;
+  el("refreshLoginButton").disabled = false;
 }
 
 function saveSession(session) {
@@ -339,23 +339,37 @@ function buildSession(token, data, fallbackUser = {}) {
 
 function resolveTargetView() {
   const redirect = String(redirectPath || "").trim();
-  if (redirect.includes("/dm-flow")) return "dm";
-  if (redirect.includes("/notification-flow")) return "notification";
-  if (redirect.includes("/shelter-flow")) return "shelter";
-  if (redirect.includes("/admin-flow")) return "admin";
-  if (redirect.includes("/login-flow")) return "login";
-  try {
-    return window.sessionStorage.getItem(PENDING_VIEW_KEY) || "notice";
-  } catch {
-    return "notice";
+  if (redirect) {
+    if (redirect.includes("/dm-flow")) return "dm";
+    if (redirect.includes("/notification-flow")) return "notification";
+    if (redirect.includes("/shelter-flow")) return "shelter";
+    if (redirect.includes("/admin-flow")) return "admin";
+    if (redirect.includes("/login-flow")) return "login";
+    if (redirect.includes("/notice-flow")) return "notice";
   }
+  try {
+    const pending = window.sessionStorage.getItem(PENDING_VIEW_KEY);
+    if (pending) return pending;
+  } catch {
+    // keep default fallback below
+  }
+  return window.parent && window.parent !== window ? null : "notice";
 }
 
 function openTargetView(view = resolveTargetView()) {
-  try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
   if (window.parent && window.parent !== window) {
-    window.parent.postMessage({ type: "pogun-open-view", view }, window.location.origin);
+    window.parent.postMessage({ type: "pogun-open-view", view: view || undefined }, window.location.origin);
+    try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
+    return;
   }
+  try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
+  const fallback = view || "notice";
+  if (fallback === "dm") window.location.href = "/full_compact/pages/dm-flow.html";
+  else if (fallback === "notification") window.location.href = "/full_compact/pages/notification-flow.html";
+  else if (fallback === "shelter") window.location.href = "/full_compact/pages/shelter-flow.html";
+  else if (fallback === "admin") window.location.href = "/full_compact/pages/admin-flow.html";
+  else if (fallback === "login") window.location.href = "/full_compact/pages/login-flow.html";
+  else window.location.href = "/full_compact/pages/notice-flow.html";
 }
 
 async function syncBackendLogin(token, fallbackUser = {}) {
@@ -762,10 +776,24 @@ if (!IS_LOCAL_AUTH_FLOW) {
 }
 el("playwrightLoginButton").addEventListener("click", run(signInLocalPlaywrightUser));
 el("refreshLoginButton").addEventListener("click", run(async () => {
-  setStatus("로그인 세션 새로고침 중...");
-  await resyncAuthenticatedSession(true);
-  renderSession();
-  setStatus(currentSession ? "로그인 세션 새로고침 완료" : "로그인해주세요.", currentSession ? "good" : "");
+  const button = el("refreshLoginButton");
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const stored = loadStoredSession(REAL_SESSION_KEY);
+    if (!stored?.refreshToken) {
+      setStatus("저장된 refresh token 없음");
+      return;
+    }
+    setStatus("로그인 세션 새로고침 중...");
+    const refreshed = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
+    if (!refreshed?.firebaseIdToken) throw new Error("refresh 결과에 Firebase 토큰이 없습니다.");
+    await syncBackendLogin(refreshed.firebaseIdToken, refreshed);
+    renderSession();
+    setStatus("로그인 세션 새로고침 완료", "good");
+  } finally {
+    button.disabled = false;
+  }
 }));
 el("googleLogoutButton").addEventListener("click", run(performLogout));
 el("useCurrentLocationButton").addEventListener("click", run(useCurrentLocation));

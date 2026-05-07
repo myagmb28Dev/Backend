@@ -8,43 +8,37 @@
     :root { --bg:#0b0b0c; --panel:#151515; --line:#2f2f32; --ink:#f6f6f3; --muted:#a7a7aa; --active:#e9e9e6; --active-ink:#0a0a0a; --danger:#ef7777; }
     * { box-sizing:border-box; }
     body { margin:0; font-family:"Pretendard","Noto Sans KR","Segoe UI","Malgun Gothic",sans-serif; letter-spacing:-.02em; background:var(--bg); color:var(--ink); overflow:hidden; }
-    .app { display:grid; grid-template-columns:320px minmax(0,1fr); min-height:100vh; }
-    .brand { height:64px; display:flex; align-items:center; padding:0 30px; border-bottom:1px solid var(--line); font-size:24px; font-weight:900; }
-    .top { height:64px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 30px; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:0; z-index:20; }
-    .top strong { font-size:19px; font-weight:900; }
-    .top-tools { display:flex; align-items:center; gap:22px; color:var(--ink); font-size:16px; }
-    .tool-pill { min-width:130px; height:40px; display:inline-flex; align-items:center; justify-content:space-between; gap:12px; padding:0 14px; border:1px solid var(--line); border-radius:10px; background:#0a0a0a; color:var(--ink); }
-    .bell { position:relative; font-size:20px; color:var(--muted); }
-    .bell::after { content:""; position:absolute; right:-2px; top:0; width:9px; height:9px; border-radius:999px; background:var(--danger); }
-    .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#202020; color:var(--ink); font-size:18px; display:none; }
+    body.menu-open { overflow:hidden; }
+    .app { display:grid; grid-template-columns:320px minmax(0,1fr); min-height:100vh; min-width:0; }
+    .brand { height:64px; position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 18px 0 30px; border-bottom:1px solid var(--line); font-size:24px; font-weight:900; }
+    .top { height:64px; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:0; z-index:20; }
+    .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#202020; color:var(--ink); font-size:18px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; position:relative; z-index:55; cursor:pointer; }
+    .mobile-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.44); z-index:28; }
     .shell-side { background:#151515; border-right:1px solid var(--line); }
-    .layout { min-height:100vh; display:grid; grid-template-rows:64px minmax(0,1fr); }
+    .layout { min-height:100vh; display:grid; grid-template-rows:64px minmax(0,1fr); min-width:0; }
     .side { padding:20px 14px; display:grid; gap:8px; align-content:start; }
     .nav-group { margin:0 0 12px; color:#cfcfd2; font-size:15px; font-weight:800; }
-    .side button { width:100%; min-width:0; min-height:48px; display:flex; align-items:center; gap:14px; text-align:left; border:1px solid transparent; border-radius:10px; background:transparent; color:#c6c6c9; padding:0 16px; font-size:19px; font-weight:700; cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-    .side button .icon { width:22px; display:inline-flex; justify-content:center; color:#a7a7aa; }
+    .side button { width:100%; min-width:0; min-height:48px; display:flex; align-items:center; text-align:left; border:1px solid transparent; border-radius:10px; background:transparent; color:#c6c6c9; padding:0 18px; font-size:19px; font-weight:700; cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .side button .label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
     .side button.active { border-color:#fff; background:var(--active); color:var(--active-ink); }
-    .side button.active .icon { color:var(--active-ink); }
-    .content { min-width:0; min-height:0; background:var(--bg); }
-    .frame-wrap { display:none; height:100%; overflow:hidden; background:var(--bg); }
+    .content { min-width:0; min-height:0; background:var(--bg); overflow:hidden; }
+    .frame-wrap { display:none; height:100%; min-width:0; overflow:hidden; background:var(--bg); }
     .frame-wrap.active { display:block; }
-    iframe { width:100%; height:calc(100vh - 64px); border:0; background:var(--bg); }
-    body.sidebar-collapsed .app { grid-template-columns:84px minmax(0,1fr); }
+    iframe { width:100%; min-width:0; height:calc(100vh - 64px); border:0; background:var(--bg); overflow:auto; }
+    body.sidebar-collapsed .app { grid-template-columns:56px minmax(0,1fr); }
     body.sidebar-collapsed .brand { justify-content:center; padding:0; font-size:0; }
-    body.sidebar-collapsed .brand::before { content:"PG"; font-size:18px; }
+    body.sidebar-collapsed .hamburger { position:absolute; left:50%; top:50%; width:38px; height:36px; transform:translate(-50%,-50%); }
+    body.sidebar-collapsed .brand::before { content:""; }
     body.sidebar-collapsed .side { padding:20px 10px; }
     body.sidebar-collapsed .nav-group { display:none; }
-    body.sidebar-collapsed .side button { justify-content:center; padding:0; }
-    body.sidebar-collapsed .side button .label { display:none; }
+    body.sidebar-collapsed .side button { display:none; }
     @media (max-width:1024px) {
       body { overflow:auto; }
       .app { grid-template-columns:1fr; }
       .shell-side { position:fixed; inset:0 auto 0 0; width:300px; z-index:30; transform:translateX(-105%); transition:transform .2s ease; }
       body.menu-open .shell-side { transform:translateX(0); }
-      .hamburger { display:inline-flex; align-items:center; justify-content:center; }
-      .top { padding:0 16px; }
-      .top-tools .tool-pill, .top-tools .lang-label { display:none; }
-      iframe { height:calc(100vh - 64px); }
+      body.menu-open .mobile-backdrop { display:block; }
+      iframe { height:calc(100dvh - 64px); }
       body.sidebar-collapsed .app { grid-template-columns:1fr; }
     }
   </style>
@@ -52,35 +46,23 @@
 <body>
   <div class="app">
     <aside class="shell-side">
-      <div class="brand">Pogun Admin</div>
+      <div class="brand"><span>Pogun Admin</span><button id="menuBtn" class="hamburger" aria-label="menu">☰</button></div>
       <nav class="side" id="sideNav">
         <div class="nav-group">개요</div>
-        <button data-view="admin" data-short="A" aria-label="Admin" class="active"><span class="icon">▦</span><span class="label">Admin</span></button>
-        <button data-view="login" data-short="L" aria-label="Login"><span class="icon">⎋</span><span class="label">Login</span></button>
+        <button data-view="admin" data-short="A" aria-label="Admin" class="active"><span class="label">Admin</span></button>
+        <button data-view="login" data-short="L" aria-label="Login"><span class="label">Login</span></button>
         <div class="nav-group">운영</div>
-        <button data-view="notice" data-short="N" aria-label="Notice"><span class="icon">⌕</span><span class="label">실종 공고</span></button>
-        <button data-view="shelter" data-short="S" aria-label="Shelter"><span class="icon">□</span><span class="label">보호소 공고</span></button>
-        <button data-view="dm" data-short="D" aria-label="DM"><span class="icon">▱</span><span class="label">DM</span></button>
+        <button data-view="notice" data-short="N" aria-label="Notice"><span class="label">실종 공고</span></button>
+        <button data-view="shelter" data-short="S" aria-label="Shelter"><span class="label">보호소 공고</span></button>
+        <button data-view="dm" data-short="D" aria-label="DM"><span class="label">DM</span></button>
         <div class="nav-group">시스템 & 로그</div>
-        <button data-view="notification" data-short="F" aria-label="Notification"><span class="icon">♢</span><span class="label">알림</span></button>
+        <button data-view="notification" data-short="F" aria-label="Notification"><span class="label">알림</span></button>
       </nav>
     </aside>
+    <button id="menuBackdrop" class="mobile-backdrop" aria-label="menu backdrop"></button>
 
     <div class="layout">
-      <header class="top">
-        <div style="display:flex;align-items:center;gap:14px;">
-          <button id="menuBtn" class="hamburger" aria-label="menu">☰</button>
-          <strong>환영합니다, Local Admin</strong>
-        </div>
-        <div class="top-tools">
-          <span class="bell">♧</span>
-          <span class="lang-label">언어</span>
-          <span class="tool-pill">한국어 <span>⌄</span></span>
-          <span class="lang-label">테마</span>
-          <span class="tool-pill">다크 <span>⌄</span></span>
-          <span>로그아웃</span>
-        </div>
-      </header>
+      <header class="top"></header>
 
       <main class="content">
       <section id="view-admin" class="frame-wrap active">
@@ -107,8 +89,10 @@
 
   <script>
     const btn = document.getElementById("menuBtn");
+    const backdrop = document.getElementById("menuBackdrop");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
     const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
+    const VIEWS = ["admin","login","notice","dm","notification","shelter"];
     const query = new URLSearchParams(window.location.search);
     const backendBaseOverride = (query.get("backendBase") || query.get("apiBase") || "").trim();
     if (backendBaseOverride) {
@@ -120,10 +104,16 @@
         } catch {}
       });
     }
+    const normalizeView = (view) => VIEWS.includes(view) ? view : null;
+    const currentActiveView = () => {
+      const active = document.querySelector("#sideNav button.active");
+      return normalizeView(active?.dataset?.view) || "admin";
+    };
     const activate = (view) => {
-      navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-      ["admin","login","notice","dm","notification","shelter"].forEach((k) => {
-        document.getElementById(`view-${k}`).classList.toggle("active", k === view);
+      const safeView = normalizeView(view) || "admin";
+      navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === safeView));
+      VIEWS.forEach((k) => {
+        document.getElementById(`view-${k}`).classList.toggle("active", k === safeView);
       });
       if (window.matchMedia("(max-width:1024px)").matches) document.body.classList.remove("menu-open");
     };
@@ -132,21 +122,24 @@
       else document.body.classList.toggle("sidebar-collapsed");
     });
     navButtons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.view)));
+    backdrop.addEventListener("click", () => document.body.classList.remove("menu-open"));
     window.addEventListener("message", (event) => {
       if (event.origin !== window.location.origin) return;
       const data = event.data || {};
       if (data.type === "pogun-auth-required") {
-        try { window.sessionStorage.setItem(PENDING_VIEW_KEY, data.view || "notice"); } catch {}
+        try { window.sessionStorage.setItem(PENDING_VIEW_KEY, normalizeView(data.view) || currentActiveView()); } catch {}
         activate("login");
       }
       if (data.type === "pogun-open-view") {
-        const targetView = data.view || (() => {
-          try { return window.sessionStorage.getItem(PENDING_VIEW_KEY) || "notice"; } catch { return "notice"; }
+        const targetView = normalizeView(data.view) || (() => {
+          try { return normalizeView(window.sessionStorage.getItem(PENDING_VIEW_KEY)) || currentActiveView(); } catch { return currentActiveView(); }
         })();
         try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
         activate(targetView);
       }
     });
+    const initialView = normalizeView(query.get("view")) || "admin";
+    activate(initialView);
   </script>
 </body>
 </html>

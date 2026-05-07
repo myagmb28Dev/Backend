@@ -13,6 +13,9 @@ import com.example.pogun.dto.auth.WithdrawResponse;
 import com.example.pogun.config.KakaoLocalProperties;
 import com.example.pogun.service.auth.AuthService;
 import com.example.pogun.service.auth.FirebaseTokenRefreshService;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,7 +35,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.util.StringUtils;
 /**
  * HTTP/WebSocket 진입점을 담당하는 AuthController이다.
  */
@@ -75,7 +77,76 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    @Operation(summary = "Firebase 토큰 갱신", description = "Refresh Token으로 새 Firebase ID Token/Refresh Token을 발급합니다.")
+    @Operation(
+            summary = "Firebase 토큰 갱신",
+            description = """
+                    Firebase Refresh Token으로 새 Firebase ID Token과 새 Refresh Token을 발급합니다.
+
+                    refreshToken은 요청 body의 refreshToken 필드로 전달할 수 있고, body가 비어 있으면 HttpOnly 쿠키 pogun_refresh_token에서 읽습니다.
+                    성공 시 응답 data.refreshToken과 동일한 값을 HttpOnly 쿠키 pogun_refresh_token에도 다시 저장합니다.
+                    프론트는 data.idToken을 즉시 현재 Firebase ID Token으로 교체하고, data.refreshToken을 로컬 세션 저장소에 갱신해야 합니다.
+                    expiresIn은 초 단위이며 일반적으로 3600입니다.
+                    """
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "토큰 갱신 성공",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = TokenRefreshResponse.class),
+                            examples = @ExampleObject(
+                                    name = "success",
+                                    value = """
+                                            {
+                                              "ok": true,
+                                              "status": 200,
+                                              "message": "토큰 갱신 성공",
+                                              "data": {
+                                                "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6...",
+                                                "refreshToken": "AEu4IL1...new-refresh-token",
+                                                "expiresIn": 3600,
+                                                "firebaseUid": "qMm6je2Jaec97hJ5DWV9wpwYeYp2",
+                                                "projectId": "pogun-local"
+                                              },
+                                              "error": null,
+                                              "meta": {
+                                                "requestId": "req_123456789abc",
+                                                "timestamp": "2026-05-07T08:00:00Z"
+                                              }
+                                            }
+                                            """
+                            )
+                    )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = "리프레시 토큰 누락 또는 Firebase 갱신 실패",
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "refresh-token-required",
+                                    value = """
+                                            {
+                                              "ok": false,
+                                              "status": 401,
+                                              "message": "리프레시 토큰이 필요합니다.",
+                                              "data": null,
+                                              "error": {
+                                                "code": "TOKEN_REFRESH_REQUIRED",
+                                                "message": "리프레시 토큰이 필요합니다.",
+                                                "detail": null
+                                              },
+                                              "meta": {
+                                                "requestId": "req_123456789abc",
+                                                "timestamp": "2026-05-07T08:00:00Z"
+                                              }
+                                            }
+                                            """
+                            )
+                    )
+            )
+    })
     public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshFirebaseToken(
             @Valid @RequestBody TokenRefreshRequest request,
             HttpServletRequest servletRequest,
