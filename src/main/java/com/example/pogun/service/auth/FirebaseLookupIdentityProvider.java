@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +41,7 @@ public class FirebaseLookupIdentityProvider implements FirebaseIdentityProvider 
                     .bodyValue(Map.of("idToken", idToken))
                     .retrieve()
                     .bodyToMono(String.class)
-                    .block();
+                    .block(Duration.ofSeconds(10));
 
             if (responseBody == null || responseBody.isBlank()) {
                 throw new IllegalArgumentException("Firebase lookup 응답이 비어 있습니다.");
