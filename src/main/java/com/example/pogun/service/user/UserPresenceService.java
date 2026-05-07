@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,7 +39,7 @@ public class UserPresenceService {
         return touchInternal(firebaseUid, true);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = RuntimeException.class)
+    @Transactional(noRollbackFor = RuntimeException.class)
     public boolean touchFromAuthenticationSafely(String firebaseUid) {
         try {
             return touchInternal(firebaseUid, true);
