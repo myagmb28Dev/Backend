@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +40,8 @@ public class AdminAuthController {
                 throw ApiException.badRequest("FIREBASE_ID_TOKEN_REQUIRED", "firebaseIdToken은 필수입니다.");
             }
             data = adminAuthService.loginWithGoogleToken(request.getFirebaseIdToken(), httpRequest);
+        } catch (DataAccessException e) {
+            throw ApiException.internal("ADMIN_DB_UNAVAILABLE", "DB 연결이 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {

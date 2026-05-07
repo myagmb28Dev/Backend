@@ -84,22 +84,22 @@
 
       <main class="content">
       <section id="view-admin" class="frame-wrap active">
-        <iframe src="/full_compact/pages/admin-flow.html" title="admin"></iframe>
+        <iframe data-view-frame="admin" src="/full_compact/pages/admin-flow.html" title="admin"></iframe>
       </section>
       <section id="view-login" class="frame-wrap">
-        <iframe src="/full_compact/pages/login-flow.html" title="login"></iframe>
+        <iframe data-view-frame="login" src="/full_compact/pages/login-flow.html" title="login"></iframe>
       </section>
       <section id="view-notice" class="frame-wrap">
-        <iframe src="/full_compact/pages/notice-flow.html" title="notice"></iframe>
+        <iframe data-view-frame="notice" src="/full_compact/pages/notice-flow.html" title="notice"></iframe>
       </section>
       <section id="view-dm" class="frame-wrap">
-        <iframe src="/full_compact/pages/dm-flow.html" title="dm"></iframe>
+        <iframe data-view-frame="dm" src="/full_compact/pages/dm-flow.html" title="dm"></iframe>
       </section>
       <section id="view-notification" class="frame-wrap">
-        <iframe src="/full_compact/pages/notification-flow.html" title="notification"></iframe>
+        <iframe data-view-frame="notification" src="/full_compact/pages/notification-flow.html" title="notification"></iframe>
       </section>
       <section id="view-shelter" class="frame-wrap">
-        <iframe src="/full_compact/pages/shelter-flow.html" title="shelter"></iframe>
+        <iframe data-view-frame="shelter" src="/full_compact/pages/shelter-flow.html" title="shelter"></iframe>
       </section>
       </main>
     </div>
@@ -109,6 +109,17 @@
     const btn = document.getElementById("menuBtn");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
     const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
+    const query = new URLSearchParams(window.location.search);
+    const backendBaseOverride = (query.get("backendBase") || query.get("apiBase") || "").trim();
+    if (backendBaseOverride) {
+      document.querySelectorAll("iframe[data-view-frame]").forEach((frame) => {
+        try {
+          const url = new URL(frame.getAttribute("src"), window.location.origin);
+          url.searchParams.set("backendBase", backendBaseOverride);
+          frame.setAttribute("src", url.pathname + "?" + url.searchParams.toString());
+        } catch {}
+      });
+    }
     const activate = (view) => {
       navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
       ["admin","login","notice","dm","notification","shelter"].forEach((k) => {
