@@ -29,6 +29,7 @@ public class FirebaseLookupIdentityProvider implements FirebaseIdentityProvider 
         }
 
         try {
+            long startTime = System.currentTimeMillis();
             String responseBody = webClientBuilder
                     .baseUrl("https://identitytoolkit.googleapis.com")
                     .build()
@@ -42,6 +43,8 @@ public class FirebaseLookupIdentityProvider implements FirebaseIdentityProvider 
                     .retrieve()
                     .bodyToMono(String.class)
                     .block(Duration.ofSeconds(10));
+            long endTime = System.currentTimeMillis();
+            System.out.println("[FirebaseLookup] REST call completed in " + (endTime - startTime) + "ms");
 
             if (responseBody == null || responseBody.isBlank()) {
                 throw new IllegalArgumentException("Firebase lookup 응답이 비어 있습니다.");

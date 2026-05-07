@@ -62,8 +62,14 @@ public class AuthService {
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
     public AuthResponse loginOrSignUp(String idToken) {
+        long loginStart = System.currentTimeMillis();
+        log.info("[LOGIN] loginOrSignUp started, token_length={}", idToken.length());
         try {
+            long verifyStart = System.currentTimeMillis();
             FirebaseIdentityService.FirebaseIdentity identity = firebaseIdentityService.verifyIdToken(idToken);
+            long verifyEnd = System.currentTimeMillis();
+            log.info("[LOGIN] Firebase token verified in {}ms", verifyEnd - verifyStart);
+            
             String uid = identity.uid();
             String email = identity.email();
             String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE");

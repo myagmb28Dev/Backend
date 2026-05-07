@@ -52,9 +52,19 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "소셜 로그인", description = "Firebase ID Token을 사용하여 소셜 로그인을 수행합니다. 없으면 자동 가입됩니다.")
     public ResponseEntity<ApiResponse<AuthResponse>> firebaseSignIn(@Valid @RequestBody LoginRequest request) {
-        // Firebase 인증은 완료하되, 신규 사용자는 정식 회원 대신 온보딩 대기 상태로 둔다.
-        AuthResponse data = authService.loginOrSignUp(request.getFirebaseIdToken());
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그인 성공", data));
+        long startTime = System.currentTimeMillis();
+        log.info("[LOGIN_ENDPOINT] /api/auth/login request received");
+        try {
+            // Firebase 인증은 완료하되, 신규 사용자는 정식 회원 대신 온보딩 대기 상태로 둔다.
+            AuthResponse data = authService.loginOrSignUp(request.getFirebaseIdToken());
+            long endTime = System.currentTimeMillis();
+            log.info("[LOGIN_ENDPOINT] /api/auth/login completed in {}ms", endTime - startTime);
+            return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "로그인 성공", data));
+        } catch (Exception e) {
+            long errorTime = System.currentTimeMillis();
+            log.error("[LOGIN_ENDPOINT] /api/auth/login failed after {}ms: {}", errorTime - startTime, e.getMessage());
+            throw e;
+        }
     }
 
     @PostMapping("/admin/login")
