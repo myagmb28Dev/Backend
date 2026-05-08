@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -491,7 +492,17 @@ public class AdminAuthService {
 
     private String toJsonString(Object value) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(value);
+            Object normalized = value;
+            if (value instanceof Map<?, ?> rawMap) {
+                Map<String, Object> credential = new LinkedHashMap<>();
+                rawMap.forEach((k, v) -> credential.put(String.valueOf(k), v));
+                Object ext = credential.get("clientExtensionResults");
+                if (!(ext instanceof Map)) {
+                    credential.put("clientExtensionResults", Map.of());
+                }
+                normalized = credential;
+            }
+            return OBJECT_MAPPER.writeValueAsString(normalized);
         } catch (Exception e) {
             throw ApiException.badRequest("PASSKEY_INVALID", "PassKey 요청 형식이 올바르지 않습니다.");
         }
