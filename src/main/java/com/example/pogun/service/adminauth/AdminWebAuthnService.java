@@ -21,8 +21,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -33,95 +36,171 @@ public class AdminWebAuthnService {
     private final AdminCredentialRepository adminCredentialRepository;
 
     public PublicKeyCredentialCreationOptions startRegistration(User user, HttpServletRequest request) {
-        RelyingParty rp = relyingParty(request);
+        OriginRpContext context = resolveOriginRpContext(request);
+        RelyingParty rp = relyingParty(context);
+        adminCredentialRepository.setCurrentRpId(context.rpId());
         UserIdentity userIdentity = UserIdentity.builder()
                 .name(user.getEmail())
                 .displayName(user.getNickname() != null && !user.getNickname().isBlank() ? user.getNickname() : user.getEmail())
                 .id(new ByteArray(user.getId().toString().getBytes(StandardCharsets.UTF_8)))
                 .build();
-        return rp.startRegistration(StartRegistrationOptions.builder()
-                .user(userIdentity)
-                .authenticatorSelection(AuthenticatorSelectionCriteria.builder().build())
-                .extensions(RegistrationExtensionInputs.builder().build())
-                .build());
+        try {
+            return rp.startRegistration(StartRegistrationOptions.builder()
+                    .user(userIdentity)
+                    .authenticatorSelection(AuthenticatorSelectionCriteria.builder().build())
+                    .extensions(RegistrationExtensionInputs.builder().build())
+                    .build());
+        } finally {
+            adminCredentialRepository.clearCurrentRpId();
+        }
     }
 
     public AssertionRequest startAssertion(User user, HttpServletRequest request) {
-        return relyingParty(request).startAssertion(StartAssertionOptions.builder()
-                .username(user.getEmail())
-                .build());
+        OriginRpContext context = resolveOriginRpContext(request);
+        adminCredentialRepository.setCurrentRpId(context.rpId());
+        try {
+            return relyingParty(context).startAssertion(StartAssertionOptions.builder()
+                    .username(user.getEmail())
+                    .build());
+        } finally {
+            adminCredentialRepository.clearCurrentRpId();
+        }
     }
 
     public RegistrationFinishPayload finishRegistration(String requestJson, String credentialJson, HttpServletRequest request)
             throws RegistrationFailedException, com.fasterxml.jackson.core.JsonProcessingException, java.io.IOException {
+        OriginRpContext context = resolveOriginRpContext(request);
         PublicKeyCredentialCreationOptions registrationRequest = PublicKeyCredentialCreationOptions.fromJson(requestJson);
         var response = PublicKeyCredential.parseRegistrationResponseJson(credentialJson);
-        var result = relyingParty(request).finishRegistration(FinishRegistrationOptions.builder()
-                .request(registrationRequest)
-                .response(response)
-                .build());
-        return new RegistrationFinishPayload(
-                result.getKeyId().getId().getBase64Url(),
-                result.getPublicKeyCose().getBase64Url(),
-                result.getSignatureCount()
-        );
+        adminCredentialRepository.setCurrentRpId(context.rpId());
+        try {
+            var result = relyingParty(context).finishRegistration(FinishRegistrationOptions.builder()
+                    .request(registrationRequest)
+                    .response(response)
+                    .build());
+            return new RegistrationFinishPayload(
+                    result.getKeyId().getId().getBase64Url(),
+                    result.getPublicKeyCose().getBase64Url(),
+                    result.getSignatureCount(),
+                    context.rpId()
+            );
+        } finally {
+            adminCredentialRepository.clearCurrentRpId();
+        }
     }
 
     public AssertionFinishPayload finishAssertion(String requestJson, String credentialJson, HttpServletRequest request)
             throws AssertionFailedException, com.fasterxml.jackson.core.JsonProcessingException, java.io.IOException {
+        OriginRpContext context = resolveOriginRpContext(request);
         AssertionRequest assertionRequest = AssertionRequest.fromJson(requestJson);
         var response = PublicKeyCredential.parseAssertionResponseJson(credentialJson);
-        var result = relyingParty(request).finishAssertion(FinishAssertionOptions.builder()
-                .request(assertionRequest)
-                .response(response)
-                .build());
-        if (!result.isSuccess()) {
-            throw new AssertionFailedException("PassKey 검증에 실패했습니다.");
+        adminCredentialRepository.setCurrentRpId(context.rpId());
+        try {
+            var result = relyingParty(context).finishAssertion(FinishAssertionOptions.builder()
+                    .request(assertionRequest)
+                    .response(response)
+                    .build());
+            if (!result.isSuccess()) {
+                throw new AssertionFailedException("PassKey 검증에 실패했습니다.");
+            }
+            return new AssertionFinishPayload(
+                    result.getCredentialId().getBase64Url(),
+                    result.getSignatureCount(),
+                    context.rpId()
+            );
+        } finally {
+            adminCredentialRepository.clearCurrentRpId();
         }
-        return new AssertionFinishPayload(
-                result.getCredentialId().getBase64Url(),
-                result.getSignatureCount()
-        );
     }
 
-    private RelyingParty relyingParty(HttpServletRequest request) {
-        String rpId = resolveRpId(request);
-        Set<String> origins = resolveOrigins(request);
+    public String resolveRpId(HttpServletRequest request) {
+        return resolveOriginRpContext(request).rpId();
+    }
+
+    private RelyingParty relyingParty(OriginRpContext context) {
         return RelyingParty.builder()
                 .identity(RelyingPartyIdentity.builder()
-                        .id(rpId)
+                        .id(context.rpId())
                         .name(adminConsoleProperties.getWebauthn().getRpName())
                         .build())
                 .credentialRepository(adminCredentialRepository)
-                .origins(origins)
+                .origins(Set.of(context.origin()))
                 .allowOriginPort(true)
                 .allowOriginSubdomain(true)
                 .build();
     }
 
-    private String resolveRpId(HttpServletRequest request) {
-        String configured = adminConsoleProperties.getWebauthn().getRpId();
-        if (configured == null || configured.isBlank()) {
-            throw new IllegalStateException("Admin WebAuthn RP ID is not configured.");
+    private OriginRpContext resolveOriginRpContext(HttpServletRequest request) {
+        String origin = normalizeOrigin(request != null ? request.getHeader("Origin") : null);
+        if (origin == null && request != null) {
+            origin = normalizeOrigin(buildOriginFromRequest(request));
         }
-        return configured.trim();
-    }
+        if (origin == null) {
+            throw new IllegalStateException("Admin WebAuthn request origin is missing.");
+        }
 
-    private Set<String> resolveOrigins(HttpServletRequest request) {
-        Set<String> origins = new LinkedHashSet<>();
+        Map<String, String> originRpMappings = adminConsoleProperties.getWebauthn().getOriginRpMappings();
+        String mappedRpId = originRpMappings.get(origin);
+        if (mappedRpId != null && !mappedRpId.isBlank()) {
+            return new OriginRpContext(origin, mappedRpId.trim());
+        }
+
+        Set<String> allowedOrigins = new LinkedHashSet<>();
         adminConsoleProperties.getWebauthn().getAllowedOrigins().stream()
-                .filter(origin -> origin != null && !origin.isBlank())
-                .map(String::trim)
-                .forEach(origins::add);
-        if (origins.isEmpty()) {
-            throw new IllegalStateException("Admin WebAuthn allowed origins are not configured.");
+                .filter(v -> v != null && !v.isBlank())
+                .map(this::normalizeOrigin)
+                .filter(v -> v != null && !v.isBlank())
+                .forEach(allowedOrigins::add);
+        if (allowedOrigins.contains(origin)) {
+            String fallbackRpId = adminConsoleProperties.getWebauthn().getRpId();
+            if (fallbackRpId == null || fallbackRpId.isBlank()) {
+                throw new IllegalStateException("Admin WebAuthn RP ID is not configured for allowed origin fallback.");
+            }
+            return new OriginRpContext(origin, fallbackRpId.trim());
         }
-        return origins;
+        throw new IllegalStateException("Origin is not allowed for Admin WebAuthn: " + origin);
     }
 
-    public record RegistrationFinishPayload(String credentialId, String publicKeyCose, long signatureCount) {
+    private String buildOriginFromRequest(HttpServletRequest request) {
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        boolean defaultPort = ("https".equalsIgnoreCase(scheme) && port == 443)
+                || ("http".equalsIgnoreCase(scheme) && port == 80);
+        return scheme + "://" + host + (defaultPort ? "" : ":" + port);
     }
 
-    public record AssertionFinishPayload(String credentialId, long signatureCount) {
+    private String normalizeOrigin(String origin) {
+        if (origin == null || origin.isBlank()) {
+            return null;
+        }
+        String value = origin.trim();
+        if (value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        try {
+            URI uri = URI.create(value);
+            String scheme = uri.getScheme() == null ? null : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? null : uri.getHost().toLowerCase(Locale.ROOT);
+            int port = uri.getPort();
+            if (scheme == null || host == null) {
+                return value;
+            }
+            boolean defaultPort = ("https".equals(scheme) && port == 443)
+                    || ("http".equals(scheme) && port == 80)
+                    || port == -1;
+            return scheme + "://" + host + (defaultPort ? "" : ":" + port);
+        } catch (RuntimeException e) {
+            return value;
+        }
+    }
+
+    public record RegistrationFinishPayload(String credentialId, String publicKeyCose, long signatureCount, String rpId) {
+    }
+
+    public record AssertionFinishPayload(String credentialId, long signatureCount, String rpId) {
+    }
+
+    private record OriginRpContext(String origin, String rpId) {
     }
 }

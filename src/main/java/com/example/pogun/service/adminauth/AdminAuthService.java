@@ -211,6 +211,7 @@ public class AdminAuthService {
                     .credentialId(result.credentialId())
                     .publicKeyCose(result.publicKeyCose())
                     .signatureCount(result.signatureCount())
+                    .rpId(result.rpId())
                     .lastUsedAt(Instant.now())
                     .build());
             challenge.setUsedAt(Instant.now());
@@ -221,6 +222,13 @@ public class AdminAuthService {
             auditSafely("ADMIN_PASSKEY_REGISTERED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("credentialId", result.credentialId()), null);
             return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
         } catch (Exception e) {
+            log.warn("PassKey registration verify failed. userId={}, sessionId={}, origin={}, host={}, reason={}",
+                    session.getUser() != null ? session.getUser().getId() : null,
+                    session.getId(),
+                    request != null ? request.getHeader("Origin") : null,
+                    request != null ? request.getServerName() : null,
+                    e.getMessage(),
+                    e);
             throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 등록 검증에 실패했습니다.");
         }
     }
@@ -235,7 +243,12 @@ public class AdminAuthService {
                     toJsonString(requestBody.getCredential()),
                     request
             );
+            String requestRpId = adminWebAuthnService.resolveRpId(request);
             adminPasskeyRepository.findByCredentialId(result.credentialId()).ifPresent(passkey -> {
+                if (passkey.getRpId() != null && !passkey.getRpId().isBlank()
+                        && !passkey.getRpId().equalsIgnoreCase(requestRpId)) {
+                    throw ApiException.forbidden("PASSKEY_RP_MISMATCH", "현재 도메인과 일치하지 않는 PassKey입니다. 도메인별로 다시 등록해 주세요.");
+                }
                 passkey.setSignatureCount(result.signatureCount());
                 passkey.setLastUsedAt(Instant.now());
                 adminPasskeyRepository.save(passkey);
@@ -248,6 +261,13 @@ public class AdminAuthService {
             auditSafely("ADMIN_LOGIN_AUTHENTICATED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("email", session.getUser().getEmail()), null);
             return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
         } catch (Exception e) {
+            log.warn("PassKey MFA verify failed. userId={}, sessionId={}, origin={}, host={}, reason={}",
+                    session.getUser() != null ? session.getUser().getId() : null,
+                    session.getId(),
+                    request != null ? request.getHeader("Origin") : null,
+                    request != null ? request.getServerName() : null,
+                    e.getMessage(),
+                    e);
             throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 검증에 실패했습니다.");
         }
     }

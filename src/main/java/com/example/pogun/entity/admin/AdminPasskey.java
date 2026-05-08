@@ -63,6 +63,9 @@ public class AdminPasskey {
     @Column(name = "signature_count", nullable = false)
     private long signatureCount;
 
+    @Column(name = "rp_id", length = 255)
+    private String rpId;
+
     @Column(name = "label", length = 150)
     private String label;
 

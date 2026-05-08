@@ -13,6 +13,7 @@ import java.util.UUID;
 public interface AdminPasskeyRepository extends JpaRepository<AdminPasskey, UUID> {
     List<AdminPasskey> findByUserOrderByCreatedAtAsc(User user);
     Optional<AdminPasskey> findByCredentialId(String credentialId);
+    Optional<AdminPasskey> findByCredentialIdAndRpId(String credentialId, String rpId);
     boolean existsByUser(User user);
     long deleteByUser(User user);
 }

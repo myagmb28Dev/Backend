@@ -24,6 +24,19 @@ public class AdminCredentialRepository implements CredentialRepository {
 
     private final AdminPasskeyRepository adminPasskeyRepository;
     private final UserRepository userRepository;
+    private final ThreadLocal<String> currentRpId = new ThreadLocal<>();
+
+    public void setCurrentRpId(String rpId) {
+        if (rpId == null || rpId.isBlank()) {
+            currentRpId.remove();
+            return;
+        }
+        currentRpId.set(rpId.trim());
+    }
+
+    public void clearCurrentRpId() {
+        currentRpId.remove();
+    }
 
     @Override
     public Set<PublicKeyCredentialDescriptor> getCredentialIdsForUsername(String username) {
@@ -31,6 +44,7 @@ public class AdminCredentialRepository implements CredentialRepository {
                 .map(adminPasskeyRepository::findByUserOrderByCreatedAtAsc)
                 .orElseGet(java.util.List::of)
                 .stream()
+                .filter(this::matchesCurrentRpId)
                 .map(this::toDescriptor)
                 .flatMap(Optional::stream)
                 .collect(Collectors.toSet());
@@ -59,6 +73,7 @@ public class AdminCredentialRepository implements CredentialRepository {
         try {
             UUID userId = UUID.fromString(new String(userHandle.getBytes(), StandardCharsets.UTF_8));
             return adminPasskeyRepository.findByCredentialId(credentialId.getBase64Url())
+                    .filter(this::matchesCurrentRpId)
                     .filter(passkey -> passkey.getUser().getId().equals(userId))
                     .map(this::toRegisteredCredential);
         } catch (IllegalArgumentException e) {
@@ -69,9 +84,22 @@ public class AdminCredentialRepository implements CredentialRepository {
     @Override
     public Set<RegisteredCredential> lookupAll(ByteArray credentialId) {
         return adminPasskeyRepository.findByCredentialId(credentialId.getBase64Url())
+                .filter(this::matchesCurrentRpId)
                 .map(this::toRegisteredCredential)
                 .stream()
                 .collect(Collectors.toSet());
+    }
+
+    private boolean matchesCurrentRpId(AdminPasskey passkey) {
+        String rpId = currentRpId.get();
+        if (rpId == null || rpId.isBlank()) {
+            return true;
+        }
+        // legacy passkeys without rp_id remain usable until re-registration
+        if (passkey.getRpId() == null || passkey.getRpId().isBlank()) {
+            return true;
+        }
+        return rpId.equalsIgnoreCase(passkey.getRpId().trim());
     }
 
     private RegisteredCredential toRegisteredCredential(AdminPasskey passkey) {
