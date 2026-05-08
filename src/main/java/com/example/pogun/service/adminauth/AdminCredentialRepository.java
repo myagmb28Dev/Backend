@@ -95,11 +95,9 @@ public class AdminCredentialRepository implements CredentialRepository {
         if (rpId == null || rpId.isBlank()) {
             return true;
         }
-        // legacy passkeys without rp_id remain usable until re-registration
-        if (passkey.getRpId() == null || passkey.getRpId().isBlank()) {
-            return true;
-        }
-        return rpId.equalsIgnoreCase(passkey.getRpId().trim());
+        return passkey.getRpId() != null
+                && !passkey.getRpId().isBlank()
+                && rpId.equalsIgnoreCase(passkey.getRpId().trim());
     }
 
     private RegisteredCredential toRegisteredCredential(AdminPasskey passkey) {

@@ -610,9 +610,9 @@ public class AdminAuthService {
         }
         final String targetRpId = requestRpId;
         return passkeys.stream().anyMatch(passkey ->
-                passkey.getRpId() == null
-                        || passkey.getRpId().isBlank()
-                        || passkey.getRpId().equalsIgnoreCase(targetRpId)
+                passkey.getRpId() != null
+                        && !passkey.getRpId().isBlank()
+                        && passkey.getRpId().equalsIgnoreCase(targetRpId)
         );
     }
 }

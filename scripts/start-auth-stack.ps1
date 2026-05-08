@@ -106,6 +106,9 @@ function Start-DockerServices {
     }
 
     $composeCmd = Resolve-DockerComposeCommand
+    if ($composeCmd -is [string]) {
+        $composeCmd = @($composeCmd)
+    }
     $serviceArgs = @()
     foreach ($svc in $Services) {
         if (-not [string]::IsNullOrWhiteSpace($svc)) {
