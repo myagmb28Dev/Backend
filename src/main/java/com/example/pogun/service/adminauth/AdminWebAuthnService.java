@@ -152,11 +152,15 @@ public class AdminWebAuthnService {
                 .filter(v -> v != null && !v.isBlank())
                 .forEach(allowedOrigins::add);
         if (allowedOrigins.contains(origin)) {
-            String fallbackRpId = adminConsoleProperties.getWebauthn().getRpId();
-            if (fallbackRpId == null || fallbackRpId.isBlank()) {
-                throw new IllegalStateException("Admin WebAuthn RP ID is not configured for allowed origin fallback.");
+            String rpIdFromOrigin = extractHost(origin);
+            if (rpIdFromOrigin != null && !rpIdFromOrigin.isBlank()) {
+                return new OriginRpContext(origin, rpIdFromOrigin);
             }
-            return new OriginRpContext(origin, fallbackRpId.trim());
+            String fallbackRpId = adminConsoleProperties.getWebauthn().getRpId();
+            if (fallbackRpId != null && !fallbackRpId.isBlank()) {
+                return new OriginRpContext(origin, fallbackRpId.trim());
+            }
+            throw new IllegalStateException("Admin WebAuthn RP ID is not configured for allowed origin fallback.");
         }
         throw new IllegalStateException("Origin is not allowed for Admin WebAuthn: " + origin);
     }
@@ -192,6 +196,15 @@ public class AdminWebAuthnService {
             return scheme + "://" + host + (defaultPort ? "" : ":" + port);
         } catch (RuntimeException e) {
             return value;
+        }
+    }
+
+    private String extractHost(String origin) {
+        try {
+            URI uri = URI.create(origin);
+            return uri.getHost() == null ? null : uri.getHost().toLowerCase(Locale.ROOT);
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

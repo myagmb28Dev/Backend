@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -525,7 +526,7 @@ public class AdminAuthService {
                 adminPasskeyRepository.deleteByUser(admin);
                 hasPasskey = false;
             } else {
-                hasPasskey = adminPasskeyRepository.existsByUser(admin);
+                hasPasskey = hasUsablePasskeyForCurrentRp(admin, request);
             }
         } catch (RuntimeException e) {
             throw ApiException.internal("ADMIN_PASSKEY_STATE_FAILED", "관리자 PassKey 상태 조회에 실패했습니다.");
@@ -594,5 +595,24 @@ public class AdminAuthService {
         } catch (RuntimeException e) {
             log.warn("Admin audit ignored action={} targetId={} reason={}", action, targetId, e.getClass().getSimpleName());
         }
+    }
+
+    private boolean hasUsablePasskeyForCurrentRp(User admin, HttpServletRequest request) {
+        String requestRpId = null;
+        try {
+            requestRpId = adminWebAuthnService.resolveRpId(request);
+        } catch (RuntimeException ignored) {
+            // If RP ID resolution fails unexpectedly at login, fall back to legacy behavior.
+        }
+        Collection<AdminPasskey> passkeys = adminPasskeyRepository.findByUserOrderByCreatedAtAsc(admin);
+        if (requestRpId == null || requestRpId.isBlank()) {
+            return !passkeys.isEmpty();
+        }
+        final String targetRpId = requestRpId;
+        return passkeys.stream().anyMatch(passkey ->
+                passkey.getRpId() == null
+                        || passkey.getRpId().isBlank()
+                        || passkey.getRpId().equalsIgnoreCase(targetRpId)
+        );
     }
 }
