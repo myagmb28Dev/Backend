@@ -372,8 +372,11 @@ public class NotificationService {
         return "registration-token-not-registered".equalsIgnoreCase(errorCode)
                 || "unregistered".equalsIgnoreCase(errorCode)
                 || "UNREGISTERED".equalsIgnoreCase(errorCode)
+                || "notregistered".equalsIgnoreCase(errorCode)
                 || message.toLowerCase().contains("registration-token-not-registered")
-                || message.toLowerCase().contains("requested entity was not found");
+                || message.toLowerCase().contains("requested entity was not found")
+                || message.toLowerCase().contains("device unregistered")
+                || message.toLowerCase().contains("notregistered");
     }
 
     private String trimToNull(String value) {
