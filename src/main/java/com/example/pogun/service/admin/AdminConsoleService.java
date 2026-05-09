@@ -408,8 +408,10 @@ public class AdminConsoleService {
         adminSecurityService.require(AdminPermission.NOTIFICATION_SEND);
         User actor = adminSecurityService.getCurrentAdminUser();
         List<User> recipients = resolveNotificationRecipients(request);
-        int deliveredCount = 0;
+        int deliveredCount = 0; // token-level delivered count
+        int deliveredUserCount = 0; // recipient-level delivered count
         int failedCount = 0;
+        int skippedCount = 0;
         for (User recipient : recipients) {
             try {
                 Map<String, Object> response = notificationService.createAndSendNotification(
@@ -424,13 +426,27 @@ public class AdminConsoleService {
                         null,
                         Map.of("target", request.getTarget())
                 );
-                deliveredCount += ((Number) response.getOrDefault("sentCount", 0)).intValue();
-                if (Boolean.TRUE.equals(response.get("skipped"))) {
-                    failedCount++;
+                int sentCount = ((Number) response.getOrDefault("sentCount", 0)).intValue();
+                deliveredCount += sentCount;
+                if (sentCount > 0) {
+                    deliveredUserCount++;
+                } else if (Boolean.TRUE.equals(response.get("skipped"))) {
+                    skippedCount++;
                 }
             } catch (Exception e) {
                 failedCount++;
             }
+        }
+
+        String dispatchStatus;
+        if (failedCount > 0 && deliveredCount == 0) {
+            dispatchStatus = "FAILED";
+        } else if (deliveredCount == 0 && skippedCount > 0 && failedCount == 0) {
+            dispatchStatus = "SKIPPED";
+        } else if (failedCount > 0 || skippedCount > 0) {
+            dispatchStatus = "PARTIAL";
+        } else {
+            dispatchStatus = "SENT";
         }
 
         AdminNotificationDispatch dispatch = adminNotificationDispatchRepository.save(AdminNotificationDispatch.builder()
@@ -438,16 +454,21 @@ public class AdminConsoleService {
                 .targetKind(request.getTarget())
                 .title(request.getTitle())
                 .body(request.getBody())
-                .status(failedCount > 0 ? "PARTIAL" : "SENT")
+                .status(dispatchStatus)
                 .targetCount(recipients.size())
                 .deliveredCount(deliveredCount)
                 .failedCount(failedCount)
                 .metadata(writeJson(orderedMap(
                         "target", request.getTarget(),
-                        "userIds", request.getUserIds() == null ? List.of() : request.getUserIds()
+                        "userIds", request.getUserIds() == null ? List.of() : request.getUserIds(),
+                        "deliveredUserCount", deliveredUserCount,
+                        "skippedCount", skippedCount
                 )))
                 .build());
         Map<String, Object> response = toDispatchMap(dispatch);
+        response.put("targetCount", recipients.size());
+        response.put("deliveredUserCount", deliveredUserCount);
+        response.put("skippedCount", skippedCount);
         try {
             adminAuditService.log("ADMIN_NOTIFICATION_SENT", "NOTIFICATION_DISPATCH", dispatch.getId().toString(), null, response, null);
         } catch (RuntimeException ignored) {
