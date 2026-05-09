@@ -27,6 +27,7 @@ import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -34,6 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -49,12 +51,16 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
+    private static final int MIN_INACTIVE_TOKEN_RETENTION_DAYS = 1;
+
     private final NotificationRepository notificationRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final UserNotificationSettingRepository userNotificationSettingRepository;
     private final UserRepository userRepository;
     private final FirebaseMessaging firebaseMessaging;
     private final UserPresenceService userPresenceService;
+    @Value("${app.notification.inactive-token-retention-days:30}")
+    private int inactiveTokenRetentionDays;
 
     @Transactional(readOnly = true)
     public NotificationListResponse getNotifications(int page, int size, Boolean unreadOnly, String type) {
@@ -177,13 +183,27 @@ public class NotificationService {
                 .orElseGet(() -> UserFcmToken.builder().token(token).build());
 
         fcmToken.setUser(user);
-        fcmToken.setPlatform(trimToNull(request.getOrDefault("platform", "ANDROID")));
-        fcmToken.setDeviceId(trimToNull(request.get("deviceId")));
+        String platform = trimToNull(request.getOrDefault("platform", "ANDROID"));
+        String deviceId = trimToNull(request.get("deviceId"));
+        fcmToken.setPlatform(platform);
+        fcmToken.setDeviceId(deviceId);
         fcmToken.setActive(true);
         fcmToken.setLastSeenAt(Instant.now());
 
         UserFcmToken saved = userFcmTokenRepository.save(fcmToken);
+        deactivateOtherActiveTokensForSameDevice(user, platform, deviceId, token);
         return new NotificationFcmTokenResponse(saved.getId(), saved.getToken(), saved.getPlatform(), saved.getDeviceId(), saved.getActive());
+    }
+
+    @Transactional
+    public int purgeInactiveFcmTokens() {
+        int retentionDays = Math.max(inactiveTokenRetentionDays, MIN_INACTIVE_TOKEN_RETENTION_DAYS);
+        Instant cutoff = Instant.now().minus(Duration.ofDays(retentionDays));
+        int deleted = userFcmTokenRepository.deleteInactiveTokensOlderThan(cutoff);
+        if (deleted > 0) {
+            log.info("inactive fcm tokens purged. retentionDays={}, deleted={}", retentionDays, deleted);
+        }
+        return deleted;
     }
 
     // 알림 레코드는 항상 먼저 저장하고, 푸시 발송은 best-effort 로 처리해 실패해도 알림 목록 조회는 가능하게 둔다.
@@ -387,5 +407,24 @@ public class NotificationService {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void deactivateOtherActiveTokensForSameDevice(User user, String platform, String deviceId, String currentToken) {
+        if (user == null || platform == null || deviceId == null || currentToken == null) {
+            return;
+        }
+        int deactivated = userFcmTokenRepository.deactivateActiveTokensForSameDeviceExcludingCurrent(
+                user,
+                platform,
+                deviceId,
+                currentToken
+        );
+        if (deactivated > 0) {
+            log.info("deactivated stale active tokens for same device. userId={}, platform={}, deviceId={}, deactivated={}",
+                    user.getId(),
+                    platform,
+                    deviceId,
+                    deactivated);
+        }
     }
 }

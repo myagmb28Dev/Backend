@@ -2,11 +2,13 @@ package com.example.pogun.service.notification;
 
 import com.example.pogun.entity.notification.Notification;
 import com.example.pogun.entity.notification.UserNotificationSetting;
+import com.example.pogun.entity.notification.UserFcmToken;
 import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
@@ -14,12 +16,17 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.messaging.FirebaseMessaging;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +34,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -65,6 +74,11 @@ class NotificationServiceTest {
                     user.getLastActiveAt()
             );
         });
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -247,6 +261,72 @@ class NotificationServiceTest {
 
         assertThat(result).containsEntry("reason", "NO_ACTIVE_TOKENS");
         verify(userFcmTokenRepository).findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver);
+    }
+
+    @Test
+    void upsertFcmToken_deactivatesOtherActiveTokensForSameDevice() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        when(userFcmTokenRepository.findByToken("token-1")).thenReturn(Optional.empty());
+        when(userFcmTokenRepository.save(any(UserFcmToken.class))).thenAnswer(invocation -> {
+            UserFcmToken token = invocation.getArgument(0);
+            token.setId(UUID.randomUUID());
+            return token;
+        });
+        when(userFcmTokenRepository.deactivateActiveTokensForSameDeviceExcludingCurrent(
+                eq(user), eq("WEB"), eq("device-1"), eq("token-1")
+        )).thenReturn(2);
+
+        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(Map.of(
+                "token", "token-1",
+                "platform", "WEB",
+                "deviceId", "device-1"
+        ));
+
+        assertThat(response.active()).isTrue();
+        verify(userFcmTokenRepository).deactivateActiveTokensForSameDeviceExcludingCurrent(
+                user, "WEB", "device-1", "token-1"
+        );
+    }
+
+    @Test
+    void upsertFcmToken_skipsDeviceDedupWhenDeviceIdMissing() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        when(userFcmTokenRepository.findByToken("token-2")).thenReturn(Optional.empty());
+        when(userFcmTokenRepository.save(any(UserFcmToken.class))).thenAnswer(invocation -> {
+            UserFcmToken token = invocation.getArgument(0);
+            token.setId(UUID.randomUUID());
+            return token;
+        });
+
+        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(Map.of(
+                "token", "token-2",
+                "platform", "WEB"
+        ));
+
+        assertThat(response.active()).isTrue();
+        verify(userFcmTokenRepository, never()).deactivateActiveTokensForSameDeviceExcludingCurrent(
+                any(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void purgeInactiveFcmTokens_deletesOlderInactiveTokens() {
+        when(userFcmTokenRepository.deleteInactiveTokensOlderThan(any())).thenReturn(7);
+
+        int deleted = notificationService.purgeInactiveFcmTokens();
+
+        assertThat(deleted).isEqualTo(7);
+        verify(userFcmTokenRepository).deleteInactiveTokensOlderThan(
+                argThat(cutoff -> cutoff.isBefore(Instant.now().minus(20, ChronoUnit.HOURS)))
+        );
     }
 
     @Test

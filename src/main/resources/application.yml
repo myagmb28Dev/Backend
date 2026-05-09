@@ -79,6 +79,9 @@ app:
   presence:
     store: redis
     reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS:3000}
+  notification:
+    inactive-token-retention-days: ${APP_NOTIFICATION_INACTIVE_TOKEN_RETENTION_DAYS:30}
+    inactive-token-cleanup-cron: ${APP_NOTIFICATION_INACTIVE_TOKEN_CLEANUP_CRON:0 10 4 * * *}
 
 decorator:
   datasource:
