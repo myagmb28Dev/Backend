@@ -3,6 +3,7 @@ package com.example.pogun.controller.notification;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
 import com.example.pogun.dto.notification.NotificationResponse;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 /**
  * HTTP/WebSocket 진입점을 담당하는 NotificationController이다.
  */
@@ -91,5 +93,26 @@ public class NotificationController {
         // 같은 사용자의 여러 디바이스를 구분할 수 있게 token 외에 platform/deviceId도 함께 갱신한다.
         NotificationFcmTokenResponse data = notificationService.upsertFcmToken(request.toRequestMap());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "FCM 토큰 갱신 성공", data));
+    }
+
+    @GetMapping("/devices")
+    @Operation(summary = "알림 기기 목록 조회", description = "현재 로그인 사용자의 FCM 기기 토큰 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<List<NotificationDeviceResponse>>> devices() {
+        List<NotificationDeviceResponse> data = notificationService.getDevices();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 기기 목록 조회 성공", data));
+    }
+
+    @PatchMapping("/devices/{tokenId}/mute")
+    @Operation(summary = "기기 알림 끄기", description = "특정 기기의 알림 수신을 끕니다.")
+    public ResponseEntity<ApiResponse<NotificationDeviceResponse>> muteDevice(@PathVariable UUID tokenId) {
+        NotificationDeviceResponse data = notificationService.setDeviceActive(tokenId, false);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기기 알림 끄기 성공", data));
+    }
+
+    @PatchMapping("/devices/{tokenId}/unmute")
+    @Operation(summary = "기기 알림 켜기", description = "특정 기기의 알림 수신을 켭니다.")
+    public ResponseEntity<ApiResponse<NotificationDeviceResponse>> unmuteDevice(@PathVariable UUID tokenId) {
+        NotificationDeviceResponse data = notificationService.setDeviceActive(tokenId, true);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기기 알림 켜기 성공", data));
     }
 }

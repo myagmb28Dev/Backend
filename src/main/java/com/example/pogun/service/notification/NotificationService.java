@@ -1,6 +1,7 @@
 package com.example.pogun.service.notification;
 
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
 import com.example.pogun.dto.notification.NotificationResponse;
@@ -193,6 +194,33 @@ public class NotificationService {
         UserFcmToken saved = userFcmTokenRepository.save(fcmToken);
         deactivateOtherActiveTokensForSameDevice(user, platform, deviceId, token);
         return new NotificationFcmTokenResponse(saved.getId(), saved.getToken(), saved.getPlatform(), saved.getDeviceId(), saved.getActive());
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationDeviceResponse> getDevices() {
+        User user = getCurrentUser();
+        return userFcmTokenRepository.findByUserOrderByUpdatedAtDesc(user)
+                .stream()
+                .map(this::toDeviceResponse)
+                .toList();
+    }
+
+    @Transactional
+    public NotificationDeviceResponse setDeviceActive(UUID tokenId, boolean active) {
+        User user = getCurrentUser();
+        UserFcmToken token = userFcmTokenRepository.findByIdAndUser(tokenId, user)
+                .orElseThrow(() -> ApiException.notFound("DEVICE_TOKEN_NOT_FOUND", "기기 토큰을 찾을 수 없습니다."));
+        token.setActive(active);
+        UserFcmToken saved = userFcmTokenRepository.save(token);
+        if (active) {
+            deactivateOtherActiveTokensForSameDevice(
+                    user,
+                    trimToNull(saved.getPlatform()),
+                    trimToNull(saved.getDeviceId()),
+                    saved.getToken()
+            );
+        }
+        return toDeviceResponse(saved);
     }
 
     @Transactional
@@ -426,5 +454,16 @@ public class NotificationService {
                     deviceId,
                     deactivated);
         }
+    }
+
+    private NotificationDeviceResponse toDeviceResponse(UserFcmToken token) {
+        return new NotificationDeviceResponse(
+                token.getId(),
+                token.getPlatform(),
+                token.getDeviceId(),
+                token.getActive(),
+                token.getLastSeenAt(),
+                token.getUpdatedAt()
+        );
     }
 }

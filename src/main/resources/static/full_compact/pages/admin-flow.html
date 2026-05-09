@@ -396,6 +396,11 @@
       <div id="trafficToolbar" class="traffic-toolbar"></div>
       <pre id="trafficOutput" class="debug-pane">[]</pre>
     </section>
+
+    <section class="card" style="margin-top:14px;">
+      <h2>전체 API req/res 콘솔</h2>
+      <pre id="trafficAllOutput" class="debug-pane">[]</pre>
+    </section>
   </div>
 </main>
 
@@ -429,6 +434,9 @@
   }
   function printTraffic(lines) {
     el("trafficOutput").textContent = lines.join("\n");
+  }
+  function printAllTraffic(lines) {
+    el("trafficAllOutput").textContent = lines.join("\n");
   }
   function escapeHtml(value) {
     return String(value ?? "")
@@ -1388,13 +1396,7 @@
 
   let trafficPollTimer = null;
   const trafficSeen = new Set();
-  let trafficTrackedApiPrefixes = [
-    "/api/missing-pets",
-    "/api/shelter",
-    "/api/reports",
-    "/api/admin",
-    "/api/community"
-  ];
+  let trafficTrackedApiPrefixes = ["/api/"];
   let selectedTrafficGroup = "ALL";
 
   function isTrackedApiPath(path) {
@@ -1420,7 +1422,31 @@
     const status = row.status ?? "-";
     const duration = row.durationMs ?? "-";
     const source = row.remoteAddr || "-";
-    return `${ts} ${dir} ${method} ${path} status=${status} durationMs=${duration} source=${source}`;
+    const reqBody = formatTrafficPayload("req", row.requestBody);
+    const resBody = formatTrafficPayload("res", row.responseBody);
+    return [
+      `=== ${dir} ${method} ${path} ===`,
+      `time: ${ts}`,
+      `status: ${status}`,
+      `durationMs: ${duration}`,
+      `source: ${source}`,
+      reqBody,
+      resBody,
+      "----------------------------------------",
+      ""
+    ].filter(Boolean).join("\n");
+  }
+
+  function formatTrafficPayload(label, payload) {
+    if (!payload) return "";
+    const raw = String(payload).trim();
+    if (!raw) return "";
+    try {
+      const parsed = JSON.parse(raw);
+      return `${label.toUpperCase()}\n${JSON.stringify(parsed, null, 2)}`;
+    } catch {
+      return `${label.toUpperCase()}\n${raw}`;
+    }
   }
 
   async function loadTrafficConfig() {
@@ -1498,6 +1524,10 @@
         freshByGroup.set(group, (freshByGroup.get(group) || 0) + 1);
       }
     }
+    const allRows = rows
+      .slice(0, 100)
+      .map(buildTrafficLine);
+    printAllTraffic(allRows);
     renderTrafficToolbar(grouped);
     renderTrafficOutput(grouped);
     renderTrafficAlert(totalFresh, freshByGroup);

@@ -9,6 +9,7 @@ import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
@@ -326,6 +327,58 @@ class NotificationServiceTest {
         assertThat(deleted).isEqualTo(7);
         verify(userFcmTokenRepository).deleteInactiveTokensOlderThan(
                 argThat(cutoff -> cutoff.isBefore(Instant.now().minus(20, ChronoUnit.HOURS)))
+        );
+    }
+
+    @Test
+    void getDevices_returnsOwnedTokens() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        UserFcmToken token = UserFcmToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .token("token-1")
+                .platform("WEB")
+                .deviceId("device-1")
+                .active(true)
+                .lastSeenAt(Instant.now())
+                .build();
+        when(userFcmTokenRepository.findByUserOrderByUpdatedAtDesc(user)).thenReturn(List.of(token));
+
+        List<NotificationDeviceResponse> result = notificationService.getDevices();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).deviceId()).isEqualTo("device-1");
+        assertThat(result.get(0).active()).isTrue();
+    }
+
+    @Test
+    void setDeviceActive_updatesOwnedTokenState() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        UUID tokenId = UUID.randomUUID();
+        UserFcmToken token = UserFcmToken.builder()
+                .id(tokenId)
+                .user(user)
+                .token("token-1")
+                .platform("WEB")
+                .deviceId("device-1")
+                .active(true)
+                .build();
+        when(userFcmTokenRepository.findByIdAndUser(tokenId, user)).thenReturn(Optional.of(token));
+        when(userFcmTokenRepository.save(token)).thenReturn(token);
+
+        NotificationDeviceResponse response = notificationService.setDeviceActive(tokenId, false);
+
+        assertThat(response.active()).isFalse();
+        verify(userFcmTokenRepository, never()).deactivateActiveTokensForSameDeviceExcludingCurrent(
+                any(), any(), any(), any()
         );
     }
 

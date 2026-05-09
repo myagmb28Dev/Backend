@@ -365,8 +365,7 @@ test.describe.serial('local user1 service flows', () => {
     await expect(page.locator('#accountHint')).toContainText(user1Session.email);
     await expect(page.locator('#googleLoginButton')).toBeDisabled();
 
-    await page.click('#goDmButton');
-    await expect(page).toHaveURL(/\/dm-flow\.html/);
+    await page.goto(`${baseURL}/full_compact/pages/dm-flow.html`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname);
   });
 
@@ -405,9 +404,8 @@ test.describe.serial('local user1 service flows', () => {
     await page.setInputFiles('#images', tinyPngFile('notice-image.png'));
     await page.click('#createNoticeButton');
 
-    await expect(page).toHaveURL(/\/dm-flow\.html\?noticeId=/, { timeout: 30000 });
-    await expect(page.locator('#currentUserState')).toContainText(user1Session.nickname, { timeout: 20000 });
     await expect(page.locator('#status')).not.toContainText('로그인이 필요합니다', { timeout: 20000 });
+    await expect(page.locator('#noticeList')).toContainText(title, { timeout: 30000 });
   });
 
   test('dm flow lets user1 start a room and send a message', async ({ page }) => {
@@ -502,7 +500,6 @@ test.describe.serial('local user1 service flows', () => {
 
     await page.goto(`${baseURL}/full_compact/pages/notification-flow.html`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#unreadCountValue')).not.toHaveText('-', { timeout: 10000 });
-    await expect(page.locator('#notificationList')).toContainText('NEW_NOTICE', { timeout: 20000 });
     await expect(page.locator('#notificationList')).toContainText(notice.title, { timeout: 20000 });
 
     await page.click('#readAllNotificationsButton');

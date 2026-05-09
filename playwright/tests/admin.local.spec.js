@@ -212,6 +212,20 @@ test.describe.serial('admin local small-step flow', () => {
     expect(session.body?.data?.authenticated).toBe(true);
   });
 
+  test('step3c: traffic logs include admin auth refresh req/res traces', async () => {
+    const logs = await api('/api/admin/traffic/logs?limit=200', { token: adminAccessToken });
+    expect(logs.status).toBe(200);
+    const rows = Array.isArray(logs.body?.data) ? logs.body.data : [];
+    const refreshRows = rows.filter((row) => String(row?.path || '').includes('/api/admin/auth/refresh'));
+    expect(refreshRows.length).toBeGreaterThan(0);
+    const inboundRefresh = refreshRows.find((row) => row?.direction === 'IN' && row?.method === 'POST');
+    expect(Boolean(inboundRefresh)).toBe(true);
+    console.log('[traffic-step3c] inboundRefresh=', JSON.stringify(inboundRefresh));
+    // request/response body fields are expected to exist after traffic req/res capture enhancement.
+    expect(Object.prototype.hasOwnProperty.call(inboundRefresh || {}, 'requestBody')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(inboundRefresh || {}, 'responseBody')).toBe(true);
+  });
+
   test('step4: logout then mfa passkey login works', async ({ page }) => {
     await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
     const { cdp, authenticatorId } = await installVirtualAuthenticator(page);

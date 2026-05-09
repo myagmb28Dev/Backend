@@ -14,17 +14,13 @@ public class AdminTrafficLogService {
 
     private static final int MAX_LOG_SIZE = 500;
     private static final List<String> TRACKED_API_PREFIXES = List.of(
-            "/api/missing-pets",
-            "/api/shelter",
-            "/api/reports",
-            "/api/admin",
-            "/api/community"
+            "/api/"
     );
 
     private final Deque<Map<String, Object>> logs = new ArrayDeque<>();
     private final Object lock = new Object();
 
-    public void recordInbound(String method, String path, int status, long durationMs, String remoteAddr) {
+    public void recordInbound(String method, String path, int status, long durationMs, String remoteAddr, String requestBody, String responseBody) {
         push(Map.of(
                 "direction", "IN",
                 "timestamp", Instant.now().toString(),
@@ -32,7 +28,9 @@ public class AdminTrafficLogService {
                 "path", path,
                 "status", status,
                 "durationMs", durationMs,
-                "remoteAddr", remoteAddr == null ? "" : remoteAddr
+                "remoteAddr", remoteAddr == null ? "" : remoteAddr,
+                "requestBody", requestBody == null ? "" : requestBody,
+                "responseBody", responseBody == null ? "" : responseBody
         ));
     }
 

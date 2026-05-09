@@ -21,6 +21,8 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
     Optional<UserFcmToken> findByToken(String token);
 
     List<UserFcmToken> findByUserAndActiveTrueOrderByUpdatedAtDesc(User user);
+    List<UserFcmToken> findByUserOrderByUpdatedAtDesc(User user);
+    Optional<UserFcmToken> findByIdAndUser(UUID id, User user);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
