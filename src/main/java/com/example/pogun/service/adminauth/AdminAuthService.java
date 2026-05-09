@@ -187,6 +187,12 @@ public class AdminAuthService {
     public AdminPasskeyOptionsResponse beginPasskeyRegistration(HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.PASSKEY_ENROLL);
         User admin = session.getUser();
+        log.info("PassKey registration options requested. userId={}, sessionId={}, stage={}, origin={}, host={}",
+                admin != null ? admin.getId() : null,
+                session.getId(),
+                session.getStage(),
+                request != null ? request.getHeader("Origin") : null,
+                request != null ? request.getServerName() : null);
         invalidatePendingChallenges(session, AdminAuthChallengeType.PASSKEY_REGISTRATION);
         var options = adminWebAuthnService.startRegistration(admin, request);
         AdminAuthChallenge challenge = adminAuthChallengeRepository.save(AdminAuthChallenge.builder()
@@ -196,6 +202,12 @@ public class AdminAuthService {
                 .requestJson(serializeOptions(options))
                 .expiresAt(Instant.now().plusSeconds(adminConsoleProperties.getChallengeTtlSeconds()))
                 .build());
+        log.info("PassKey registration challenge issued. userId={}, sessionId={}, challengeId={}, challengeType={}, expiresAt={}",
+                admin != null ? admin.getId() : null,
+                session.getId(),
+                challenge.getId(),
+                challenge.getType(),
+                challenge.getExpiresAt());
         return new AdminPasskeyOptionsResponse(challenge.getId(), readJson(serializeCreateOptions(options)));
     }
 
@@ -203,6 +215,16 @@ public class AdminAuthService {
     public AdminAuthSessionResponse finishPasskeyRegistration(AdminPasskeyCredentialRequest requestBody, HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.PASSKEY_ENROLL);
         AdminAuthChallenge challenge = getChallenge(session, requestBody.getChallengeId(), AdminAuthChallengeType.PASSKEY_REGISTRATION);
+        log.info("PassKey registration verify requested. userId={}, sessionId={}, stage={}, challengeId={}, challengeType={}, challengeExpiresAt={}, challengeUsedAt={}, origin={}, host={}",
+                session.getUser() != null ? session.getUser().getId() : null,
+                session.getId(),
+                session.getStage(),
+                challenge.getId(),
+                challenge.getType(),
+                challenge.getExpiresAt(),
+                challenge.getUsedAt(),
+                request != null ? request.getHeader("Origin") : null,
+                request != null ? request.getServerName() : null);
         try {
             AdminWebAuthnService.RegistrationFinishPayload result = adminWebAuthnService.finishRegistration(
                     challenge.getRequestJson(),
@@ -223,16 +245,29 @@ public class AdminAuthService {
             adminAuthChallengeRepository.save(challenge);
             adminSessionRepository.save(session);
             auditSafely("ADMIN_PASSKEY_REGISTERED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("credentialId", result.credentialId()), null);
-            return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
-        } catch (Exception e) {
-            log.warn("PassKey registration verify failed. userId={}, sessionId={}, origin={}, host={}, reason={}",
+            log.info("PassKey registration verify succeeded. userId={}, sessionId={}, challengeId={}, credentialId={}, rpId={}",
                     session.getUser() != null ? session.getUser().getId() : null,
                     session.getId(),
+                    challenge.getId(),
+                    result.credentialId(),
+                    result.rpId());
+            return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
+        } catch (Exception e) {
+            String failureCode = mapPasskeyFailureCode(e);
+            log.warn("PassKey registration verify failed. failureCode={}, userId={}, sessionId={}, stage={}, challengeId={}, challengeType={}, challengeExpiresAt={}, challengeUsedAt={}, origin={}, host={}, reason={}",
+                    failureCode,
+                    session.getUser() != null ? session.getUser().getId() : null,
+                    session.getId(),
+                    session.getStage(),
+                    challenge.getId(),
+                    challenge.getType(),
+                    challenge.getExpiresAt(),
+                    challenge.getUsedAt(),
                     request != null ? request.getHeader("Origin") : null,
                     request != null ? request.getServerName() : null,
                     e.getMessage(),
                     e);
-            throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 등록 검증에 실패했습니다.");
+            throw ApiException.forbidden(failureCode, "PassKey 등록 검증에 실패했습니다.");
         }
     }
 
@@ -240,6 +275,16 @@ public class AdminAuthService {
     public AdminAuthSessionResponse verifyMfa(AdminPasskeyCredentialRequest requestBody, HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.MFA_PENDING);
         AdminAuthChallenge challenge = getChallenge(session, requestBody.getChallengeId(), AdminAuthChallengeType.PASSKEY_ASSERTION);
+        log.info("PassKey MFA verify requested. userId={}, sessionId={}, stage={}, challengeId={}, challengeType={}, challengeExpiresAt={}, challengeUsedAt={}, origin={}, host={}",
+                session.getUser() != null ? session.getUser().getId() : null,
+                session.getId(),
+                session.getStage(),
+                challenge.getId(),
+                challenge.getType(),
+                challenge.getExpiresAt(),
+                challenge.getUsedAt(),
+                request != null ? request.getHeader("Origin") : null,
+                request != null ? request.getServerName() : null);
         try {
             AdminWebAuthnService.AssertionFinishPayload result = adminWebAuthnService.finishAssertion(
                     challenge.getRequestJson(),
@@ -262,16 +307,29 @@ public class AdminAuthService {
             adminAuthChallengeRepository.save(challenge);
             adminSessionRepository.save(session);
             auditSafely("ADMIN_LOGIN_AUTHENTICATED", "ADMIN_USER", session.getUser().getId().toString(), null, Map.of("email", session.getUser().getEmail()), null);
-            return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
-        } catch (Exception e) {
-            log.warn("PassKey MFA verify failed. userId={}, sessionId={}, origin={}, host={}, reason={}",
+            log.info("PassKey MFA verify succeeded. userId={}, sessionId={}, challengeId={}, credentialId={}, rpId={}",
                     session.getUser() != null ? session.getUser().getId() : null,
                     session.getId(),
+                    challenge.getId(),
+                    result.credentialId(),
+                    result.rpId());
+            return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
+        } catch (Exception e) {
+            String failureCode = mapPasskeyFailureCode(e);
+            log.warn("PassKey MFA verify failed. failureCode={}, userId={}, sessionId={}, stage={}, challengeId={}, challengeType={}, challengeExpiresAt={}, challengeUsedAt={}, origin={}, host={}, reason={}",
+                    failureCode,
+                    session.getUser() != null ? session.getUser().getId() : null,
+                    session.getId(),
+                    session.getStage(),
+                    challenge.getId(),
+                    challenge.getType(),
+                    challenge.getExpiresAt(),
+                    challenge.getUsedAt(),
                     request != null ? request.getHeader("Origin") : null,
                     request != null ? request.getServerName() : null,
                     e.getMessage(),
                     e);
-            throw ApiException.forbidden("PASSKEY_INVALID", "PassKey 검증에 실패했습니다.");
+            throw ApiException.forbidden(failureCode, "PassKey 검증에 실패했습니다.");
         }
     }
 
@@ -634,8 +692,39 @@ public class AdminAuthService {
         if (pending.isEmpty()) {
             return;
         }
+        log.info("Invalidating pending passkey challenges. sessionId={}, type={}, pendingCount={}",
+                session.getId(),
+                type,
+                pending.size());
         Instant now = Instant.now();
         pending.forEach(challenge -> challenge.setUsedAt(now));
         adminAuthChallengeRepository.saveAll(pending);
+    }
+
+    private String mapPasskeyFailureCode(Exception exception) {
+        if (exception instanceof ApiException apiException) {
+            if (apiException.getCode() != null && !apiException.getCode().isBlank()) {
+                return apiException.getCode();
+            }
+            return "PASSKEY_INVALID";
+        }
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return "PASSKEY_INVALID";
+        }
+        String normalized = message.toLowerCase();
+        if (normalized.contains("incorrect challenge")) {
+            return "PASSKEY_CHALLENGE_INVALID";
+        }
+        if (normalized.contains("origin")) {
+            return "PASSKEY_ORIGIN_MISMATCH";
+        }
+        if (normalized.contains("rp id") || normalized.contains("rpid")) {
+            return "PASSKEY_RP_MISMATCH";
+        }
+        if (normalized.contains("timed out") || normalized.contains("expired")) {
+            return "PASSKEY_EXPIRED_CHALLENGE";
+        }
+        return "PASSKEY_INVALID";
     }
 }
