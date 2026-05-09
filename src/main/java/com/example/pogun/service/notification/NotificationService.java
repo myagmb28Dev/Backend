@@ -244,7 +244,7 @@ public class NotificationService {
                 }
             });
         }
-        Notification notification = notificationRepository.save(Notification.builder()
+        Notification notification = notificationRepository.saveAndFlush(Notification.builder()
                 .user(managedUser)
                 .actorUser(managedActorUser)
                 .type(type)

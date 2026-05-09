@@ -122,7 +122,7 @@ class NotificationServiceTest {
                 .thenReturn(Optional.empty());
         when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
         when(notificationRepository.findByDedupKey("report-key")).thenReturn(Optional.empty());
-        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+        when(notificationRepository.saveAndFlush(any(Notification.class))).thenAnswer(invocation -> {
             Notification notification = invocation.getArgument(0);
             notification.setId(UUID.randomUUID());
             return notification;
@@ -144,7 +144,7 @@ class NotificationServiceTest {
 
         assertThat(result).containsEntry("sentCount", 0);
         assertThat(result).containsEntry("activeTokenCount", 0);
-        verify(notificationRepository).save(any(Notification.class));
+        verify(notificationRepository).saveAndFlush(any(Notification.class));
     }
 
     @Test

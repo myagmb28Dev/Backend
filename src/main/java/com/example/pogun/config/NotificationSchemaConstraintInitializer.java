@@ -32,40 +32,76 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                 return;
             }
 
-            String constraintDefinition = jdbcTemplate.query(
+            String targetTypeConstraintDefinition = jdbcTemplate.query(
                     """
                             select pg_get_constraintdef(oid)
                             from pg_constraint
                             where conrelid = 'notifications'::regclass
                               and conname = 'notifications_target_type_check'
+                    """,
+                    resultSet -> resultSet.next() ? resultSet.getString(1) : ""
+            );
+
+            if (targetTypeConstraintDefinition == null || !targetTypeConstraintDefinition.contains("ADMIN_BROADCAST")) {
+                jdbcTemplate.execute("alter table notifications drop constraint if exists notifications_target_type_check");
+                jdbcTemplate.execute(
+                        """
+                                alter table notifications
+                                add constraint notifications_target_type_check
+                                check (target_type in (
+                                    'PET_NOTICE',
+                                    'NOTICE_CHAT_ROOM',
+                                    'NOTICE_CHAT_MESSAGE',
+                                    'COMMUNITY_POST',
+                                    'COMMUNITY_COMMENT',
+                                    'REPORT',
+                                    'USER',
+                                    'ADMIN_BROADCAST'
+                                ))
+                                """
+                );
+                log.info("notifications_target_type_check constraint synchronized with NotificationTargetType enum values");
+            }
+
+            String typeConstraintDefinition = jdbcTemplate.query(
+                    """
+                            select pg_get_constraintdef(oid)
+                            from pg_constraint
+                            where conrelid = 'notifications'::regclass
+                              and conname = 'notifications_type_check'
                             """,
                     resultSet -> resultSet.next() ? resultSet.getString(1) : ""
             );
 
-            if (constraintDefinition != null && constraintDefinition.contains("ADMIN_BROADCAST")) {
-                return;
+            if (typeConstraintDefinition == null || !typeConstraintDefinition.contains("ADMIN_BROADCAST")) {
+                jdbcTemplate.execute("alter table notifications drop constraint if exists notifications_type_check");
+                jdbcTemplate.execute(
+                        """
+                                alter table notifications
+                                add constraint notifications_type_check
+                                check (type in (
+                                    'NEW_NOTICE',
+                                    'NOTICE_COMMENT',
+                                    'NOTICE_STATUS_CHANGED',
+                                    'COMMUNITY_COMMENT',
+                                    'DM_MESSAGE',
+                                    'DM_REPLY',
+                                    'COMMUNITY_POST_LIKE',
+                                    'COMMUNITY_POST_COMMENT',
+                                    'COMMUNITY_COMMENT_REPLY',
+                                    'REPORT_RESULT',
+                                    'FOLLOWED_ME',
+                                    'FOLLOWING_POST',
+                                    'COMMUNITY_NOTICE',
+                                    'CHAT_ROOM_NOTICE',
+                                    'ADMIN_BROADCAST'
+                                ))
+                                """
+                );
+                log.info("notifications_type_check constraint synchronized with NotificationType enum values");
             }
-
-            jdbcTemplate.execute("alter table notifications drop constraint if exists notifications_target_type_check");
-            jdbcTemplate.execute(
-                    """
-                            alter table notifications
-                            add constraint notifications_target_type_check
-                            check (target_type in (
-                                'PET_NOTICE',
-                                'NOTICE_CHAT_ROOM',
-                                'NOTICE_CHAT_MESSAGE',
-                                'COMMUNITY_POST',
-                                'COMMUNITY_COMMENT',
-                                'REPORT',
-                                'USER',
-                                'ADMIN_BROADCAST'
-                            ))
-                            """
-            );
-            log.info("notifications_target_type_check constraint synchronized with NotificationTargetType enum values");
         } catch (RuntimeException e) {
-            log.warn("Failed to synchronize notifications_target_type_check constraint", e);
+            log.warn("Failed to synchronize notifications check constraints", e);
         }
     }
 }
