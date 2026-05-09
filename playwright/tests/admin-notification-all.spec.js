@@ -116,6 +116,11 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
   expect(sendRes.status(), await sendRes.text()).toBe(200);
   const sendJson = await sendRes.json();
   expect(sendJson?.ok).toBe(true);
+  expect(sendJson?.data?.targetCount).toBeGreaterThanOrEqual(1);
+  expect(sendJson?.data?.deliveredUserCount).toBeGreaterThanOrEqual(0);
+  expect(sendJson?.data?.skippedCount).toBeGreaterThanOrEqual(0);
+  expect(sendJson?.data?.failedTokenCount).toBeGreaterThanOrEqual(0);
+  expect(sendJson?.data?.failedCount).toBeGreaterThanOrEqual(0);
 
   const specificRes = await request.post('http://localhost:8081/api/admin/notifications/send', {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -129,6 +134,10 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
   expect(specificRes.status(), await specificRes.text()).toBe(200);
   const specificJson = await specificRes.json();
   expect(specificJson?.ok).toBe(true);
+  expect(specificJson?.data?.targetCount).toBe(1);
+  expect(specificJson?.data?.deliveredUserCount).toBeGreaterThanOrEqual(0);
+  expect(specificJson?.data?.skippedCount).toBeGreaterThanOrEqual(0);
+  expect(specificJson?.data?.failedTokenCount).toBeGreaterThanOrEqual(0);
 
   const specificNormalUserRes = await request.post('http://localhost:8081/api/admin/notifications/send', {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -142,6 +151,10 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
   expect(specificNormalUserRes.status(), await specificNormalUserRes.text()).toBe(200);
   const specificNormalUserJson = await specificNormalUserRes.json();
   expect(specificNormalUserJson?.ok).toBe(true);
+  expect(specificNormalUserJson?.data?.targetCount).toBe(1);
+  expect(specificNormalUserJson?.data?.deliveredUserCount).toBeGreaterThanOrEqual(0);
+  expect(specificNormalUserJson?.data?.skippedCount).toBeGreaterThanOrEqual(0);
+  expect(specificNormalUserJson?.data?.failedTokenCount).toBeGreaterThanOrEqual(0);
 
   const specificMissingUsersRes = await request.post('http://localhost:8081/api/admin/notifications/send', {
     headers: { Authorization: `Bearer ${adminToken}` },

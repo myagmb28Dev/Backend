@@ -228,7 +228,10 @@ public class NotificationService {
                 response.put("notification", toNotificationResponse(existing));
                 response.put("sentCount", 0);
                 response.put("activeTokenCount", 0);
+                response.put("failedTokenCount", 0);
                 response.put("deduplicated", true);
+                response.put("skipped", true);
+                response.put("reason", "DEDUPLICATED");
                 return response;
             }
         }
@@ -258,6 +261,8 @@ public class NotificationService {
             response.put("notification", toNotificationResponse(notification));
             response.put("sentCount", 0);
             response.put("activeTokenCount", 0);
+            response.put("failedTokenCount", 0);
+            response.put("skipped", true);
             response.put("pushSkipped", true);
             response.put("reason", "USER_IDLE");
             return response;
@@ -265,6 +270,8 @@ public class NotificationService {
 
         List<UserFcmToken> activeTokens = userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedUser);
         int sentCount = 0;
+        int failedTokenCount = 0;
+        int deactivatedTokenCount = 0;
 
         for (UserFcmToken fcmToken : activeTokens) {
             try {
@@ -281,11 +288,13 @@ public class NotificationService {
                 firebaseMessaging.send(builder.build());
                 sentCount++;
             } catch (Exception e) {
+                failedTokenCount++;
                 log.warn("FCM 발송 실패. tokenId={}, reason={}", fcmToken.getId(), e.getMessage());
                 if (e instanceof FirebaseMessagingException firebaseMessagingException && isUnregisteredToken(firebaseMessagingException)) {
                     // 만료된 토큰은 즉시 비활성화해 이후 대량 발송에서 같은 실패를 반복하지 않게 한다.
                     fcmToken.setActive(false);
                     userFcmTokenRepository.save(fcmToken);
+                    deactivatedTokenCount++;
                 }
             }
         }
@@ -293,6 +302,12 @@ public class NotificationService {
         response.put("notification", toNotificationResponse(notification));
         response.put("sentCount", sentCount);
         response.put("activeTokenCount", activeTokens.size());
+        response.put("failedTokenCount", failedTokenCount);
+        response.put("deactivatedTokenCount", deactivatedTokenCount);
+        if (activeTokens.isEmpty()) {
+            response.put("skipped", true);
+            response.put("reason", "NO_ACTIVE_TOKENS");
+        }
         return response;
     }
 
@@ -353,7 +368,12 @@ public class NotificationService {
 
     private boolean isUnregisteredToken(FirebaseMessagingException e) {
         String errorCode = String.valueOf(e.getErrorCode());
-        return "registration-token-not-registered".equalsIgnoreCase(errorCode) || "unregistered".equalsIgnoreCase(errorCode);
+        String message = String.valueOf(e.getMessage());
+        return "registration-token-not-registered".equalsIgnoreCase(errorCode)
+                || "unregistered".equalsIgnoreCase(errorCode)
+                || "UNREGISTERED".equalsIgnoreCase(errorCode)
+                || message.toLowerCase().contains("registration-token-not-registered")
+                || message.toLowerCase().contains("requested entity was not found");
     }
 
     private String trimToNull(String value) {

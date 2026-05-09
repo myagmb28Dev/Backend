@@ -411,6 +411,7 @@ public class AdminConsoleService {
         int deliveredCount = 0; // token-level delivered count
         int deliveredUserCount = 0; // recipient-level delivered count
         int failedCount = 0;
+        int failedTokenCount = 0;
         int skippedCount = 0;
         for (User recipient : recipients) {
             try {
@@ -427,10 +428,16 @@ public class AdminConsoleService {
                         Map.of("target", request.getTarget())
                 );
                 int sentCount = ((Number) response.getOrDefault("sentCount", 0)).intValue();
+                int recipientFailedTokenCount = ((Number) response.getOrDefault("failedTokenCount", 0)).intValue();
                 deliveredCount += sentCount;
+                failedTokenCount += recipientFailedTokenCount;
                 if (sentCount > 0) {
                     deliveredUserCount++;
                 } else if (Boolean.TRUE.equals(response.get("skipped"))) {
+                    skippedCount++;
+                } else if (recipientFailedTokenCount > 0) {
+                    failedCount++;
+                } else {
                     skippedCount++;
                 }
             } catch (Exception e) {
@@ -443,7 +450,7 @@ public class AdminConsoleService {
             dispatchStatus = "FAILED";
         } else if (deliveredCount == 0 && skippedCount > 0 && failedCount == 0) {
             dispatchStatus = "SKIPPED";
-        } else if (failedCount > 0 || skippedCount > 0) {
+        } else if (failedCount > 0 || skippedCount > 0 || failedTokenCount > 0) {
             dispatchStatus = "PARTIAL";
         } else {
             dispatchStatus = "SENT";
@@ -462,13 +469,15 @@ public class AdminConsoleService {
                         "target", request.getTarget(),
                         "userIds", request.getUserIds() == null ? List.of() : request.getUserIds(),
                         "deliveredUserCount", deliveredUserCount,
-                        "skippedCount", skippedCount
+                        "skippedCount", skippedCount,
+                        "failedTokenCount", failedTokenCount
                 )))
                 .build());
         Map<String, Object> response = toDispatchMap(dispatch);
         response.put("targetCount", recipients.size());
         response.put("deliveredUserCount", deliveredUserCount);
         response.put("skippedCount", skippedCount);
+        response.put("failedTokenCount", failedTokenCount);
         try {
             adminAuditService.log("ADMIN_NOTIFICATION_SENT", "NOTIFICATION_DISPATCH", dispatch.getId().toString(), null, response, null);
         } catch (RuntimeException ignored) {
@@ -1179,6 +1188,7 @@ public class AdminConsoleService {
     }
 
     private Map<String, Object> toDispatchMap(AdminNotificationDispatch dispatch) {
+        Map<String, Object> metadata = readJsonMap(dispatch.getMetadata());
         return orderedMap(
                 "id", dispatch.getId(),
                 "title", dispatch.getTitle(),
@@ -1186,8 +1196,12 @@ public class AdminConsoleService {
                 "target", dispatch.getTargetKind(),
                 "sentAt", dispatch.getCreatedAt(),
                 "status", dispatch.getStatus(),
+                "targetCount", dispatch.getTargetCount(),
                 "deliveredCount", dispatch.getDeliveredCount(),
-                "failedCount", dispatch.getFailedCount()
+                "failedCount", dispatch.getFailedCount(),
+                "deliveredUserCount", metadataNumber(metadata, "deliveredUserCount", dispatch.getDeliveredCount()),
+                "skippedCount", metadataNumber(metadata, "skippedCount", 0),
+                "failedTokenCount", metadataNumber(metadata, "failedTokenCount", 0)
         );
     }
 
@@ -1320,6 +1334,32 @@ public class AdminConsoleService {
         } catch (JsonProcessingException e) {
             return value;
         }
+    }
+
+    private Map<String, Object> readJsonMap(String value) {
+        if (blank(value)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(value, Map.class);
+        } catch (JsonProcessingException e) {
+            return Map.of();
+        }
+    }
+
+    private int metadataNumber(Map<String, Object> metadata, String key, int defaultValue) {
+        Object value = metadata.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 
     private Map<String, Object> mapOfNullable(Object value) {
