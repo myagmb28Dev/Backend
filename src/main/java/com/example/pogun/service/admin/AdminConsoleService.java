@@ -435,9 +435,9 @@ public class AdminConsoleService {
                     deliveredUserCount++;
                 } else if (Boolean.TRUE.equals(response.get("skipped"))) {
                     skippedCount++;
-                } else if (recipientFailedTokenCount > 0) {
-                    failedCount++;
                 } else {
+                    // Token-level failures are tracked separately in failedTokenCount.
+                    // User-level failedCount is reserved for actual server-side exceptions.
                     skippedCount++;
                 }
             } catch (Exception e) {
