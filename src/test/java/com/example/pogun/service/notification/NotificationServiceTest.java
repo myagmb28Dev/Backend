@@ -6,11 +6,14 @@ import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.messaging.FirebaseMessaging;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +27,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,9 +45,27 @@ class NotificationServiceTest {
     private UserRepository userRepository;
     @Mock
     private FirebaseMessaging firebaseMessaging;
+    @Mock
+    private UserPresenceService userPresenceService;
 
     @InjectMocks
     private NotificationService notificationService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(userPresenceService.snapshot(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            UserAvailabilityStatus manual = user.getAvailabilityStatus() == null
+                    ? UserAvailabilityStatus.ONLINE
+                    : user.getAvailabilityStatus();
+            return new UserPresenceService.PresenceSnapshot(
+                    manual,
+                    UserAvailabilityStatus.ONLINE,
+                    "connected",
+                    user.getLastActiveAt()
+            );
+        });
+    }
 
     @Test
     void createAndSendNotification_skipsWhenTypeSettingDisabled() {
@@ -145,6 +167,86 @@ class NotificationServiceTest {
         assertThat(result).containsEntry("sentCount", 0);
         assertThat(result).containsEntry("activeTokenCount", 0);
         verify(notificationRepository).saveAndFlush(any(Notification.class));
+    }
+
+    @Test
+    void createAndSendNotification_skipsPushWhenEffectivePresenceIsIdle() {
+        User receiver = user("receiver");
+        User managedReceiver = user("receiver-managed");
+        managedReceiver.setId(receiver.getId());
+        UUID targetId = UUID.randomUUID();
+        when(userNotificationSettingRepository.findByUserAndType(receiver, NotificationType.ADMIN_BROADCAST))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
+        when(notificationRepository.saveAndFlush(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            notification.setId(UUID.randomUUID());
+            return notification;
+        });
+        when(userPresenceService.snapshot(managedReceiver)).thenReturn(new UserPresenceService.PresenceSnapshot(
+                UserAvailabilityStatus.IDLE,
+                UserAvailabilityStatus.IDLE,
+                "connected",
+                managedReceiver.getLastActiveAt()
+        ));
+
+        Map<String, Object> result = notificationService.createAndSendNotification(
+                receiver,
+                null,
+                NotificationType.ADMIN_BROADCAST,
+                NotificationTargetType.ADMIN_BROADCAST,
+                targetId,
+                "title",
+                "body",
+                NotificationPriority.HIGH,
+                null,
+                Map.of("target", "ALL")
+        );
+
+        assertThat(result).containsEntry("skipped", true);
+        assertThat(result).containsEntry("reason", "USER_IDLE");
+        assertThat(result).containsEntry("effectivePresenceStatus", "IDLE");
+        verify(userFcmTokenRepository, never()).findByUserAndActiveTrueOrderByUpdatedAtDesc(any());
+    }
+
+    @Test
+    void createAndSendNotification_doesNotSkipPushWhenEffectivePresenceIsOffline() {
+        User receiver = user("receiver");
+        User managedReceiver = user("receiver-managed");
+        managedReceiver.setId(receiver.getId());
+        managedReceiver.setAvailabilityStatus(UserAvailabilityStatus.IDLE);
+        UUID targetId = UUID.randomUUID();
+        when(userNotificationSettingRepository.findByUserAndType(receiver, NotificationType.ADMIN_BROADCAST))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
+        when(notificationRepository.saveAndFlush(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            notification.setId(UUID.randomUUID());
+            return notification;
+        });
+        when(userPresenceService.snapshot(managedReceiver)).thenReturn(new UserPresenceService.PresenceSnapshot(
+                UserAvailabilityStatus.IDLE,
+                UserAvailabilityStatus.OFFLINE,
+                "disconnected",
+                managedReceiver.getLastActiveAt()
+        ));
+        when(userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver)).thenReturn(List.of());
+
+        Map<String, Object> result = notificationService.createAndSendNotification(
+                receiver,
+                null,
+                NotificationType.ADMIN_BROADCAST,
+                NotificationTargetType.ADMIN_BROADCAST,
+                targetId,
+                "title",
+                "body",
+                NotificationPriority.HIGH,
+                null,
+                Map.of("target", "ALL")
+        );
+
+        assertThat(result).containsEntry("reason", "NO_ACTIVE_TOKENS");
+        verify(userFcmTokenRepository).findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver);
     }
 
     @Test

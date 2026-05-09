@@ -21,6 +21,7 @@ import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
@@ -53,6 +54,7 @@ public class NotificationService {
     private final UserNotificationSettingRepository userNotificationSettingRepository;
     private final UserRepository userRepository;
     private final FirebaseMessaging firebaseMessaging;
+    private final UserPresenceService userPresenceService;
 
     @Transactional(readOnly = true)
     public NotificationListResponse getNotifications(int page, int size, Boolean unreadOnly, String type) {
@@ -257,7 +259,8 @@ public class NotificationService {
                 .metadata(safeMetadata)
                 .build());
 
-        if (managedUser.getAvailabilityStatus() == UserAvailabilityStatus.IDLE) {
+        UserAvailabilityStatus effectivePresenceStatus = userPresenceService.snapshot(managedUser).availabilityStatus();
+        if (effectivePresenceStatus == UserAvailabilityStatus.IDLE) {
             response.put("notification", toNotificationResponse(notification));
             response.put("sentCount", 0);
             response.put("activeTokenCount", 0);
@@ -265,6 +268,7 @@ public class NotificationService {
             response.put("skipped", true);
             response.put("pushSkipped", true);
             response.put("reason", "USER_IDLE");
+            response.put("effectivePresenceStatus", effectivePresenceStatus.name());
             return response;
         }
 
