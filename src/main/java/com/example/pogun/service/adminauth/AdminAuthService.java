@@ -187,6 +187,7 @@ public class AdminAuthService {
     public AdminPasskeyOptionsResponse beginPasskeyRegistration(HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.PASSKEY_ENROLL);
         User admin = session.getUser();
+        invalidatePendingChallenges(session, AdminAuthChallengeType.PASSKEY_REGISTRATION);
         var options = adminWebAuthnService.startRegistration(admin, request);
         AdminAuthChallenge challenge = adminAuthChallengeRepository.save(AdminAuthChallenge.builder()
                 .session(session)
@@ -360,6 +361,7 @@ public class AdminAuthService {
     }
 
     private AdminPasskeyOptionsResponse startAssertion(AdminSession session, User admin, HttpServletRequest request) {
+        invalidatePendingChallenges(session, AdminAuthChallengeType.PASSKEY_ASSERTION);
         var assertion = adminWebAuthnService.startAssertion(admin, request);
         AdminAuthChallenge challenge = adminAuthChallengeRepository.save(AdminAuthChallenge.builder()
                 .session(session)
@@ -625,5 +627,15 @@ public class AdminAuthService {
                         && !passkey.getRpId().isBlank()
                         && passkey.getRpId().equalsIgnoreCase(targetRpId)
         );
+    }
+
+    private void invalidatePendingChallenges(AdminSession session, AdminAuthChallengeType type) {
+        List<AdminAuthChallenge> pending = adminAuthChallengeRepository.findBySessionAndTypeAndUsedAtIsNull(session, type);
+        if (pending.isEmpty()) {
+            return;
+        }
+        Instant now = Instant.now();
+        pending.forEach(challenge -> challenge.setUsedAt(now));
+        adminAuthChallengeRepository.saveAll(pending);
     }
 }

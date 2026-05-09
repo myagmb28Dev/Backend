@@ -6,6 +6,7 @@ import com.example.pogun.dto.user.UserAvailabilityResponse;
 import com.example.pogun.dto.user.UserAvailabilityUpdateRequest;
 import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
 import com.example.pogun.dto.user.UserFollowResponse;
+import com.example.pogun.dto.user.UserLocationUpdateRequest;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
 import com.example.pogun.service.user.UserFollowService;
@@ -101,6 +102,13 @@ public class UserController {
         UserFollowResponse data = userFollowService.follow(userId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "팔로우 성공", data));
+    }
+
+    @PatchMapping("/me/location")
+    @Operation(summary = "내 위치 재설정", description = "로그인한 사용자의 좌표(x,y)로 행정구역을 다시 계산해 위치 정보를 갱신합니다.")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> updateLocation(@Valid @RequestBody UserLocationUpdateRequest request) {
+        UserProfileResponse updated = userService.updateLocation(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "위치 재설정 성공", updated));
     }
 
     @DeleteMapping("/{userId}/follow")

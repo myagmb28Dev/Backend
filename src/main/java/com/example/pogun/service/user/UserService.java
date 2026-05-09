@@ -7,6 +7,7 @@ import com.example.pogun.dto.user.UpdateProfileRequest;
 import com.example.pogun.dto.user.UserAvailabilityResponse;
 import com.example.pogun.dto.user.UserAvailabilityUpdateRequest;
 import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
+import com.example.pogun.dto.user.UserLocationUpdateRequest;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
 import com.example.pogun.entity.community.CommunityPost;
@@ -19,6 +20,7 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,6 +44,7 @@ public class UserService {
     private final S3ImageStorageService s3ImageStorageService;
     private final NoticeChatService noticeChatService;
     private final UserPresenceService userPresenceService;
+    private final KakaoLocalService kakaoLocalService;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -115,6 +118,19 @@ public class UserService {
             snapshot.actualConnectionState(),
             snapshot.lastActiveAt()
         );
+    }
+
+    public UserProfileResponse updateLocation(UserLocationUpdateRequest request) {
+        User user = getCurrentUser();
+        RegionResponse region = kakaoLocalService.resolveRegion(request.getX(), request.getY());
+        user.setRegion(region.addressName());
+        user.setRegionType(region.regionType());
+        user.setRegionAddressName(region.addressName());
+        user.setRegion1DepthName(region.region1DepthName());
+        user.setRegion2DepthName(region.region2DepthName());
+        user.setRegion3DepthName(region.region3DepthName());
+        User saved = userRepository.save(user);
+        return getProfileResponse(saved);
     }
 
     public List<UserPetNoticeSummaryResponse> myPetNotices() {
