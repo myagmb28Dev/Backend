@@ -187,12 +187,14 @@ public class AdminAuthService {
     public AdminPasskeyOptionsResponse beginPasskeyRegistration(HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.PASSKEY_ENROLL);
         User admin = session.getUser();
-        log.info("PassKey registration options requested. userId={}, sessionId={}, stage={}, origin={}, host={}",
+        String rpId = adminWebAuthnService.resolveRpId(request);
+        log.info("PassKey registration options requested. userId={}, sessionId={}, stage={}, origin={}, host={}, rpId={}",
                 admin != null ? admin.getId() : null,
                 session.getId(),
                 session.getStage(),
                 request != null ? request.getHeader("Origin") : null,
-                request != null ? request.getServerName() : null);
+                request != null ? request.getServerName() : null,
+                rpId);
         invalidatePendingChallenges(session, AdminAuthChallengeType.PASSKEY_REGISTRATION);
         var options = adminWebAuthnService.startRegistration(admin, request);
         AdminAuthChallenge challenge = adminAuthChallengeRepository.save(AdminAuthChallenge.builder()

@@ -142,7 +142,12 @@ public class AdminWebAuthnService {
         Map<String, String> originRpMappings = adminConsoleProperties.getWebauthn().getOriginRpMappings();
         String mappedRpId = originRpMappings.get(origin);
         if (mappedRpId != null && !mappedRpId.isBlank()) {
-            return new OriginRpContext(origin, mappedRpId.trim());
+            String rpId = mappedRpId.trim().toLowerCase(Locale.ROOT);
+            if (!isRpIdCompatibleWithOrigin(origin, rpId)) {
+                throw new IllegalStateException("Admin WebAuthn RP ID is not compatible with origin. origin="
+                        + origin + ", rpId=" + rpId);
+            }
+            return new OriginRpContext(origin, rpId);
         }
 
         Set<String> allowedOrigins = new LinkedHashSet<>();
@@ -206,6 +211,15 @@ public class AdminWebAuthnService {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private boolean isRpIdCompatibleWithOrigin(String origin, String rpId) {
+        String host = extractHost(origin);
+        if (host == null || host.isBlank() || rpId == null || rpId.isBlank()) {
+            return false;
+        }
+        String normalizedRpId = rpId.toLowerCase(Locale.ROOT);
+        return host.equals(normalizedRpId) || host.endsWith("." + normalizedRpId);
     }
 
     public record RegistrationFinishPayload(String credentialId, String publicKeyCose, long signatureCount, String rpId) {
