@@ -100,6 +100,59 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                 );
                 log.info("notifications_type_check constraint synchronized with NotificationType enum values");
             }
+
+            Boolean settingsTableExists = jdbcTemplate.queryForObject(
+                    """
+                            select exists (
+                                select 1
+                                from information_schema.tables
+                                where table_schema = 'public'
+                                  and table_name = 'user_notification_settings'
+                            )
+                            """,
+                    Boolean.class
+            );
+            if (!Boolean.TRUE.equals(settingsTableExists)) {
+                return;
+            }
+
+            String settingsTypeConstraintDefinition = jdbcTemplate.query(
+                    """
+                            select pg_get_constraintdef(oid)
+                            from pg_constraint
+                            where conrelid = 'user_notification_settings'::regclass
+                              and conname = 'user_notification_settings_type_check'
+                            """,
+                    resultSet -> resultSet.next() ? resultSet.getString(1) : ""
+            );
+
+            if (settingsTypeConstraintDefinition == null || !settingsTypeConstraintDefinition.contains("ADMIN_BROADCAST")) {
+                jdbcTemplate.execute("alter table user_notification_settings drop constraint if exists user_notification_settings_type_check");
+                jdbcTemplate.execute(
+                        """
+                                alter table user_notification_settings
+                                add constraint user_notification_settings_type_check
+                                check (type in (
+                                    'NEW_NOTICE',
+                                    'NOTICE_COMMENT',
+                                    'NOTICE_STATUS_CHANGED',
+                                    'COMMUNITY_COMMENT',
+                                    'DM_MESSAGE',
+                                    'DM_REPLY',
+                                    'COMMUNITY_POST_LIKE',
+                                    'COMMUNITY_POST_COMMENT',
+                                    'COMMUNITY_COMMENT_REPLY',
+                                    'REPORT_RESULT',
+                                    'FOLLOWED_ME',
+                                    'FOLLOWING_POST',
+                                    'COMMUNITY_NOTICE',
+                                    'CHAT_ROOM_NOTICE',
+                                    'ADMIN_BROADCAST'
+                                ))
+                                """
+                );
+                log.info("user_notification_settings_type_check constraint synchronized with NotificationType enum values");
+            }
         } catch (RuntimeException e) {
             log.warn("Failed to synchronize notifications check constraints", e);
         }
