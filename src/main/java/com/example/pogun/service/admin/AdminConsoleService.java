@@ -52,6 +52,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
@@ -402,7 +403,7 @@ public class AdminConsoleService {
         return mapOfNullable(adminService.deleteCommunityPost(postId));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Map<String, Object> sendNotification(AdminNotificationSendRequest request) {
         adminSecurityService.require(AdminPermission.NOTIFICATION_SEND);
         User actor = adminSecurityService.getCurrentAdminUser();
@@ -441,10 +442,17 @@ public class AdminConsoleService {
                 .targetCount(recipients.size())
                 .deliveredCount(deliveredCount)
                 .failedCount(failedCount)
-                .metadata(writeJson(Map.of("userIds", request.getUserIds())))
+                .metadata(writeJson(orderedMap(
+                        "target", request.getTarget(),
+                        "userIds", request.getUserIds() == null ? List.of() : request.getUserIds()
+                )))
                 .build());
         Map<String, Object> response = toDispatchMap(dispatch);
-        adminAuditService.log("ADMIN_NOTIFICATION_SENT", "NOTIFICATION_DISPATCH", dispatch.getId().toString(), null, response, null);
+        try {
+            adminAuditService.log("ADMIN_NOTIFICATION_SENT", "NOTIFICATION_DISPATCH", dispatch.getId().toString(), null, response, null);
+        } catch (RuntimeException ignored) {
+            // Audit failure should not break notification API response.
+        }
         return response;
     }
 
