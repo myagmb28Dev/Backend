@@ -1441,11 +1441,12 @@
     if (!payload) return "";
     const raw = String(payload).trim();
     if (!raw) return "";
+    const key = String(label || "").toLowerCase();
     try {
       const parsed = JSON.parse(raw);
-      return `${label.toUpperCase()}\n${JSON.stringify(parsed, null, 2)}`;
+      return `${key}{\n${JSON.stringify(parsed, null, 2)}\n}`;
     } catch {
-      return `${label.toUpperCase()}\n${raw}`;
+      return `${key}{\n${raw}\n}`;
     }
   }
 
