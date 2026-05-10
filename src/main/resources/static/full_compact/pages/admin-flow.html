@@ -397,10 +397,6 @@
       <pre id="trafficOutput" class="debug-pane">[]</pre>
     </section>
 
-    <section class="card" style="margin-top:14px;">
-      <h2>전체 API req/res 콘솔</h2>
-      <pre id="trafficAllOutput" class="debug-pane">[]</pre>
-    </section>
   </div>
 </main>
 
@@ -434,9 +430,6 @@
   }
   function printTraffic(lines) {
     el("trafficOutput").textContent = lines.join("\n");
-  }
-  function printAllTraffic(lines) {
-    el("trafficAllOutput").textContent = lines.join("\n");
   }
   function escapeHtml(value) {
     return String(value ?? "")
@@ -1525,13 +1518,9 @@
         freshByGroup.set(group, (freshByGroup.get(group) || 0) + 1);
       }
     }
-    const allRows = rows
-      .slice(0, 100)
-      .map(buildTrafficLine);
     if (selectedTrafficGroup !== "ALL" && !grouped[selectedTrafficGroup]) {
       selectedTrafficGroup = "ALL";
     }
-    printAllTraffic(allRows);
     renderTrafficToolbar(grouped);
     renderTrafficOutput(grouped);
     renderTrafficAlert(totalFresh, freshByGroup);
