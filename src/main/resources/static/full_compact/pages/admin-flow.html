@@ -1410,8 +1410,11 @@
     if (!path || typeof path !== "string") return "UNKNOWN";
     const clean = path.split("?")[0];
     const parts = clean.split("/").filter(Boolean);
-    if (parts.length < 3) return clean || "UNKNOWN";
-    return `/${parts[0]}/${parts[1]}/${parts[2]}`;
+    if (parts.length < 2 || parts[0] !== "api") return clean || "UNKNOWN";
+    if (parts[1] === "admin" && parts.length >= 3) {
+      return `/${parts[0]}/${parts[1]}/${parts[2]}`;
+    }
+    return `/${parts[0]}/${parts[1]}`;
   }
 
   function buildTrafficLine(row) {
@@ -1456,14 +1459,11 @@
     const prefixes = Array.isArray(res.body?.data?.trackedApiPrefixes) ? res.body.data.trackedApiPrefixes : [];
     if (!prefixes.length) return;
     trafficTrackedApiPrefixes = prefixes;
-    if (selectedTrafficGroup !== "ALL" && !trafficTrackedApiPrefixes.includes(selectedTrafficGroup)) {
-      selectedTrafficGroup = "ALL";
-    }
   }
 
   function renderTrafficToolbar(grouped) {
     const host = el("trafficToolbar");
-    const groups = [...trafficTrackedApiPrefixes];
+    const groups = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     const allCount = groups.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
     const groupItems = [{ key: "ALL", count: allCount }, ...groups.map((key) => ({ key, count: (grouped[key] || []).length }))];
     host.innerHTML = groupItems.map((item) => {
@@ -1480,10 +1480,10 @@
   }
 
   function renderTrafficOutput(grouped) {
-    const groups = [...trafficTrackedApiPrefixes];
+    const groups = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     let rows = [];
     if (selectedTrafficGroup === "ALL") {
-      rows = groups.flatMap((group) => (grouped[group] || []).slice(0, 20));
+      rows = groups.flatMap((group) => grouped[group] || []).slice(0, 80);
     } else {
       rows = (grouped[selectedTrafficGroup] || []).slice(0, 40);
     }
@@ -1528,6 +1528,9 @@
     const allRows = rows
       .slice(0, 100)
       .map(buildTrafficLine);
+    if (selectedTrafficGroup !== "ALL" && !grouped[selectedTrafficGroup]) {
+      selectedTrafficGroup = "ALL";
+    }
     printAllTraffic(allRows);
     renderTrafficToolbar(grouped);
     renderTrafficOutput(grouped);
