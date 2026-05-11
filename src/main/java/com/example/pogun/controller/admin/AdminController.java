@@ -174,11 +174,11 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 승격 성공", data));
     }
 
-    @GetMapping("/users/admins/status")
-    @Operation(summary = "관리자 상태 조회", description = "관리자 수 요약과 관리자별 권한 상태를 조회합니다.")
+    @GetMapping("/users/permissions/status")
+    @Operation(summary = "사용자/관리자 권한 상태 조회", description = "전체 사용자 권한 표시 기준(USER/ADMIN)과 관리자 수 요약, 관리자별 세부 권한 상태를 조회합니다.")
     public ResponseEntity<ApiResponse<AdminStatusResponse>> adminStatus() {
         AdminStatusResponse data = adminService.getAdminStatus();
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 상태 조회 성공", data));
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "사용자/관리자 권한 상태 조회 성공", data));
     }
 
     @GetMapping("/notices")

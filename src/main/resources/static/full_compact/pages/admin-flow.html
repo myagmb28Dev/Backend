@@ -1064,7 +1064,7 @@
   }
 
   async function loadAdminStatus() {
-    const res = await adminRequest("/api/admin/users/admins/status");
+    const res = await adminRequest("/api/admin/users/permissions/status");
     if (!res.ok) {
       setStatus("관리자 상태 조회 실패", "bad");
       return;

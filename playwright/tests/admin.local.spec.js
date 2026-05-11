@@ -241,7 +241,7 @@ test.describe.serial('admin local small-step flow', () => {
     expect(promote.status).toBe(200);
     expect(String(promote.body?.data?.role || '').toUpperCase()).toBe('ADMIN');
 
-    const status = await api('/api/admin/users/admins/status', { token: adminAccessToken });
+    const status = await api('/api/admin/users/permissions/status', { token: adminAccessToken });
     expect(status.status).toBe(200);
     const admins = Array.isArray(status.body?.data?.admins) ? status.body.data.admins : [];
     expect(admins.some((admin) => admin?.userId === promoteTarget.id)).toBe(true);

@@ -78,10 +78,10 @@ class AdminServiceTest {
                 .status(UserStatus.ACTIVE)
                 .build();
 
-        when(userRepository.findByEmail("member@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        AdminPromoteResponse response = adminService.promoteUserToAdmin("member@example.com");
+        AdminPromoteResponse response = adminService.promoteUserToAdmin(user.getId().toString());
 
         assertThat(response.email()).isEqualTo("member@example.com");
         assertThat(response.role()).isEqualTo("ADMIN");
@@ -93,10 +93,11 @@ class AdminServiceTest {
     }
 
     @Test
-    void promoteUserToAdmin_rejectsUnknownEmail() {
-        when(userRepository.findByEmail("missing@example.com")).thenReturn(Optional.empty());
+    void promoteUserToAdmin_rejectsUnknownUserId() {
+        UUID missingUserId = UUID.randomUUID();
+        when(userRepository.findById(missingUserId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> adminService.promoteUserToAdmin("missing@example.com"))
+        assertThatThrownBy(() -> adminService.promoteUserToAdmin(missingUserId.toString()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("사용자를 찾을 수 없습니다.");
     }
