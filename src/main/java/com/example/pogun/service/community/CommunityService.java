@@ -38,6 +38,7 @@ import com.example.pogun.repository.user.UserFollowRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -58,6 +59,7 @@ import java.util.UUID;
  */
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class CommunityService {
     private static final String SORT_LATEST = "LATEST";
@@ -525,7 +527,7 @@ public class CommunityService {
                 "category", post.getCategory()
         );
         for (UserFollow follow : userFollowRepository.findByFollowingOrderByCreatedAtDesc(author)) {
-            notificationService.createAndSendNotification(
+            safeCreateAndSendNotification(
                     follow.getFollower(),
                     author,
                     NotificationType.FOLLOWING_POST,
@@ -540,7 +542,7 @@ public class CommunityService {
         }
         if ("NOTICE".equalsIgnoreCase(post.getCategory())) {
             for (User user : userRepository.findAll()) {
-                notificationService.createAndSendNotification(
+                safeCreateAndSendNotification(
                         user,
                         author,
                         NotificationType.COMMUNITY_NOTICE,
@@ -562,7 +564,7 @@ public class CommunityService {
                 "postId", post.getId().toString(),
                 "commentId", comment.getId().toString()
         );
-        notificationService.createAndSendNotification(
+        safeCreateAndSendNotification(
                 post.getAuthor(),
                 actor,
                 NotificationType.COMMUNITY_POST_COMMENT,
@@ -576,7 +578,7 @@ public class CommunityService {
         );
         CommunityComment parentComment = comment.getParentComment();
         if (parentComment != null) {
-            notificationService.createAndSendNotification(
+            safeCreateAndSendNotification(
                     parentComment.getAuthor(),
                     actor,
                     NotificationType.COMMUNITY_COMMENT_REPLY,
@@ -592,7 +594,7 @@ public class CommunityService {
     }
 
     private void notifyPostLiked(CommunityPost post, User actor) {
-        notificationService.createAndSendNotification(
+        safeCreateAndSendNotification(
                 post.getAuthor(),
                 actor,
                 NotificationType.COMMUNITY_POST_LIKE,
@@ -604,6 +606,43 @@ public class CommunityService {
                 "community-post-like:" + post.getAuthor().getId() + ":" + actor.getId() + ":" + post.getId(),
                 Map.of("postId", post.getId().toString())
         );
+    }
+
+    private void safeCreateAndSendNotification(
+            User user,
+            User actor,
+            NotificationType type,
+            NotificationTargetType targetType,
+            UUID targetId,
+            String title,
+            String body,
+            NotificationPriority priority,
+            String dedupeKey,
+            Map<String, String> metadata
+    ) {
+        try {
+            notificationService.createAndSendNotification(
+                    user,
+                    actor,
+                    type,
+                    targetType,
+                    targetId,
+                    title,
+                    body,
+                    priority,
+                    dedupeKey,
+                    metadata
+            );
+        } catch (Exception ex) {
+            log.warn(
+                    "Community notification failed. type={}, targetType={}, targetId={}, userId={}, reason={}",
+                    type,
+                    targetType,
+                    targetId,
+                    user != null ? user.getId() : null,
+                    ex.getMessage()
+            );
+        }
     }
 
     private void softDeleteCommentsForPost(CommunityPost post) {
