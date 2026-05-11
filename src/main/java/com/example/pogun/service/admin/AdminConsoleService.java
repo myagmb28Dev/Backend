@@ -10,6 +10,8 @@ import com.example.pogun.entity.admin.AdminSetting;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.community.CommunityComment;
 import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.CommunityPostReaction;
+import com.example.pogun.entity.community.CommunityPostVote;
 import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.missingpet.PetNotice;
@@ -32,6 +34,8 @@ import com.example.pogun.repository.admin.AdminReferenceDataRepository;
 import com.example.pogun.repository.admin.AdminSettingRepository;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
+import com.example.pogun.repository.community.CommunityPostReactionRepository;
+import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.report.ReportRepository;
@@ -86,6 +90,8 @@ public class AdminConsoleService {
     private final UserRepository userRepository;
     private final PetNoticeRepository petNoticeRepository;
     private final CommunityPostRepository communityPostRepository;
+    private final CommunityPostReactionRepository communityPostReactionRepository;
+    private final CommunityPostVoteRepository communityPostVoteRepository;
     private final CommunityCommentRepository communityCommentRepository;
     private final ReportRepository reportRepository;
     private final NotificationRepository notificationRepository;
@@ -383,7 +389,9 @@ public class AdminConsoleService {
     public Map<String, Object> communityDetail(String postId) {
         adminSecurityService.require(AdminPermission.AUDIT_READ);
         CommunityPost post = getCommunityPost(postId);
-        List<CommunityComment> comments = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL);
+        List<CommunityComment> comments = communityCommentRepository.findByPostOrderByCreatedAtAsc(post);
+        List<CommunityPostVote> votes = communityPostVoteRepository.findByPost(post);
+        List<CommunityPostReaction> reactions = communityPostReactionRepository.findByPost(post);
         Map<String, Object> response = new LinkedHashMap<>(toCommunitySummaryMap(post));
         response.put("content", post.getContent());
         response.put("tags", Optional.ofNullable(post.getTags())
@@ -398,14 +406,10 @@ public class AdminConsoleService {
                 .map(image -> image.getImageUrl())
                 .filter(Objects::nonNull)
                 .toList());
-        response.put("comments", comments.stream().map(comment -> orderedMap(
-                "id", comment.getId(),
-                "authorId", comment.getAuthor() == null ? null : comment.getAuthor().getId(),
-                "authorName", comment.getAuthor() == null ? "알 수 없음" : comment.getAuthor().getNickname(),
-                "content", comment.getContent(),
-                "status", comment.getStatus().name(),
-                "createdAt", comment.getCreatedAt()
-        )).toList());
+        response.put("poll", buildAdminPollMap(post));
+        response.put("votes", buildAdminVotesMap(votes));
+        response.put("reactions", buildAdminReactionsMap(reactions));
+        response.put("comments", buildAdminCommentsMap(comments));
         return response;
     }
 
@@ -496,6 +500,108 @@ public class AdminConsoleService {
             // Audit failure should not break notification API response.
         }
         return response;
+    }
+
+    private Map<String, Object> buildAdminPollMap(CommunityPost post) {
+        String pollQuestion = post.getPollQuestion();
+        List<String> pollOptions = Optional.ofNullable(post.getPollOptions())
+                .orElseGet(List::of)
+                .stream()
+                .filter(Objects::nonNull)
+                .toList();
+        if ((pollQuestion == null || pollQuestion.isBlank()) && pollOptions.isEmpty()) {
+            return null;
+        }
+
+        List<Map<String, Object>> options = pollOptions.stream()
+                .map(option -> orderedMap(
+                        "option", option,
+                        "voteCount", communityPostVoteRepository.countByPostAndSelectedOption(post, option)
+                ))
+                .toList();
+        long totalVotes = options.stream()
+                .mapToLong(option -> ((Number) option.get("voteCount")).longValue())
+                .sum();
+
+        return orderedMap(
+                "question", pollQuestion,
+                "options", options,
+                "totalVotes", totalVotes
+        );
+    }
+
+    private Map<String, Object> buildAdminVotesMap(List<CommunityPostVote> votes) {
+        Map<String, Long> countByOption = votes.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(CommunityPostVote::getSelectedOption, LinkedHashMap::new, Collectors.counting()));
+        List<Map<String, Object>> voters = votes.stream()
+                .filter(Objects::nonNull)
+                .map(vote -> orderedMap(
+                        "voteId", vote.getId(),
+                        "userId", vote.getUser() == null ? null : vote.getUser().getId(),
+                        "userName", vote.getUser() == null ? "알 수 없음" : safe(vote.getUser().getNickname()),
+                        "selectedOption", vote.getSelectedOption(),
+                        "createdAt", vote.getCreatedAt(),
+                        "updatedAt", vote.getUpdatedAt()
+                ))
+                .toList();
+        return orderedMap(
+                "total", votes.size(),
+                "countByOption", countByOption,
+                "voters", voters
+        );
+    }
+
+    private Map<String, Object> buildAdminReactionsMap(List<CommunityPostReaction> reactions) {
+        Map<String, Long> countByType = reactions.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(CommunityPostReaction::getReactionType, LinkedHashMap::new, Collectors.counting()));
+        List<Map<String, Object>> reactors = reactions.stream()
+                .filter(Objects::nonNull)
+                .map(reaction -> orderedMap(
+                        "reactionId", reaction.getId(),
+                        "userId", reaction.getUser() == null ? null : reaction.getUser().getId(),
+                        "userName", reaction.getUser() == null ? "알 수 없음" : safe(reaction.getUser().getNickname()),
+                        "reactionType", reaction.getReactionType(),
+                        "createdAt", reaction.getCreatedAt(),
+                        "updatedAt", reaction.getUpdatedAt()
+                ))
+                .toList();
+        return orderedMap(
+                "total", reactions.size(),
+                "countByType", countByType,
+                "reactors", reactors
+        );
+    }
+
+    private List<Map<String, Object>> buildAdminCommentsMap(List<CommunityComment> comments) {
+        List<Map<String, Object>> rootComments = new ArrayList<>();
+        Map<UUID, Map<String, Object>> byId = new LinkedHashMap<>();
+        for (CommunityComment comment : comments) {
+            Map<String, Object> row = orderedMap(
+                    "id", comment.getId(),
+                    "authorId", comment.getAuthor() == null ? null : comment.getAuthor().getId(),
+                    "authorName", comment.getAuthor() == null ? "알 수 없음" : safe(comment.getAuthor().getNickname()),
+                    "content", comment.getContent(),
+                    "status", comment.getStatus() == null ? "UNKNOWN" : comment.getStatus().name(),
+                    "createdAt", comment.getCreatedAt(),
+                    "updatedAt", comment.getUpdatedAt(),
+                    "parentCommentId", comment.getParentComment() == null ? null : comment.getParentComment().getId(),
+                    "replies", new ArrayList<Map<String, Object>>()
+            );
+            byId.put(comment.getId(), row);
+        }
+        for (Map<String, Object> row : byId.values()) {
+            UUID parentId = (UUID) row.get("parentCommentId");
+            if (parentId == null || !byId.containsKey(parentId)) {
+                rootComments.add(row);
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> replies = (List<Map<String, Object>>) byId.get(parentId).get("replies");
+            replies.add(row);
+        }
+        return rootComments;
     }
 
     @Transactional(readOnly = true)

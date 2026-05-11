@@ -16,6 +16,7 @@ import java.util.UUID;
 @Repository
 public interface CommunityCommentRepository extends JpaRepository<CommunityComment, UUID> {
     List<CommunityComment> findByPostAndStatusOrderByCreatedAtAsc(CommunityPost post, CommunityCommentStatus status);
+    List<CommunityComment> findByPostOrderByCreatedAtAsc(CommunityPost post);
 
     List<CommunityComment> findByStatusAndUpdatedAtBefore(CommunityCommentStatus status, Instant updatedAt);
 

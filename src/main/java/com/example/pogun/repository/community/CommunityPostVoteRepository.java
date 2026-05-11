@@ -16,6 +16,7 @@ import java.util.UUID;
 @Repository
 public interface CommunityPostVoteRepository extends JpaRepository<CommunityPostVote, UUID> {
     Optional<CommunityPostVote> findByPostAndUser(CommunityPost post, User user);
+    List<CommunityPostVote> findByPost(CommunityPost post);
     long countByPostAndSelectedOption(CommunityPost post, String selectedOption);
     void deleteByPostIn(List<CommunityPost> posts);
 }

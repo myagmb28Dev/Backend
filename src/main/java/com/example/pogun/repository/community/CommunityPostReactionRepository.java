@@ -16,6 +16,7 @@ import java.util.UUID;
 @Repository
 public interface CommunityPostReactionRepository extends JpaRepository<CommunityPostReaction, UUID> {
     Optional<CommunityPostReaction> findByPostAndUser(CommunityPost post, User user);
+    List<CommunityPostReaction> findByPost(CommunityPost post);
     long countByPostAndReactionType(CommunityPost post, String reactionType);
     void deleteByPostIn(List<CommunityPost> posts);
 }
