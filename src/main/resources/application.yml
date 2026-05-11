@@ -68,8 +68,8 @@ app:
         allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:http://localhost:8080,http://127.0.0.1:8080}
         origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP:http://localhost:8080=localhost,http://127.0.0.1:8080=localhost,http://localhost:8081=localhost,http://127.0.0.1:8081=localhost}
       email-verification:
-        continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP:http://localhost:8080=http://localhost:8080/login-flow.html?adminVerify=done,http://127.0.0.1:8080=http://127.0.0.1:8080/login-flow.html?adminVerify=done,http://localhost:8081=http://localhost:8081/login-flow.html?adminVerify=done,http://127.0.0.1:8081=http://127.0.0.1:8081/login-flow.html?adminVerify=done}
-        default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL:http://localhost:8080/login-flow.html?adminVerify=done}
+        continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP:https://pawgen.kro.kr=https://pawgen.kro.kr/login?adminVerify=done}
+        default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL:https://pawgen.kro.kr/login?adminVerify=done}
   shelter:
     api:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -72,15 +73,71 @@ public class AdminEmailVerificationService {
     }
 
     private String resolveContinueUrl(HttpServletRequest request) {
+        Map<String, String> mappings = adminConsoleProperties.getEmailVerification().getContinueUrlMappings();
+
         String origin = request != null ? request.getHeader("Origin") : null;
-        if (origin != null && !origin.isBlank()) {
-            String mapped = adminConsoleProperties.getEmailVerification().getContinueUrlMappings().get(origin.trim());
+        String normalizedOrigin = normalizeOrigin(origin);
+        if (normalizedOrigin != null) {
+            String mapped = mappings.get(normalizedOrigin);
             if (mapped != null && !mapped.isBlank()) {
                 return mapped.trim();
             }
         }
+
+        String referer = request != null ? request.getHeader("Referer") : null;
+        String refererOrigin = normalizeOriginFromReferer(referer);
+        if (refererOrigin != null) {
+            String mapped = mappings.get(refererOrigin);
+            if (mapped != null && !mapped.isBlank()) {
+                return mapped.trim();
+            }
+        }
+
         String fallback = adminConsoleProperties.getEmailVerification().getDefaultContinueUrl();
         return fallback == null || fallback.isBlank() ? null : fallback.trim();
+    }
+
+    private String normalizeOrigin(String rawOrigin) {
+        if (rawOrigin == null || rawOrigin.isBlank()) {
+            return null;
+        }
+        String trimmed = rawOrigin.trim();
+        try {
+            URI uri = URI.create(trimmed);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            int port = uri.getPort();
+            if (scheme == null || host == null) {
+                return trimmed;
+            }
+            if (port < 0) {
+                return scheme + "://" + host;
+            }
+            return scheme + "://" + host + ":" + port;
+        } catch (IllegalArgumentException ex) {
+            return trimmed;
+        }
+    }
+
+    private String normalizeOriginFromReferer(String referer) {
+        if (referer == null || referer.isBlank()) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(referer.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            int port = uri.getPort();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            if (port < 0) {
+                return scheme + "://" + host;
+            }
+            return scheme + "://" + host + ":" + port;
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     String resolveBaseUrl() {
