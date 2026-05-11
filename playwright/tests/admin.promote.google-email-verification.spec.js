@@ -188,7 +188,8 @@ async function createAssertionCredential(page, rawOptions) {
   }, rawOptions);
 }
 
-test('promoted google email must receive verification before passkey enrollment', async ({ page }) => {
+test('promoted google email must receive verification before passkey enrollment', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP WebAuthn virtual authenticator requires Chromium');
   const login = await api('/api/admin/auth/local/login', {
     method: 'POST',
     body: { localTestEmail: ADMIN_EMAIL, forcePasskeyEnroll: true }

@@ -3,6 +3,7 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 
 const baseURL = process.env.BASE_URL || 'http://localhost:8081';
+const authBaseURL = process.env.AUTH_EMULATOR_URL || 'http://127.0.0.1:9099';
 const localDir = path.resolve(__dirname, '..', '..', '.local');
 
 const ADMIN_EMAIL = 'playwright-user1@local.dev';
@@ -28,6 +29,65 @@ async function api(pathname, { method = 'GET', token, body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   return { status: response.status, body: await readJsonSafe(response) };
+}
+
+async function ensureEmulatorUserToken(email, password) {
+  const signIn = async () => {
+    const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    });
+    return { status: res.status, body: await readJsonSafe(res) };
+  };
+  const signUp = async () => {
+    const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    });
+    return { status: res.status, body: await readJsonSafe(res) };
+  };
+
+  let result = await signIn();
+  if (result.status === 200 && result.body?.idToken) return result.body.idToken;
+  await signUp();
+  result = await signIn();
+  if (result.status !== 200 || !result.body?.idToken) {
+    throw new Error(`Failed to get emulator token for ${email}`);
+  }
+  return result.body.idToken;
+}
+
+async function deleteEmulatorAccount(idToken) {
+  const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:delete?key=fake-api-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken })
+  });
+  return res.status;
+}
+
+async function ensureBackendUserId(token) {
+  const first = await api('/api/auth/login', { method: 'POST', token, body: { firebaseIdToken: token } });
+  if (first.status !== 200) {
+    throw new Error(`Backend login failed: HTTP_${first.status}`);
+  }
+  const userId = first.body?.data?.id;
+  if (userId) return userId;
+  const registrationStatus = String(first.body?.data?.registrationStatus || '');
+  if (registrationStatus !== 'PENDING_ONBOARDING') {
+    throw new Error('Backend login did not return user id.');
+  }
+  const complete = await api('/api/auth/onboarding/complete', { method: 'POST', token, body: { x: 127.1086228, y: 37.4012191 } });
+  if (complete.status !== 200) {
+    throw new Error(`Onboarding complete failed: HTTP_${complete.status}`);
+  }
+  const second = await api('/api/auth/login', { method: 'POST', token, body: { firebaseIdToken: token } });
+  if (second.status !== 200 || !second.body?.data?.id) {
+    throw new Error('Backend login still missing user id after onboarding.');
+  }
+  return second.body.data.id;
 }
 
 async function installVirtualAuthenticator(page) {
@@ -147,6 +207,7 @@ async function createAssertionCredential(page, rawOptions) {
 }
 
 test.describe.serial('admin local small-step flow', () => {
+  test.skip(({ browserName }) => browserName !== 'chromium', 'CDP WebAuthn virtual authenticator requires Chromium');
   let adminFirebaseIdToken;
   let bootstrapToken;
   let adminAccessToken;
@@ -226,25 +287,92 @@ test.describe.serial('admin local small-step flow', () => {
     expect(Object.prototype.hasOwnProperty.call(inboundRefresh || {}, 'responseBody')).toBe(true);
   });
 
-  test('step3d: promote by userId and load admin status', async () => {
-    const users = await api('/api/admin/users?page=1&pageSize=50', { token: adminAccessToken });
-    expect(users.status).toBe(200);
-    const items = Array.isArray(users.body?.data?.items) ? users.body.data.items : [];
-    const promoteTarget = items.find((u) => String(u?.role || '').toUpperCase() !== 'ADMIN');
-    expect(Boolean(promoteTarget?.id)).toBe(true);
+  test('step3d: promote by userId and load admin status', async ({ page }) => {
+    await page.goto(`${baseURL}/full_compact/pages/admin-flow.html`, { waitUntil: 'domcontentloaded' });
+    const { cdp, authenticatorId } = await installVirtualAuthenticator(page);
+    try {
+      // Ensure we have a fresh authenticator + passkey credential for step-up.
+      const relogin = await api('/api/admin/auth/local/login', {
+        method: 'POST',
+        body: { localTestEmail: ADMIN_EMAIL, forcePasskeyEnroll: true }
+      });
+      expect(relogin.status).toBe(200);
+      const newBootstrapToken = relogin.body?.data?.session?.accessToken;
+      expect(Boolean(newBootstrapToken)).toBe(true);
 
-    const promote = await api('/api/admin/users/promote', {
-      method: 'PATCH',
-      token: adminAccessToken,
-      body: { userId: promoteTarget.id }
-    });
-    expect(promote.status).toBe(200);
-    expect(String(promote.body?.data?.role || '').toUpperCase()).toBe('ADMIN');
+      const regOptions = await api('/api/admin/auth/passkeys/register/options', {
+        method: 'POST',
+        token: newBootstrapToken
+      });
+      expect(regOptions.status).toBe(200);
+      const regCredential = await createRegistrationCredential(
+        page,
+        regOptions.body.data.options ?? regOptions.body.data.publicKey ?? regOptions.body.data
+      );
+      const regVerify = await api('/api/admin/auth/passkeys/register/verify', {
+        method: 'POST',
+        token: newBootstrapToken,
+        body: { challengeId: regOptions.body.data.challengeId, credential: regCredential }
+      });
+      expect(regVerify.status).toBe(200);
+      adminAccessToken = regVerify.body?.data?.accessToken;
+      expect(Boolean(adminAccessToken)).toBe(true);
 
-    const status = await api('/api/admin/users/permissions/status', { token: adminAccessToken });
-    expect(status.status).toBe(200);
-    const admins = Array.isArray(status.body?.data?.admins) ? status.body.data.admins : [];
-    expect(admins.some((admin) => admin?.userId === promoteTarget.id)).toBe(true);
+      const stepupOptions = await api('/api/admin/auth/stepup/options', {
+        method: 'POST',
+        token: adminAccessToken
+      });
+      expect(stepupOptions.status).toBe(200);
+      const stepupCredential = await createAssertionCredential(
+        page,
+        stepupOptions.body.data.options ?? stepupOptions.body.data.publicKey ?? stepupOptions.body.data
+      );
+      const stepupVerify = await api('/api/admin/auth/stepup/verify', {
+        method: 'POST',
+        token: adminAccessToken,
+        body: { challengeId: stepupOptions.body.data.challengeId, credential: stepupCredential }
+      });
+      expect(stepupVerify.status).toBe(200);
+      adminAccessToken = stepupVerify.body?.data?.accessToken || adminAccessToken;
+
+      const users = await api('/api/admin/users?page=1&pageSize=50', { token: adminAccessToken });
+      expect(users.status).toBe(200);
+      const items = Array.isArray(users.body?.data?.items) ? users.body.data.items : [];
+      let promoteTarget = items.find((u) => String(u?.role || '').toUpperCase() !== 'ADMIN');
+      if (!promoteTarget?.id) {
+        const email = `playwright-promote-target-${Date.now()}@local.dev`;
+        const token = await ensureEmulatorUserToken(email, 'Test1234!');
+        let userId = null;
+        try {
+          userId = await ensureBackendUserId(token);
+
+          const usersAgain = await api('/api/admin/users?page=1&pageSize=100', { token: adminAccessToken });
+          expect(usersAgain.status).toBe(200);
+          const itemsAgain = Array.isArray(usersAgain.body?.data?.items) ? usersAgain.body.data.items : [];
+          promoteTarget = itemsAgain.find((u) => String(u?.id || '') === String(userId));
+        } finally {
+          await api('/api/auth/withdraw', { method: 'DELETE', token }).catch(() => {});
+          await deleteEmulatorAccount(token).catch(() => {});
+        }
+      }
+      expect(Boolean(promoteTarget?.id)).toBe(true);
+
+      const promote = await api('/api/admin/users/promote', {
+        method: 'PATCH',
+        token: adminAccessToken,
+        body: { userId: promoteTarget.id }
+      });
+      expect(promote.status).toBe(200);
+      expect(String(promote.body?.data?.role || '').toUpperCase()).toBe('ADMIN');
+
+      const status = await api('/api/admin/users/permissions/status', { token: adminAccessToken });
+      expect(status.status).toBe(200);
+      const admins = Array.isArray(status.body?.data?.admins) ? status.body.data.admins : [];
+      expect(admins.some((admin) => admin?.userId === promoteTarget.id)).toBe(true);
+    } finally {
+      await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => {});
+      await cdp.send('WebAuthn.disable').catch(() => {});
+    }
   });
 
   test('step3e: admin community detail endpoint returns 200', async () => {

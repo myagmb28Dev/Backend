@@ -599,9 +599,10 @@
     if (!isLocalAdminShortcutAllowed()) {
       return;
     }
-    el("adminLoginHint").textContent = "로컬에서는 Google 관리자 로그인이 아니라 로컬 테스트 관리자 세션으로 검증합니다.";
-    el("loginButton").textContent = "로컬 테스트 관리자 로그인";
-    el("localAdminButton").style.display = "none";
+    // 로컬에서도 Google 로그인 플로우(이메일 인증 포함)를 검증해야 하므로,
+    // 기본 버튼은 Google 로그인을 유지하고 별도의 로컬 테스트 버튼을 노출한다.
+    el("adminLoginHint").textContent = "로컬에서도 Google 관리자 로그인(이메일 인증 포함) 흐름을 검증할 수 있습니다. 필요 시 로컬 테스트 로그인 버튼을 사용하세요.";
+    el("localAdminButton").style.display = "inline-block";
   }
 
   async function getFirebaseAuthInstance() {
@@ -1725,8 +1726,7 @@
 
   el("loginForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const loginAction = isLocalAdminShortcutAllowed() ? localAdminLogin : login;
-    loginAction().catch((error) => {
+    login().catch((error) => {
       const code = error?.code || "";
       if (code === "auth/popup-closed-by-user") {
         setStatus("로그인이 취소되었습니다.", "");

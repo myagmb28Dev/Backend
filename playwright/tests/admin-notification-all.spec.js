@@ -1,12 +1,88 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
+import path from 'node:path';
 
 function toB64Url(bytes) {
   const buf = Buffer.from(bytes);
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-test('admin notification target=all returns 200 after passkey verify', async ({ page, context, request }) => {
+const authBaseURL = process.env.AUTH_EMULATOR_URL || 'http://127.0.0.1:9099';
+
+async function deleteEmulatorAccount(idToken) {
+  const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:delete?key=fake-api-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken })
+  });
+  // Emulator may return 200 even if already deleted; ignore failures in cleanup.
+  return res.status;
+}
+
+async function ensureEmulatorUserToken(email, password) {
+  const signIn = async () => {
+    const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+  const signUp = async () => {
+    const res = await fetch(`${authBaseURL}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+
+  let result = await signIn();
+  if (result.status === 200 && result.body?.idToken) return result.body.idToken;
+  await signUp();
+  result = await signIn();
+  if (result.status !== 200 || !result.body?.idToken) {
+    throw new Error(`Failed to get emulator token for ${email}`);
+  }
+  return result.body.idToken;
+}
+
+async function ensureBackendUserId(request, token) {
+  const firstRes = await request.post('http://localhost:8081/api/auth/login', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { firebaseIdToken: token }
+  });
+  if (firstRes.status() !== 200) {
+    throw new Error(`backend login failed: HTTP_${firstRes.status()}`);
+  }
+  const firstJson = await firstRes.json();
+  if (firstJson?.data?.id) return firstJson.data.id;
+  if (String(firstJson?.data?.registrationStatus || '') !== 'PENDING_ONBOARDING') {
+    throw new Error('backend login missing id');
+  }
+  const complete = await request.post('http://localhost:8081/api/auth/onboarding/complete', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { x: 127.1086228, y: 37.4012191 }
+  });
+  if (complete.status() !== 200) {
+    throw new Error(`onboarding complete failed: HTTP_${complete.status()}`);
+  }
+  const secondRes = await request.post('http://localhost:8081/api/auth/login', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { firebaseIdToken: token }
+  });
+  if (secondRes.status() !== 200) {
+    throw new Error(`backend login retry failed: HTTP_${secondRes.status()}`);
+  }
+  const secondJson = await secondRes.json();
+  if (!secondJson?.data?.id) {
+    throw new Error('backend login still missing id after onboarding');
+  }
+  return secondJson.data.id;
+}
+
+test('admin notification target=all returns 200 after passkey verify', async ({ page, context, request, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP WebAuthn virtual authenticator requires Chromium');
   const loginRes = await request.post('http://localhost:8081/api/admin/auth/local/login', {
     data: {}
   });
@@ -94,15 +170,15 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
   const myUserId = loginJson?.data?.session?.admin?.id;
   expect(myUserId).toBeTruthy();
 
-  const user2Token = fs.readFileSync('D:/Codes/Pogun_Back/.local/emulator-user2-firebase-id-token.txt', 'utf-8').trim();
-  const user2LoginRes = await request.post('http://localhost:8081/api/auth/login', {
-    headers: { Authorization: `Bearer ${user2Token}` },
-    data: { firebaseIdToken: user2Token }
-  });
-  expect(user2LoginRes.status()).toBe(200);
-  const user2LoginJson = await user2LoginRes.json();
-  const normalUserId = user2LoginJson?.data?.id;
-  expect(normalUserId).toBeTruthy();
+  const tokenPath = path.resolve('D:/Codes/Pogun_Back/.local/emulator-user2-firebase-id-token.txt');
+  const useFileToken = fs.existsSync(tokenPath);
+  const user2Email = `playwright-user2-${Date.now()}@local.dev`;
+  const user2Token = useFileToken
+    ? fs.readFileSync(tokenPath, 'utf-8').trim()
+    : await ensureEmulatorUserToken(user2Email, 'Test1234!');
+  try {
+    const normalUserId = await ensureBackendUserId(request, user2Token);
+    expect(normalUserId).toBeTruthy();
 
   const sendRes = await request.post('http://localhost:8081/api/admin/notifications/send', {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -167,4 +243,12 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
   expect(specificMissingUsersRes.status(), await specificMissingUsersRes.text()).toBe(400);
   const specificMissingUsersJson = await specificMissingUsersRes.json();
   expect(specificMissingUsersJson?.error?.code).toBe('MISSING_NOTIFICATION_USERS');
+  } finally {
+    if (!useFileToken) {
+      await request.delete('http://localhost:8081/api/auth/withdraw', {
+        headers: { Authorization: `Bearer ${user2Token}` }
+      }).catch(() => {});
+      await deleteEmulatorAccount(user2Token).catch(() => {});
+    }
+  }
 });

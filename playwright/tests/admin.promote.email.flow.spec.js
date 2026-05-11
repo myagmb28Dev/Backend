@@ -136,7 +136,8 @@ async function createAssertionCredential(page, rawOptions) {
   }, rawOptions);
 }
 
-test('admin promote-by-email flow works and target reaches passkey stage', async () => {
+test('admin promote-by-email flow works and target reaches passkey stage', async ({ browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP WebAuthn virtual authenticator requires Chromium');
   const pageUrl = `${baseURL}/full_compact/pages/admin-flow.html`;
 
   const login = await api('/api/admin/auth/local/login', {
