@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/js/page-embed-guard.js"></script>
   <title>Pogun Access Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
@@ -488,7 +489,7 @@ async function loadFirebaseAuth() {
     throw new Error("로컬 디버그에서는 Google 로그인을 사용하지 않습니다. Playwright1 로컬 로그인을 사용하세요.");
   }
   if (auth) return auth;
-  const { FIREBASE_WEB_CONFIG } = await import("/firebase-web-config.js");
+  const { FIREBASE_WEB_CONFIG } = await import("/js/firebase-web-config.js");
   const config = FIREBASE_WEB_CONFIG;
   for (const key of ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"]) {
     if (!config[key]) throw new Error(`Firebase Web 설정 누락: ${key}`);
@@ -856,10 +857,10 @@ window.addEventListener("focus", () => {
   });
 });
 </script>
-<script type="module" src="/global-presence.js"></script>
+<script type="module" src="/js/global-presence.js"></script>
 <script type="module">
-import { getStoredSession, maskToken, mountNotificationBell, refreshNotificationBell } from "/notification-web.js";
-import { getPushSupportState, getStoredRegisteredPushToken, initForegroundNotifications, registerWebPushToken, syncWebPushTokenIfPossible } from "/notification-push.js";
+import { getStoredSession, maskToken, mountNotificationBell, refreshNotificationBell } from "/js/notification-web.js";
+import { getPushSupportState, getStoredRegisteredPushToken, initForegroundNotifications, registerWebPushToken, syncWebPushTokenIfPossible } from "/js/notification-push.js";
 
 const el = (id) => document.getElementById(id);
 let lastRegisteredToken = "";

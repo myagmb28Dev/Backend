@@ -71,6 +71,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -384,12 +386,22 @@ public class AdminConsoleService {
         List<CommunityComment> comments = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL);
         Map<String, Object> response = new LinkedHashMap<>(toCommunitySummaryMap(post));
         response.put("content", post.getContent());
-        response.put("tags", post.getTags());
-        response.put("images", post.getImages().stream().map(image -> image.getImageUrl()).toList());
-        response.put("comments", comments.stream().map(comment -> Map.of(
+        response.put("tags", Optional.ofNullable(post.getTags())
+                .orElseGet(List::of)
+                .stream()
+                .filter(Objects::nonNull)
+                .toList());
+        response.put("images", Optional.ofNullable(post.getImages())
+                .orElseGet(List::of)
+                .stream()
+                .filter(Objects::nonNull)
+                .map(image -> image.getImageUrl())
+                .filter(Objects::nonNull)
+                .toList());
+        response.put("comments", comments.stream().map(comment -> orderedMap(
                 "id", comment.getId(),
-                "authorId", comment.getAuthor().getId(),
-                "authorName", comment.getAuthor().getNickname(),
+                "authorId", comment.getAuthor() == null ? null : comment.getAuthor().getId(),
+                "authorName", comment.getAuthor() == null ? "알 수 없음" : comment.getAuthor().getNickname(),
                 "content", comment.getContent(),
                 "status", comment.getStatus().name(),
                 "createdAt", comment.getCreatedAt()
@@ -1163,14 +1175,15 @@ public class AdminConsoleService {
 
     private Map<String, Object> toCommunitySummaryMap(CommunityPost post) {
         int commentCount = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL).size();
+        String authorName = post.getAuthor() == null ? "알 수 없음" : safe(post.getAuthor().getNickname());
         return orderedMap(
                 "id", post.getId(),
                 "title", safe(post.getTitle()),
-                "author", safe(post.getAuthor().getNickname()),
+                "author", authorName,
                 "likes", post.getLikeCount(),
                 "comments", commentCount,
                 "createdAt", post.getCreatedAt(),
-                "status", post.getStatus().name(),
+                "status", post.getStatus() == null ? "UNKNOWN" : post.getStatus().name(),
                 "category", safe(post.getCategory())
         );
     }

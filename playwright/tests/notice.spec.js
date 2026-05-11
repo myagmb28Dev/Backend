@@ -13,7 +13,7 @@ function tinyPngFile() {
 test('notice-flow creates notice then redirects to dm-flow with noticeId', async ({ page }) => {
   const title = `playwright-notice-flow-${Date.now()}`;
 
-  await page.goto(`${baseURL}/login-flow.html`);
+  await page.goto(`${baseURL}/full_compact/pages/login-flow.html`);
   await page.click('#user1LoginButton');
   await expect(page.locator('#status')).toContainText('로그인 완료', { timeout: 20000 });
 

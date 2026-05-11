@@ -38,7 +38,7 @@ test('admin notification target=all returns 200 after passkey verify', async ({ 
       automaticPresenceSimulation: true
     }
   });
-  await page.goto('http://localhost:8081/admin-flow.html', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://localhost:8081/full_compact/pages/admin-flow.html', { waitUntil: 'domcontentloaded' });
 
   const credential = await page.evaluate(async (pk) => {
     const b64urlToBytes = (base64url) => {

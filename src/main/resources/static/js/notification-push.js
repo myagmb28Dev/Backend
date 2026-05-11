@@ -66,7 +66,7 @@ async function resolveCurrentPushToken() {
     throw new Error("이 브라우저는 Firebase 웹 푸시를 지원하지 않습니다.");
   }
 
-  const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { type: "module" });
+  const serviceWorkerRegistration = await navigator.serviceWorker.register("/js/firebase-messaging-sw.js", { type: "module" });
   const token = await getToken(messaging, {
     vapidKey: FIREBASE_WEB_VAPID_KEY,
     serviceWorkerRegistration

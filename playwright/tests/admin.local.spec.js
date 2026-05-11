@@ -167,7 +167,7 @@ test.describe.serial('admin local small-step flow', () => {
   });
 
   test('step2: passkey registration completes and authenticated session is issued', async ({ page }) => {
-    await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${baseURL}/full_compact/pages/admin-flow.html`, { waitUntil: 'domcontentloaded' });
     const { cdp, authenticatorId } = await installVirtualAuthenticator(page);
     try {
       const options = await api('/api/admin/auth/passkeys/register/options', {
@@ -247,8 +247,31 @@ test.describe.serial('admin local small-step flow', () => {
     expect(admins.some((admin) => admin?.userId === promoteTarget.id)).toBe(true);
   });
 
+  test('step3e: admin community detail endpoint returns 200', async () => {
+    const create = await api('/api/community/posts', {
+      method: 'POST',
+      token: adminFirebaseIdToken,
+      body: {
+        title: `Admin detail test ${Date.now()}`,
+        content: 'community detail 200 regression test',
+        category: 'FREE',
+        tags: ['admin', 'detail', 'test']
+      }
+    });
+    expect(create.status).toBe(201);
+    const postId = create.body?.data?.id;
+    expect(Boolean(postId)).toBe(true);
+
+    const list = await api('/api/admin/community/posts?page=1&pageSize=20', { token: adminAccessToken });
+    expect(list.status).toBe(200);
+
+    const detail = await api(`/api/admin/community/posts/${postId}`, { token: adminAccessToken });
+    expect(detail.status).toBe(200);
+    expect(detail.body?.data?.id).toBe(postId);
+  });
+
   test('step4: logout then mfa passkey login works', async ({ page }) => {
-    await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${baseURL}/full_compact/pages/admin-flow.html`, { waitUntil: 'domcontentloaded' });
     const { cdp, authenticatorId } = await installVirtualAuthenticator(page);
     try {
       const logout = await api('/api/admin/auth/logout', { method: 'POST', token: adminAccessToken });

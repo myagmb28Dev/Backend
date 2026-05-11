@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/js/page-embed-guard.js"></script>
+  <title>Pogun Community Console</title>
+  <style>
+    :root { --bg:#0f0b14; --card:#171220; --surface:#1f1930; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --good:#34d399; --bad:#f87171; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); }
+    main { width:min(1080px,calc(100% - 28px)); margin:20px auto 32px; display:grid; gap:14px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+    .grid { display:grid; grid-template-columns:1.1fr .9fr; gap:12px; }
+    h1,h2,p { margin:0; }
+    .muted { color:var(--muted); font-size:12px; }
+    .status { min-height:40px; padding:10px 12px; border-radius:8px; background:var(--surface); border:1px solid var(--line); color:var(--muted); font-size:13px; font-weight:700; }
+    .status.good { background:rgba(31,138,76,.12); color:var(--good); }
+    .status.bad { background:rgba(180,35,24,.10); color:var(--bad); }
+    .toolbar { display:grid; grid-template-columns:2fr repeat(5,minmax(90px,1fr)); gap:8px; margin-top:10px; }
+    label { display:grid; gap:6px; font-size:12px; font-weight:700; color:var(--muted); }
+    input,select,textarea { width:100%; border:1px solid var(--line); border-radius:8px; background:#130f1d; color:var(--ink); padding:10px; font:inherit; }
+    textarea { min-height:84px; resize:vertical; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    button { border:1px solid #6d46c6; border-radius:8px; padding:10px 12px; font-weight:700; cursor:pointer; color:#fff; background:var(--accent); }
+    button.secondary { background:#1f1930; border:1px solid var(--line); color:var(--ink); }
+    button.danger { border-color:#7f1d1d; background:#3f1515; }
+    .post-list { display:grid; gap:8px; margin-top:10px; max-height:460px; overflow:auto; }
+    .post-item { border:1px solid var(--line); border-radius:10px; background:var(--surface); padding:10px; display:grid; gap:6px; cursor:pointer; }
+    .post-item.active { border-color:#8b5cf6; box-shadow:0 0 0 1px #8b5cf6 inset; }
+    .post-meta { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+    .detail { display:grid; gap:8px; margin-top:10px; }
+    .images { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
+    .images img { width:100%; border-radius:8px; border:1px solid var(--line); background:#111; }
+    .comment-list { display:grid; gap:8px; margin-top:8px; max-height:220px; overflow:auto; }
+    .comment-item { border:1px solid var(--line); border-radius:8px; padding:8px; background:#201a31; }
+    .comment-item .meta { font-size:11px; color:var(--muted); margin-bottom:4px; }
+    pre { margin:0; white-space:pre-wrap; word-break:break-word; background:#0f0f11; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; }
+    @media (max-width:980px) { .grid{grid-template-columns:1fr;} .toolbar{grid-template-columns:1fr 1fr;} }
+  </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div>
+      <strong>Community Console</strong>
+      <h1>커뮤니티 기능 통합 테스트</h1>
+      <p class="muted">목록/상세/작성/수정/삭제/댓글/투표/반응/파일 첨부 전부 확인.</p>
+    </div>
+    <div id="notificationBellMount"></div>
+  </section>
+
+  <section class="card">
+    <div id="status" class="status">준비 중</div>
+    <p id="sessionHint" class="muted" style="margin-top:8px">로그인 세션 확인 중</p>
+  </section>
+
+  <section class="card">
+    <h2>목록 조회</h2>
+    <div class="toolbar">
+      <label>검색어<input id="qInput" placeholder="제목/내용 검색"></label>
+      <label>정렬
+        <select id="typeInput">
+          <option value="LATEST" selected>LATEST</option>
+          <option value="POPULAR">POPULAR</option>
+        </select>
+      </label>
+      <label>카테고리<input id="categoryInput" placeholder="FREE"></label>
+      <label>태그<input id="tagInput" placeholder="tag"></label>
+      <label>페이지<input id="pageInput" type="number" min="0" value="0"></label>
+      <label>크기<input id="sizeInput" type="number" min="1" max="50" value="20"></label>
+    </div>
+    <div class="actions">
+      <button id="loadListButton" class="secondary">목록 조회</button>
+      <button id="prevPageButton" class="secondary">이전</button>
+      <button id="nextPageButton" class="secondary">다음</button>
+    </div>
+    <div id="pageInfo" class="muted" style="margin-top:8px">-</div>
+    <div id="postList" class="post-list muted">목록 없음</div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>작성/수정</h2>
+      <div class="muted" id="editorMode">새 글 작성 모드</div>
+      <label>제목<input id="titleInput"></label>
+      <label>내용<textarea id="contentInput"></textarea></label>
+      <label>카테고리
+        <select id="categorySelect">
+          <option value="FREE" selected>FREE</option>
+          <option value="QUESTION">QUESTION</option>
+          <option value="TIP">TIP</option>
+          <option value="REVIEW">REVIEW</option>
+          <option value="NOTICE">NOTICE</option>
+        </select>
+      </label>
+      <label>태그(CSV)<input id="tagsInput" placeholder="playwright,community"></label>
+      <label>투표 질문<input id="pollQuestionInput" placeholder="선택 질문"></label>
+      <label>투표 옵션(CSV)<input id="pollOptionsInput" placeholder="a,b,c"></label>
+      <label>이미지 파일(옵션)<input id="imagesInput" type="file" multiple accept="image/*"></label>
+      <div class="actions">
+        <button id="createButton">생성(JSON)</button>
+        <button id="createMultipartButton" class="secondary">생성(MULTIPART)</button>
+        <button id="updateButton" class="secondary">수정(JSON)</button>
+        <button id="updateMultipartButton" class="secondary">수정(MULTIPART)</button>
+        <button id="deleteButton" class="danger">삭제</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>선택 글 상세</h2>
+      <label>Post ID<input id="postIdInput" placeholder="목록에서 선택"></label>
+      <div class="actions">
+        <button id="detailButton" class="secondary">상세 조회</button>
+        <button id="commentsButton" class="secondary">댓글 조회</button>
+      </div>
+      <div class="actions">
+        <input id="voteOptionInput" placeholder="vote option" style="flex:1">
+        <button id="voteButton" class="secondary">투표</button>
+      </div>
+      <div class="actions">
+        <input id="reactionInput" placeholder="LIKE/LOVE/HAHA/WOW/SAD/ANGRY" style="flex:1">
+        <button id="reactionButton" class="secondary">반응</button>
+      </div>
+      <div class="actions">
+        <input id="commentInput" placeholder="댓글 내용" style="flex:1">
+        <button id="commentCreateButton" class="secondary">댓글 작성</button>
+      </div>
+      <div class="actions">
+        <input id="deleteCommentIdInput" placeholder="삭제 댓글 ID" style="flex:1">
+        <button id="commentDeleteButton" class="secondary">댓글 삭제</button>
+      </div>
+      <div id="detailWrap" class="detail muted">상세 없음</div>
+      <div id="commentList" class="comment-list"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>최근 응답</h2>
+    <pre id="output">{}</pre>
+  </section>
+</main>
+
+<script type="module" src="/js/global-presence.js"></script>
+<script type="module" src="/js/pages/community-flow.js"></script>
+</body>
+</html>

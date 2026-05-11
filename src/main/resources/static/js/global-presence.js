@@ -1,4 +1,4 @@
-import { refreshFirebaseSession } from "./js/auth-refresh.js";
+import { refreshFirebaseSession } from "./auth-refresh.js";
 
 const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";

@@ -60,6 +60,7 @@
         <button data-view="login" data-short="L" aria-label="Login"><span class="label">Login</span></button>
         <div class="nav-group">운영</div>
         <button data-view="notice" data-short="N" aria-label="Notice"><span class="label">실종 공고</span></button>
+        <button data-view="community" data-short="C" aria-label="Community"><span class="label">커뮤니티</span></button>
         <button data-view="shelter" data-short="S" aria-label="Shelter"><span class="label">보호소 공고</span></button>
         <button data-view="dm" data-short="D" aria-label="DM"><span class="label">DM</span></button>
         <div class="nav-group">시스템 & 로그</div>
@@ -92,6 +93,9 @@
       <section id="view-notice" class="frame-wrap">
         <iframe data-view-frame="notice" src="/full_compact/pages/notice-flow.html" title="notice"></iframe>
       </section>
+      <section id="view-community" class="frame-wrap">
+        <iframe data-view-frame="community" src="/full_compact/pages/community-flow.html" title="community"></iframe>
+      </section>
       <section id="view-dm" class="frame-wrap">
         <iframe data-view-frame="dm" src="/full_compact/pages/dm-flow.html" title="dm"></iframe>
       </section>
@@ -115,7 +119,7 @@
     const backdrop = document.getElementById("menuBackdrop");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
     const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
-    const VIEWS = ["admin","login","notice","dm","notification","setting","shelter"];
+    const VIEWS = ["admin","login","notice","community","dm","notification","setting","shelter"];
     const query = new URLSearchParams(window.location.search);
     const backendBaseOverride = (query.get("backendBase") || query.get("apiBase") || "").trim();
     if (backendBaseOverride) {

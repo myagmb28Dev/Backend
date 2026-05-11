@@ -33,7 +33,7 @@ test.describe.serial('admin traffic console local', () => {
   test('shows all req/res console output', async ({ page }) => {
     test.setTimeout(60000);
 
-    await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${baseURL}/full_compact/pages/admin-flow.html`, { waitUntil: 'domcontentloaded' });
 
     const allConsole = page.locator('#trafficAllOutput');
     await expect(allConsole).toHaveCount(1);

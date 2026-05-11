@@ -1,6 +1,6 @@
-import { request } from "./js/api-client.js";
-import { loadSession as loadStoredSession, removeSession } from "./js/session-store.js";
-import { clearRefreshToken, refreshFirebaseSession } from "./js/auth-refresh.js";
+import { request } from "./api-client.js";
+import { loadSession as loadStoredSession, removeSession } from "./session-store.js";
+import { clearRefreshToken, refreshFirebaseSession } from "./auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 export const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
@@ -63,11 +63,36 @@ function injectBellStyles() {
   document.head.appendChild(style);
 }
 
+function isDomElement(value) {
+  return Boolean(value) && typeof value === "object" && typeof value.querySelector === "function";
+}
+
+function normalizeMountArgs(targetOrConfig, options = {}) {
+  if (typeof targetOrConfig === "string" || isDomElement(targetOrConfig)) {
+    return { target: targetOrConfig, options };
+  }
+  if (targetOrConfig && typeof targetOrConfig === "object") {
+    const target = targetOrConfig.mountId
+      || targetOrConfig.target
+      || targetOrConfig.container
+      || targetOrConfig.element
+      || null;
+    return { target, options: { ...targetOrConfig, ...options } };
+  }
+  return { target: targetOrConfig, options };
+}
+
 function resolveElement(target) {
   if (!target) {
     return null;
   }
-  return typeof target === "string" ? document.getElementById(target) : target;
+  if (isDomElement(target)) {
+    return target;
+  }
+  if (typeof target === "string") {
+    return document.getElementById(target);
+  }
+  return null;
 }
 
 function notifyNotificationEvent(detail = null) {
@@ -241,15 +266,16 @@ export async function markAllNotificationsRead() {
   return response.body?.data;
 }
 
-export function mountNotificationBell(target, options = {}) {
-  const container = resolveElement(target);
+export function mountNotificationBell(targetOrConfig, options = {}) {
+  const normalized = normalizeMountArgs(targetOrConfig, options);
+  const container = resolveElement(normalized.target);
   if (!container) {
     return null;
   }
 
   initializeNotificationBridge();
   injectBellStyles();
-  const href = options.href || notificationHref();
+  const href = normalized.options.href || notificationHref();
   container.innerHTML = `
     <a class="notification-bell" href="${href}" title="알림 보기" aria-label="알림 보기">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -259,7 +285,7 @@ export function mountNotificationBell(target, options = {}) {
       <span class="notification-bell__badge" hidden>0</span>
     </a>
   `;
-  mountedBellTargets.add(target);
+  mountedBellTargets.add(container);
   const bell = container.querySelector(".notification-bell");
   bindNotificationBellNavigation(bell);
   return bell;

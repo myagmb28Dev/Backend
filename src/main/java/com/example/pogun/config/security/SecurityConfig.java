@@ -35,18 +35,6 @@ public class SecurityConfig {
                 .requestMatchers(
                         "/Full_Compact.html",
                         "/full_compact/**",
-                        "/admin-flow.html",
-                        "/login-flow.html",
-                        "/notice-flow.html",
-                        "/dm-flow.html",
-                        "/notification-flow.html",
-                        "/shelter-flow.html",
-                        "/admin-local-bootstrap.js",
-                        "/firebase-web-config.js",
-                        "/global-presence.js",
-                        "/notification-web.js",
-                        "/notification-push.js",
-                        "/firebase-messaging-sw.js",
                         "/js/**"
                 );
     }
@@ -68,31 +56,7 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/full_compact/**")
                         .permitAll()
-                        .requestMatchers("/dm-flow.html")
-                        .permitAll()
-                        .requestMatchers("/notice-flow.html")
-                        .permitAll()
-                        .requestMatchers("/shelter-flow.html")
-                        .permitAll()
-                        .requestMatchers("/login-flow.html")
-                        .permitAll()
-                        .requestMatchers("/notification-flow.html")
-                        .permitAll()
-                        .requestMatchers("/admin-flow.html")
-                        .permitAll()
-                        .requestMatchers("/admin-local-bootstrap.js")
-                        .permitAll()
-                        .requestMatchers("/firebase-web-config.js")
-                        .permitAll()
-                        .requestMatchers("/global-presence.js")
-                        .permitAll()
-                        .requestMatchers("/notification-web.js")
-                        .permitAll()
-                        .requestMatchers("/notification-push.js")
-                        .permitAll()
                         .requestMatchers("/js/**")
-                        .permitAll()
-                        .requestMatchers("/firebase-messaging-sw.js")
                         .permitAll()
                         .requestMatchers(
                                 "/",

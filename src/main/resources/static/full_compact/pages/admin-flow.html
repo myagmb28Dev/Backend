@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/js/page-embed-guard.js"></script>
   <title>Pogun Admin Console</title>
   <style>
     :root { --bg:#0f0b14; --card:#171220; --ink:#f5f3ff; --muted:#a59bb9; --line:#2d2540; --accent:#8b5cf6; --accent-soft:#231a36; --good:#34d399; --bad:#f87171; --admin:#6d28d9; }
@@ -419,7 +420,7 @@
 </div>
 
 <script type="module">
-  import { ensureLocalAdminTestUserVerified } from "/admin-local-bootstrap.js";
+  import { ensureLocalAdminTestUserVerified } from "/js/admin-local-bootstrap.js";
   import { createJsonAuthedRequest } from "/js/api-client.js";
   import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import {
@@ -429,7 +430,7 @@
     setPersistence,
     signInWithPopup
   } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { FIREBASE_WEB_CONFIG } from "/firebase-web-config.js";
+  import { FIREBASE_WEB_CONFIG } from "/js/firebase-web-config.js";
 
   const BACKEND_BASE = window.location.origin;
   const ADMIN_ACCESS_TOKEN_KEY = "pogun-admin-access-token-v1";
