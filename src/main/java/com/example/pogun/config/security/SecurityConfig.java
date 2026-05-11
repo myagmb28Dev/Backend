@@ -82,6 +82,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/local/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/admin/auth/session").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/admin/users/promote/email").hasAuthority("ROLE_ADMIN_CONSOLE")
                         .requestMatchers("/api/admin/auth/**").hasAuthority("ROLE_ADMIN_CONSOLE")
                         .requestMatchers("/ws/chat").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")

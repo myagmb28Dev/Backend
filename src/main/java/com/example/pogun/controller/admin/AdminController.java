@@ -3,6 +3,7 @@ package com.example.pogun.controller.admin;
 import com.example.pogun.dto.admin.AdminDashboardResponse;
 import com.example.pogun.dto.admin.AdminDeleteResponse;
 import com.example.pogun.dto.admin.AdminNotificationSendRequest;
+import com.example.pogun.dto.admin.AdminPromoteByEmailRequest;
 import com.example.pogun.dto.admin.AdminPromoteRequest;
 import com.example.pogun.dto.admin.AdminPromoteResponse;
 import com.example.pogun.dto.admin.AdminReportActionRequest;
@@ -171,6 +172,15 @@ public class AdminController {
     @Operation(summary = "관리자 승격", description = "사용자 ID 기준 기존 사용자를 ADMIN으로 승격합니다.")
     public ResponseEntity<ApiResponse<AdminPromoteResponse>> promoteUser(@Valid @RequestBody AdminPromoteRequest request) {
         AdminPromoteResponse data = adminService.promoteUserToAdmin(request.getUserId());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 승격 성공", data));
+    }
+
+    @PostMapping("/users/promote/email")
+    @Operation(summary = "관리자 승격(이메일)", description = "이메일 기준으로 사용자를 ADMIN으로 승격합니다. 계정이 없으면 Firebase 사용자 정보로 자동 생성합니다.")
+    public ResponseEntity<ApiResponse<AdminPromoteResponse>> promoteUserByEmail(
+            @Valid @RequestBody AdminPromoteByEmailRequest request
+    ) {
+        AdminPromoteResponse data = adminService.promoteUserToAdminByEmail(request.getEmail());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 승격 성공", data));
     }
 

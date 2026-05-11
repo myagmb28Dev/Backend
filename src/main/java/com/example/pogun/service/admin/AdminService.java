@@ -36,6 +36,7 @@ import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserInfo;
 import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 /**
@@ -149,20 +151,40 @@ public class AdminService {
         }
 
         User user = getUser(userId.trim());
+        if (user.getRole() == UserRole.ADMIN) {
+            throw ApiException.conflict("ALREADY_ADMIN", "이미 관리자 권한이 부여된 사용자입니다.");
+        }
+        return promoteUserToAdminInternal(user);
+    }
 
-        String beforeRole = user.getRole().name();
-        user.setRole(UserRole.ADMIN);
-        user.setAdminEmailVerificationRequired(true);
-        user.setAdminEmailVerifiedAt(null);
-        User saved = userRepository.save(user);
-        adminPermissionService.ensureDefaults(saved);
-        forceAdminEmailReverification(saved);
-        AdminPromoteResponse response = new AdminPromoteResponse(saved.getId(), saved.getEmail(), saved.getRole().name(), saved.getStatus().name());
-        adminAuditService.log("ADMIN_USER_PROMOTED", "USER", saved.getId().toString(),
-                java.util.Map.of("role", beforeRole),
-                java.util.Map.of("role", saved.getRole().name()),
-                java.util.Map.of("email", saved.getEmail()));
-        return response;
+    @Transactional
+    public AdminPromoteResponse promoteUserToAdminByEmail(String email) {
+        adminSecurityService.require(AdminPermission.ADMIN_PROMOTE);
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null) {
+            throw ApiException.badRequest("INVALID_EMAIL", "email은 필수입니다.");
+        }
+
+        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
+        if (user != null) {
+            if (user.getRole() == UserRole.ADMIN) {
+                throw ApiException.conflict("ALREADY_ADMIN", "이미 관리자 권한이 부여된 사용자입니다.");
+            }
+            throw ApiException.conflict("USER_ALREADY_EXISTS", "이미 가입된 사용자입니다. userId 승격 API를 사용하세요.");
+        }
+
+        UserRecord record = resolveFirebaseUserByEmail(normalizedEmail);
+        user = userRepository.save(User.builder()
+                .firebaseUid(record.getUid())
+                .email(normalizedEmail)
+                .nickname(resolveNickname(record.getDisplayName(), normalizedEmail, record.getUid()))
+                .profileImageUrl(record.getPhotoUrl())
+                .authProvider(resolveAuthProvider(record))
+                .lastActiveAt(Instant.now())
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build());
+        return promoteUserToAdminInternal(user);
     }
 
     @Transactional(readOnly = true)
@@ -212,6 +234,96 @@ public class AdminService {
                     user.getFirebaseUid(),
                     e.getMessage());
         }
+    }
+
+    private AdminPromoteResponse promoteUserToAdminInternal(User user) {
+        String beforeRole = user.getRole() != null ? user.getRole().name() : "UNKNOWN";
+        user.setRole(UserRole.ADMIN);
+        user.setAdminEmailVerificationRequired(true);
+        user.setAdminEmailVerifiedAt(null);
+        User saved = userRepository.save(user);
+        adminPermissionService.ensureDefaults(saved);
+        forceAdminEmailReverification(saved);
+        AdminPromoteResponse response = new AdminPromoteResponse(saved.getId(), saved.getEmail(), saved.getRole().name(), saved.getStatus().name());
+        adminAuditService.log("ADMIN_USER_PROMOTED", "USER", saved.getId().toString(),
+                java.util.Map.of("role", beforeRole),
+                java.util.Map.of("role", saved.getRole().name()),
+                java.util.Map.of("email", saved.getEmail()));
+        return response;
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private UserRecord resolveFirebaseUserByEmail(String email) {
+        try {
+            return firebaseAuth.getUserByEmail(email);
+        } catch (FirebaseAuthException e) {
+            if (e.getAuthErrorCode() != null && e.getAuthErrorCode().name().equals("USER_NOT_FOUND")) {
+                try {
+                    return firebaseAuth.createUser(new UserRecord.CreateRequest()
+                            .setEmail(email)
+                            .setEmailVerified(false));
+                } catch (FirebaseAuthException createError) {
+                    throw ApiException.internal("FIREBASE_USER_CREATE_FAILED", "Firebase 사용자 생성에 실패했습니다.");
+                }
+            }
+            throw ApiException.internal("FIREBASE_USER_LOOKUP_FAILED", "Firebase 사용자 조회에 실패했습니다.");
+        }
+    }
+
+    private String resolveNickname(String displayName, String email, String uid) {
+        if (displayName != null && !displayName.isBlank()) {
+            return truncate(displayName.trim(), 50);
+        }
+        if (email != null && email.contains("@")) {
+            String local = email.substring(0, email.indexOf('@')).trim();
+            if (!local.isBlank()) {
+                return truncate(local, 50);
+            }
+        }
+        String seed = uid == null || uid.isBlank() ? "Admin" : "Admin_" + uid.substring(0, Math.min(5, uid.length()));
+        return truncate(seed, 50);
+    }
+
+    private String resolveAuthProvider(UserRecord record) {
+        if (record != null && record.getProviderData() != null) {
+            for (UserInfo info : record.getProviderData()) {
+                if (info == null) {
+                    continue;
+                }
+                String providerId = info.getProviderId();
+                if (providerId != null && !providerId.isBlank() && !"firebase".equalsIgnoreCase(providerId)) {
+                    return normalizeProviderId(providerId);
+                }
+            }
+        }
+        return "GOOGLE";
+    }
+
+    private String normalizeProviderId(String providerId) {
+        String resolved = providerId == null ? "firebase" : providerId;
+        return switch (resolved.toLowerCase(Locale.ROOT)) {
+            case "google.com" -> "GOOGLE";
+            case "apple.com" -> "APPLE";
+            case "facebook.com" -> "FACEBOOK";
+            case "github.com" -> "GITHUB";
+            case "password" -> "EMAIL";
+            case "phone" -> "PHONE";
+            case "google", "apple", "facebook", "github", "email", "firebase" -> resolved.toUpperCase(Locale.ROOT);
+            default -> resolved.toUpperCase(Locale.ROOT).replace('.', '_');
+        };
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     // 공고 삭제 전에 북마크와 채팅 흔적을 먼저 비워 연관 데이터가 고아 상태로 남지 않게 정리한다.

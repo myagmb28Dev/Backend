@@ -253,6 +253,10 @@
       <section class="card card-accent">
         <div class="section-title"><h2>사용자 조회</h2><span class="subtle">운영 조회 파라미터</span></div>
         <p class="muted">행을 우클릭하면 관리자 승격/권한 조회 메뉴가 열립니다.</p>
+        <div class="actions">
+          <input id="promoteEmailInput" placeholder="관리자 승격 대상 이메일">
+          <button id="promoteEmailButton" class="admin">이메일로 관리자 승격</button>
+        </div>
         <div class="toolbar-grid">
           <label>검색<input id="usersQueryInput" placeholder="이메일/닉네임 검색"></label>
           <label>상태
@@ -270,6 +274,7 @@
           <button id="loadUsersButton">조회</button>
         </div>
         <div id="usersListWrap" class="user-list" style="display:none; max-height:420px; overflow:auto;"></div>
+        <pre id="promoteEmailOutput" class="debug-pane">{}</pre>
       </section>
 
       <section class="card card-accent">
@@ -999,6 +1004,29 @@
     return true;
   }
 
+  async function promoteUserByEmail() {
+    const input = el("promoteEmailInput");
+    const email = input ? input.value.trim() : "";
+    if (!email) {
+      setStatus("승격할 이메일을 입력하세요.", "bad");
+      return;
+    }
+    const res = await adminRequest("/api/admin/users/promote/email", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    const output = el("promoteEmailOutput");
+    if (output) output.textContent = JSON.stringify(res.body || {}, null, 2);
+    if (!res.ok) {
+      const code = res.body?.error?.code ? ` (${res.body.error.code})` : "";
+      const message = res.body?.error?.message || res.body?.message || "승격 실패";
+      setStatus(`이메일 승격 실패${code}: ${message}`, "bad");
+      return;
+    }
+    setStatus(`${email} 관리자 승격 완료`, "good");
+    await Promise.allSettled([loadUsers(), loadAdminStatus()]);
+  }
+
   function renderAdminStatusPanel(data) {
     adminStatusCache = data || null;
     const summary = data?.summary || {};
@@ -1667,6 +1695,8 @@
   el("reviewButton").onclick = reviewReport;
   const promoteButton = el("promoteButton");
   if (promoteButton) promoteButton.onclick = promoteUser;
+  const promoteEmailButton = el("promoteEmailButton");
+  if (promoteEmailButton) promoteEmailButton.onclick = promoteUserByEmail;
   const loadAdminStatusButton = el("loadAdminStatusButton");
   if (loadAdminStatusButton) loadAdminStatusButton.onclick = loadAdminStatus;
   el("usersCsvButton").onclick = () => downloadCsv("/api/admin/users/export.csv", "admin-users.csv");
