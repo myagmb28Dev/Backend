@@ -3,6 +3,9 @@ package com.example.pogun.service.admin;
 import com.example.pogun.dto.admin.AdminDashboardResponse;
 import com.example.pogun.dto.admin.AdminDeleteResponse;
 import com.example.pogun.dto.admin.AdminPromoteResponse;
+import com.example.pogun.dto.admin.AdminStatusItemResponse;
+import com.example.pogun.dto.admin.AdminStatusResponse;
+import com.example.pogun.dto.admin.AdminStatusSummaryResponse;
 import com.example.pogun.dto.admin.AdminUserSanctionResponse;
 import com.example.pogun.dto.admin.AdminVisibilityResponse;
 import com.example.pogun.entity.admin.enums.AdminPermission;
@@ -35,12 +38,14 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -49,6 +54,7 @@ import java.util.UUID;
  */
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AdminService {
     private static final Set<ReportStatus> PENDING_REPORT_STATUSES = Set.of(ReportStatus.RECEIVED, ReportStatus.REVIEWING);
@@ -136,14 +142,13 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminPromoteResponse promoteUserToAdmin(String email) {
+    public AdminPromoteResponse promoteUserToAdmin(String userId) {
         adminSecurityService.require(AdminPermission.ADMIN_PROMOTE);
-        if (email == null || email.isBlank()) {
-            throw ApiException.badRequest("INVALID_EMAIL", "email은 필수입니다.");
+        if (userId == null || userId.isBlank()) {
+            throw ApiException.badRequest("INVALID_USER_ID", "userId는 필수입니다.");
         }
 
-        User user = userRepository.findByEmail(email.trim())
-                .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+        User user = getUser(userId.trim());
 
         String beforeRole = user.getRole().name();
         user.setRole(UserRole.ADMIN);
@@ -160,6 +165,41 @@ public class AdminService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public AdminStatusResponse getAdminStatus() {
+        adminSecurityService.require(AdminPermission.AUDIT_READ);
+        List<User> admins = userRepository.findAll().stream()
+                .filter(user -> user.getRole() == UserRole.ADMIN)
+                .sorted(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+                .toList();
+
+        long active = admins.stream().filter(user -> user.getStatus() == UserStatus.ACTIVE).count();
+        long suspended = admins.stream().filter(user -> user.getStatus() == UserStatus.BANNED).count();
+        long withdrawn = admins.stream().filter(user -> user.getStatus() == UserStatus.WITHDRAWN).count();
+
+        List<AdminStatusItemResponse> items = admins.stream()
+                .map(user -> new AdminStatusItemResponse(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getNickname(),
+                        user.getRole().name(),
+                        user.getStatus().name(),
+                        adminPermissionService.getPermissions(user).stream()
+                                .map(Enum::name)
+                                .sorted()
+                                .toList(),
+                        user.isAdminEmailVerificationRequired(),
+                        user.getAdminEmailVerifiedAt(),
+                        resolveAdminEmailVerificationStatus(user)
+                ))
+                .toList();
+
+        return new AdminStatusResponse(
+                new AdminStatusSummaryResponse(admins.size(), active, suspended, withdrawn),
+                items
+        );
+    }
+
     private void forceAdminEmailReverification(User user) {
         if (user.getFirebaseUid() == null || user.getFirebaseUid().isBlank()) {
             return;
@@ -167,7 +207,10 @@ public class AdminService {
         try {
             firebaseAuth.updateUser(new UserRecord.UpdateRequest(user.getFirebaseUid()).setEmailVerified(false));
         } catch (FirebaseAuthException e) {
-            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
+            log.warn("관리자 이메일 재인증 준비 실패. 승격은 유지됩니다. userId={}, firebaseUid={}, reason={}",
+                    user.getId(),
+                    user.getFirebaseUid(),
+                    e.getMessage());
         }
     }
 
@@ -255,6 +298,13 @@ public class AdminService {
             case "WITHDRAW", "WITHDRAWN" -> UserStatus.WITHDRAWN;
             default -> throw ApiException.badRequest("INVALID_SANCTION_ACTION", "올바르지 않은 action 값입니다.");
         };
+    }
+
+    private String resolveAdminEmailVerificationStatus(User user) {
+        if (user.getAdminEmailVerifiedAt() != null) {
+            return "VERIFIED";
+        }
+        return user.isAdminEmailVerificationRequired() ? "PENDING" : "VERIFIED";
     }
 }
 

@@ -7,6 +7,7 @@ import com.example.pogun.dto.admin.AdminPromoteRequest;
 import com.example.pogun.dto.admin.AdminPromoteResponse;
 import com.example.pogun.dto.admin.AdminReportActionRequest;
 import com.example.pogun.dto.admin.AdminReportReviewRequest;
+import com.example.pogun.dto.admin.AdminStatusResponse;
 import com.example.pogun.dto.admin.AdminUserRoleUpdateRequest;
 import com.example.pogun.dto.admin.AdminUserSanctionRequest;
 import com.example.pogun.dto.admin.AdminUserSanctionResponse;
@@ -167,10 +168,17 @@ public class AdminController {
     }
 
     @PatchMapping("/users/promote")
-    @Operation(summary = "관리자 승격", description = "이메일 기준 기존 사용자를 ADMIN으로 승격합니다.")
+    @Operation(summary = "관리자 승격", description = "사용자 ID 기준 기존 사용자를 ADMIN으로 승격합니다.")
     public ResponseEntity<ApiResponse<AdminPromoteResponse>> promoteUser(@Valid @RequestBody AdminPromoteRequest request) {
-        AdminPromoteResponse data = adminService.promoteUserToAdmin(request.getEmail());
+        AdminPromoteResponse data = adminService.promoteUserToAdmin(request.getUserId());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 승격 성공", data));
+    }
+
+    @GetMapping("/users/admins/status")
+    @Operation(summary = "관리자 상태 조회", description = "관리자 수 요약과 관리자별 권한 상태를 조회합니다.")
+    public ResponseEntity<ApiResponse<AdminStatusResponse>> adminStatus() {
+        AdminStatusResponse data = adminService.getAdminStatus();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 상태 조회 성공", data));
     }
 
     @GetMapping("/notices")

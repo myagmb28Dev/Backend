@@ -226,6 +226,27 @@ test.describe.serial('admin local small-step flow', () => {
     expect(Object.prototype.hasOwnProperty.call(inboundRefresh || {}, 'responseBody')).toBe(true);
   });
 
+  test('step3d: promote by userId and load admin status', async () => {
+    const users = await api('/api/admin/users?page=1&pageSize=50', { token: adminAccessToken });
+    expect(users.status).toBe(200);
+    const items = Array.isArray(users.body?.data?.items) ? users.body.data.items : [];
+    const promoteTarget = items.find((u) => String(u?.role || '').toUpperCase() !== 'ADMIN');
+    expect(Boolean(promoteTarget?.id)).toBe(true);
+
+    const promote = await api('/api/admin/users/promote', {
+      method: 'PATCH',
+      token: adminAccessToken,
+      body: { userId: promoteTarget.id }
+    });
+    expect(promote.status).toBe(200);
+    expect(String(promote.body?.data?.role || '').toUpperCase()).toBe('ADMIN');
+
+    const status = await api('/api/admin/users/admins/status', { token: adminAccessToken });
+    expect(status.status).toBe(200);
+    const admins = Array.isArray(status.body?.data?.admins) ? status.body.data.admins : [];
+    expect(admins.some((admin) => admin?.userId === promoteTarget.id)).toBe(true);
+  });
+
   test('step4: logout then mfa passkey login works', async ({ page }) => {
     await page.goto(`${baseURL}/admin-flow.html`, { waitUntil: 'domcontentloaded' });
     const { cdp, authenticatorId } = await installVirtualAuthenticator(page);

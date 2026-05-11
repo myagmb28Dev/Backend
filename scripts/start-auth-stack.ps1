@@ -553,10 +553,7 @@ $refreshToken = $authTokenResponse.refreshToken
 Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
 
 $playwrightAccounts = @(
-    @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" },
-    @{ Index = 2; Email = "playwright-user2@local.dev"; Password = "Test1234!" },
-    @{ Index = 3; Email = "playwright-user3@local.dev"; Password = "Test1234!" },
-    @{ Index = 4; Email = "playwright-user4@local.dev"; Password = "Test1234!" }
+    @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" }
 )
 
 $legacyFiles = @(

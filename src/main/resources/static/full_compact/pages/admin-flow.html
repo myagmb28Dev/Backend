@@ -56,10 +56,37 @@
     .cell-muted { color:var(--muted); }
     .row-actions { display:flex; gap:6px; }
     .row-actions button { padding:6px 8px; border-radius:8px; font-size:11px; }
+    .admin-status-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .admin-stat { border:1px solid var(--line); border-radius:10px; background:#15111f; padding:10px; }
+    .admin-stat .label { color:var(--muted); font-size:11px; }
+    .admin-stat .value { font-size:18px; font-weight:800; margin-top:4px; }
+    .context-menu { position:fixed; z-index:9999; min-width:280px; max-width:420px; border:1px solid var(--line); border-radius:10px; background:#1b1627; box-shadow:0 12px 24px rgba(0,0,0,.35); display:none; overflow:hidden; }
+    .context-menu .meta { padding:10px 12px; border-bottom:1px solid #2a223a; background:#171326; font-size:12px; line-height:1.5; }
+    .context-menu .meta .row { display:flex; gap:8px; align-items:flex-start; }
+    .context-menu .meta .k { color:var(--muted); width:72px; flex:0 0 72px; }
+    .context-menu .meta .v {
+      color:var(--ink);
+      flex:1 1 auto;
+      min-width:0;
+      white-space:normal;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+      text-overflow:clip;
+    }
+    .context-menu button { width:100%; border:0; border-bottom:1px solid #2a223a; border-radius:0; background:transparent; color:var(--ink); padding:10px 12px; text-align:left; font-size:12px; }
+    .context-menu button:last-child { border-bottom:0; }
+    .context-menu button:hover { background:#2a2140; }
     .debug-pane { display:block; }
+    .user-list { margin-top:10px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#18181b; }
+    .user-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-bottom:1px solid #2a2a2f; cursor:context-menu; }
+    .user-item:last-child { border-bottom:0; }
+    .user-item:hover { background:#222228; }
+    .user-name { font-size:14px; font-weight:700; }
+    .user-sub { color:var(--muted); font-size:12px; }
     @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
     @media (max-width:980px) { .toolbar-grid,.toolbar-grid.compact { grid-template-columns:1fr 1fr; } }
     @media (max-width:640px) { .toolbar-grid,.toolbar-grid.compact { grid-template-columns:1fr; } }
+    @media (max-width:860px) { .admin-status-grid { grid-template-columns:1fr 1fr; } }
   </style>
   <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
@@ -151,13 +178,7 @@
     </div>
 
     <section class="card" style="margin-top:14px;">
-      <h2>사용자 관리</h2>
-      <div class="grid" style="grid-template-columns: 2fr 1fr; align-items: end;">
-        <label>관리자로 승격할 이메일
-          <input id="promoteEmailInput" type="email" placeholder="user@local.dev">
-        </label>
-        <button id="promoteButton" class="danger">관리자 승격</button>
-      </div>
+      <h2>CSV 다운로드</h2>
       <div class="actions">
         <button id="usersCsvButton" class="secondary">사용자 CSV</button>
         <button id="noticesCsvButton" class="secondary">공고 CSV</button>
@@ -229,7 +250,8 @@
 
     <div class="grid">
       <section class="card card-accent">
-        <div class="section-title"><h2>사용자 목록/상세/상태</h2><span class="subtle">운영 조회 파라미터</span></div>
+        <div class="section-title"><h2>사용자 조회</h2><span class="subtle">운영 조회 파라미터</span></div>
+        <p class="muted">행을 우클릭하면 관리자 승격/권한 조회 메뉴가 열립니다.</p>
         <div class="toolbar-grid">
           <label>검색<input id="usersQueryInput" placeholder="이메일/닉네임 검색"></label>
           <label>상태
@@ -242,24 +264,11 @@
           </label>
           <label>페이지<input id="usersPageInput" type="number" min="1" value="1"></label>
           <label>크기
-            <select id="usersPageSizeInput"><option>10</option><option selected>20</option><option>50</option></select>
-          </label>
-          <label>정렬
-            <select id="usersSortByInput"><option value="createdAt" selected>createdAt</option><option value="email">email</option><option value="status">status</option></select>
-          </label>
-          <label>순서
-            <select id="usersSortOrderInput"><option value="desc" selected>desc</option><option value="asc">asc</option></select>
+            <select id="usersPageSizeInput"><option selected>10</option><option>20</option><option>50</option></select>
           </label>
           <button id="loadUsersButton">조회</button>
         </div>
-        <label>사용자 ID<input id="selectedUserIdInput"></label>
-        <div class="actions">
-          <button id="loadUserDetailButton">상세</button>
-          <button id="suspendUserButton" class="danger">정지</button>
-          <button id="unsuspendUserButton">정지해제</button>
-        </div>
-        <div id="usersTableWrap" class="table-wrap" style="display:none;"></div>
-        <pre id="usersOutput" class="debug-pane">{}</pre>
+        <div id="usersListWrap" class="user-list" style="display:none; max-height:420px; overflow:auto;"></div>
       </section>
 
       <section class="card card-accent">
@@ -399,6 +408,15 @@
 
   </div>
 </main>
+<div id="userRowContextMenu" class="context-menu">
+  <div class="meta" id="userRowContextMeta">
+    <div class="row"><span class="k">상태</span><span class="v" data-meta-key="status">-</span></div>
+    <div class="row"><span class="k">역할</span><span class="v" data-meta-key="role">-</span></div>
+    <div class="row"><span class="k">권한</span><span class="v" data-meta-key="permissions">-</span></div>
+  </div>
+  <button type="button" data-action="promote">관리자 승격</button>
+  <button type="button" data-action="permissions">관리자 권한 조회</button>
+</div>
 
 <script type="module">
   import { ensureLocalAdminTestUserVerified } from "/admin-local-bootstrap.js";
@@ -820,6 +838,7 @@
     loadServicesOverview();
     loadSettings();
     loadReferenceData();
+    loadUsers();
     startTrafficPolling();
   }
 
@@ -960,11 +979,110 @@
   }
 
   async function promoteUser() {
-    const email = el("promoteEmailInput").value.trim();
-    if (!email) return;
-    const res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ email }) });
-    if (res.ok) setStatus(`${email} 승격 완료`, "good");
-    else setStatus("승격 실패", "bad");
+    const input = el("promoteUserIdInput");
+    const userId = input ? input.value.trim() : "";
+    if (!userId) return;
+    await promoteUserById(userId);
+  }
+
+  async function promoteUserById(userId) {
+    const res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ userId }) });
+    if (!res.ok) {
+      const code = res.body?.error?.code ? ` (${res.body.error.code})` : "";
+      const message = res.body?.error?.message || res.body?.message || "승격 실패";
+      setStatus(`승격 실패${code}: ${message}`, "bad");
+      return false;
+    }
+    setStatus(`${userId} 승격 완료`, "good");
+    await Promise.allSettled([loadUsers(), loadAdminStatus()]);
+    return true;
+  }
+
+  function renderAdminStatusPanel(data) {
+    adminStatusCache = data || null;
+    const summary = data?.summary || {};
+    const statTotal = el("adminStatTotal");
+    const statActive = el("adminStatActive");
+    const statSuspended = el("adminStatSuspended");
+    const statWithdrawn = el("adminStatWithdrawn");
+    if (statTotal) statTotal.textContent = String(summary.totalAdmins ?? 0);
+    if (statActive) statActive.textContent = String(summary.activeAdmins ?? 0);
+    if (statSuspended) statSuspended.textContent = String(summary.suspendedAdmins ?? 0);
+    if (statWithdrawn) statWithdrawn.textContent = String(summary.withdrawnAdmins ?? 0);
+  }
+
+  function summarizeUserPermissions(user) {
+    if (!user) return "USER";
+    if (String(user.role || "").toUpperCase() !== "ADMIN") return "USER";
+    const admins = Array.isArray(adminStatusCache?.admins) ? adminStatusCache.admins : [];
+    const userId = String(user.id || user.userId || "");
+    const found = admins.find((item) => String(item?.userId || "") === userId);
+    if (!found) return "ADMIN";
+    const perms = Array.isArray(found.permissions) ? found.permissions : [];
+    return perms.length ? perms.join(", ") : "ADMIN";
+  }
+
+  function openUserContextMenu(event, user) {
+    const menu = el("userRowContextMenu");
+    if (!menu || !user?.id) return;
+    userRowContext = user;
+    const meta = el("userRowContextMeta");
+    if (meta) {
+      const statusEl = meta.querySelector('[data-meta-key="status"]');
+      const roleEl = meta.querySelector('[data-meta-key="role"]');
+      const permEl = meta.querySelector('[data-meta-key="permissions"]');
+      if (statusEl) statusEl.textContent = String(user.status || "-");
+      if (roleEl) roleEl.textContent = String(user.role || "USER");
+      if (permEl) permEl.textContent = "조회 전";
+    }
+    menu.style.display = "block";
+    const maxX = window.innerWidth - menu.offsetWidth - 8;
+    const maxY = window.innerHeight - menu.offsetHeight - 8;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, maxX))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, maxY))}px`;
+  }
+
+  function closeUserContextMenu() {
+    const menu = el("userRowContextMenu");
+    if (menu) menu.style.display = "none";
+    userRowContext = null;
+  }
+
+  function bindUserRowContextMenu(rows) {
+    const wrap = el("usersListWrap");
+    if (!wrap) return;
+    wrap.querySelectorAll("[data-user-index]").forEach((item) => {
+      item.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const idx = Number(item.getAttribute("data-user-index"));
+        if (!Number.isFinite(idx)) return;
+        const user = rows[idx];
+        if (!user?.id) return;
+        openUserContextMenu(event, user);
+      });
+    });
+  }
+
+  async function loadAdminStatus() {
+    const res = await adminRequest("/api/admin/users/admins/status");
+    if (!res.ok) {
+      setStatus("관리자 상태 조회 실패", "bad");
+      return;
+    }
+    renderAdminStatusPanel(res.body.data);
+    const output = el("adminStatusOutput");
+    if (output) {
+      output.textContent = JSON.stringify({
+        summary: res.body?.data?.summary || {},
+        adminsCount: Array.isArray(res.body?.data?.admins) ? res.body.data.admins.length : 0
+      }, null, 2);
+      setStatus("관리자 상태 조회 성공", "good");
+    }
+  }
+
+  async function ensureAdminStatusCache() {
+    if (adminStatusCache && Array.isArray(adminStatusCache.admins)) return;
+    await loadAdminStatus();
   }
 
   function downloadCsv(path, filename) {
@@ -1144,51 +1262,34 @@
     const query = qs(el("usersQueryInput").value);
     const status = qs(el("usersStatusFilter").value || "");
     const page = intFrom("usersPageInput", 1, 1);
-    const pageSize = intFrom("usersPageSizeInput", 20, 1);
-    const sortBy = qs(el("usersSortByInput").value || "createdAt");
-    const sortOrder = qs(el("usersSortOrderInput").value || "desc");
+    const pageSize = intFrom("usersPageSizeInput", 10, 1);
+    const sortBy = qs("createdAt");
+    const sortOrder = qs("desc");
     const res = await adminRequest(`/api/admin/users?page=${page}&pageSize=${pageSize}&query=${query}&status=${status}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
     if (!res.ok) return setStatus("사용자 목록 조회 실패", "bad");
+    await ensureAdminStatusCache();
     const items = res.body?.data?.items || [];
-    renderTable("usersTableWrap", [
-      { label: "ID", key: "id", muted: true },
-      { label: "이메일", key: "email" },
-      { label: "이름", key: "name" },
-      { label: "역할", key: "role" },
-      { label: "상태", key: "status" },
-      { label: "가입일", key: "createdAt", muted: true }
-    ], items, (row) => { el("selectedUserIdInput").value = row?.id || ""; }, [
-      { key: "detail", label: "상세", handler: (row) => { el("selectedUserIdInput").value = row?.id || ""; loadUserDetail(); } },
-      { key: "suspend", label: "정지", danger: true, handler: (row) => { el("selectedUserIdInput").value = row?.id || ""; suspendUser(); } },
-      { key: "unsuspend", label: "해제", handler: (row) => { el("selectedUserIdInput").value = row?.id || ""; unsuspendUser(); } }
-    ]);
-    el("usersOutput").textContent = JSON.stringify(res.body.data, null, 2);
-  }
-
-  async function loadUserDetail() {
-    const userId = (el("selectedUserIdInput").value || "").trim();
-    if (!userId) return;
-    const res = await adminRequest(`/api/admin/users/${encodeURIComponent(userId)}`);
-    if (!res.ok) return setStatus("사용자 상세 조회 실패", "bad");
-    el("usersOutput").textContent = JSON.stringify(res.body.data, null, 2);
-  }
-
-  async function suspendUser() {
-    const userId = (el("selectedUserIdInput").value || "").trim();
-    if (!userId) return;
-    const res = await adminRequest(`/api/admin/users/${encodeURIComponent(userId)}/suspend`, { method: "POST" });
-    if (!res.ok) return setStatus("사용자 정지 실패", "bad");
-    setStatus("사용자 정지 성공", "good");
-    await loadUserDetail();
-  }
-
-  async function unsuspendUser() {
-    const userId = (el("selectedUserIdInput").value || "").trim();
-    if (!userId) return;
-    const res = await adminRequest(`/api/admin/users/${encodeURIComponent(userId)}/unsuspend`, { method: "POST" });
-    if (!res.ok) return setStatus("사용자 정지해제 실패", "bad");
-    setStatus("사용자 정지해제 성공", "good");
-    await loadUserDetail();
+    const wrap = el("usersListWrap");
+    if (!wrap) return;
+    if (!items.length) {
+      wrap.style.display = "none";
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.innerHTML = items.map((user, idx) => {
+      const name = escapeHtml(user?.name || user?.nickname || "이름없음");
+      const email = escapeHtml(user?.email || "-");
+      return `
+        <div class="user-item" data-user-index="${idx}" title="우클릭으로 관리 메뉴 열기">
+          <div>
+            <div class="user-name">${name}</div>
+            <div class="user-sub">${email}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    wrap.style.display = "block";
+    bindUserRowContextMenu(items);
   }
 
   async function loadNotices() {
@@ -1391,6 +1492,8 @@
   const trafficSeen = new Set();
   let trafficTrackedApiPrefixes = ["/api/"];
   let selectedTrafficGroup = "ALL";
+  let userRowContext = null;
+  let adminStatusCache = null;
 
   function isTrackedApiPath(path) {
     if (!path || typeof path !== "string") return false;
@@ -1561,7 +1664,10 @@
   el("refreshReportsButton").onclick = loadReports;
   el("statusFilter").onchange = loadReports;
   el("reviewButton").onclick = reviewReport;
-  el("promoteButton").onclick = promoteUser;
+  const promoteButton = el("promoteButton");
+  if (promoteButton) promoteButton.onclick = promoteUser;
+  const loadAdminStatusButton = el("loadAdminStatusButton");
+  if (loadAdminStatusButton) loadAdminStatusButton.onclick = loadAdminStatus;
   el("usersCsvButton").onclick = () => downloadCsv("/api/admin/users/export.csv", "admin-users.csv");
   el("noticesCsvButton").onclick = () => downloadCsv("/api/admin/notices/export.csv", "admin-notices.csv");
   el("reportsCsvButton").onclick = () => downloadCsv("/api/admin/reports/export.csv", "admin-reports.csv");
@@ -1578,9 +1684,6 @@
   el("updateReferenceButton").onclick = updateReferenceData;
   el("deleteReferenceButton").onclick = deleteReferenceData;
   el("loadUsersButton").onclick = loadUsers;
-  el("loadUserDetailButton").onclick = loadUserDetail;
-  el("suspendUserButton").onclick = suspendUser;
-  el("unsuspendUserButton").onclick = unsuspendUser;
   el("loadNoticesButton").onclick = loadNotices;
   el("loadNoticeDetailButton").onclick = loadNoticeDetail;
   el("hideNoticeButton").onclick = hideNotice;
@@ -1599,6 +1702,53 @@
   el("loadNotificationHistoryButton").onclick = loadNotificationHistory;
   el("loadAuditLogsButton").onclick = loadAuditLogs;
   el("loadAuditDetailButton").onclick = loadAuditDetail;
+  document.addEventListener("click", (event) => {
+    const menu = el("userRowContextMenu");
+    if (!menu) return;
+    if (!menu.contains(event.target)) closeUserContextMenu();
+  });
+  document.addEventListener("scroll", closeUserContextMenu, true);
+  window.addEventListener("resize", closeUserContextMenu);
+  el("userRowContextMenu").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button || !userRowContext?.id) return;
+    const action = button.getAttribute("data-action");
+    const contextUser = userRowContext;
+    const userId = contextUser.id;
+    if (action === "promote") {
+      closeUserContextMenu();
+      await promoteUserById(userId);
+      return;
+    }
+    if (action === "permissions") {
+      const meta = el("userRowContextMeta");
+      const permEl = meta ? meta.querySelector('[data-meta-key="permissions"]') : null;
+      if (String(contextUser?.role || "").toUpperCase() !== "ADMIN") {
+        if (permEl) permEl.textContent = "USER";
+        el("adminStatusOutput").textContent = JSON.stringify({
+          userId,
+          role: contextUser?.role || "USER",
+          permissions: "USER"
+        }, null, 2);
+        setStatus("일반 사용자 권한 조회: USER", "good");
+        return;
+      }
+      if (!adminStatusCache) {
+        await loadAdminStatus();
+      }
+      const admins = Array.isArray(adminStatusCache?.admins) ? adminStatusCache.admins : [];
+      const found = admins.find((item) => String(item?.userId || "") === String(userId));
+      if (!found) {
+        if (permEl) permEl.textContent = "ADMIN";
+        setStatus("해당 사용자는 아직 관리자 권한이 없습니다.", "bad");
+        return;
+      }
+      const permissionText = summarizeUserPermissions(contextUser);
+      if (permEl) permEl.textContent = permissionText;
+      el("adminStatusOutput").textContent = JSON.stringify(found, null, 2);
+      setStatus("관리자 권한 조회 성공", "good");
+    }
+  });
 
   // 세션 복원 시도
   const savedToken = localStorage.getItem(ADMIN_ACCESS_TOKEN_KEY);
