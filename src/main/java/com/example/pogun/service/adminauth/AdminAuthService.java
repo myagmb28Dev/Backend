@@ -504,11 +504,7 @@ public class AdminAuthService {
     private User syncAdminProfileIfMissing(User admin, FirebaseIdentityService.FirebaseIdentity identity, String firebaseUid) {
         String currentNickname = admin.getNickname();
         String currentPhoto = admin.getProfileImageUrl();
-        boolean needsNickname = currentNickname == null || currentNickname.isBlank();
         boolean needsPhoto = currentPhoto == null || currentPhoto.isBlank();
-        if (!needsNickname && !needsPhoto) {
-            return admin;
-        }
 
         String displayName = identity != null ? identity.displayName() : null;
         String photoUrl = identity != null ? identity.photoUrl() : null;
@@ -516,11 +512,13 @@ public class AdminAuthService {
         if ((displayName == null || displayName.isBlank()) || (photoUrl == null || photoUrl.isBlank())) {
             try {
                 UserRecord firebaseUser = firebaseAuth.getUser(firebaseUid);
-                if (displayName == null || displayName.isBlank()) {
-                    displayName = firebaseUser.getDisplayName();
-                }
-                if (photoUrl == null || photoUrl.isBlank()) {
-                    photoUrl = firebaseUser.getPhotoUrl();
+                if (firebaseUser != null) {
+                    if (displayName == null || displayName.isBlank()) {
+                        displayName = firebaseUser.getDisplayName();
+                    }
+                    if (photoUrl == null || photoUrl.isBlank()) {
+                        photoUrl = firebaseUser.getPhotoUrl();
+                    }
                 }
             } catch (FirebaseAuthException e) {
                 log.warn("관리자 프로필 동기화 조회 실패. userId={}, firebaseUid={}, reason={}",
@@ -531,9 +529,13 @@ public class AdminAuthService {
         }
 
         boolean changed = false;
-        if (needsNickname && displayName != null && !displayName.isBlank()) {
-            admin.setNickname(displayName.trim());
-            changed = true;
+        // Always update nickname if Google/Firebase provides a displayName different from current
+        if (displayName != null && !displayName.isBlank()) {
+            String trimmed = displayName.trim();
+            if (!trimmed.equals(currentNickname)) {
+                admin.setNickname(trimmed);
+                changed = true;
+            }
         }
         if (needsPhoto && photoUrl != null && !photoUrl.isBlank()) {
             admin.setProfileImageUrl(photoUrl.trim());
