@@ -95,6 +95,9 @@ public class User {
     @Column(name = "admin_email_verified_at")
     private Instant adminEmailVerifiedAt;
 
+    @Column(name = "admin_email_verification_sent_at")
+    private Instant adminEmailVerificationSentAt;
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "availability_status", nullable = false, length = 20)

@@ -254,6 +254,7 @@ public class AdminService {
         user.setRole(UserRole.ADMIN);
         user.setAdminEmailVerificationRequired(true);
         user.setAdminEmailVerifiedAt(null);
+        user.setAdminEmailVerificationSentAt(null);
         User saved = userRepository.save(user);
         adminPermissionService.ensureDefaults(saved);
         forceAdminEmailReverification(saved);

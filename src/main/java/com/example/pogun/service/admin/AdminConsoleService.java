@@ -272,6 +272,7 @@ public class AdminConsoleService {
         if (nextRole == UserRole.ADMIN && !UserRole.ADMIN.name().equals(before.get("role"))) {
             user.setAdminEmailVerificationRequired(true);
             user.setAdminEmailVerifiedAt(null);
+            user.setAdminEmailVerificationSentAt(null);
         }
         User saved = userRepository.save(user);
         if (saved.getRole() == UserRole.ADMIN) {

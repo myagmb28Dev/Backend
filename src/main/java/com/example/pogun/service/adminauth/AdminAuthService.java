@@ -84,28 +84,19 @@ public class AdminAuthService {
 
         User admin = resolveAdminUser(firebaseUid, email);
         admin = syncAdminProfileIfMissing(admin, identity, firebaseUid);
-        boolean emailVerified = resolveEmailVerified(firebaseUid, false);
 
         if (!admin.isAdminEmailVerificationRequired() && admin.getAdminEmailVerifiedAt() == null) {
             admin.setAdminEmailVerificationRequired(true);
+            admin.setAdminEmailVerificationSentAt(null);
             admin = userRepository.save(admin);
-            if (emailVerified) {
-                resetFirebaseEmailVerified(firebaseUid);
-            }
-            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
-            auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
-            return new AdminLoginResponse(
-                    "EMAIL_VERIFICATION_REQUIRED",
-                    false,
-                    null,
-                    null
-            );
         }
 
         if (admin.isAdminEmailVerificationRequired()) {
+            if (admin.getAdminEmailVerificationSentAt() == null) {
+                return sendInitialAdminEmailVerification(admin, firebaseUid, firebaseIdToken, request);
+            }
+            boolean emailVerified = resolveEmailVerified(firebaseUid, false);
             if (!emailVerified) {
-                adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
-                auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
                 return new AdminLoginResponse(
                         "EMAIL_VERIFICATION_REQUIRED",
                         false,
@@ -115,16 +106,14 @@ public class AdminAuthService {
             }
             admin.setAdminEmailVerificationRequired(false);
             admin.setAdminEmailVerifiedAt(Instant.now());
+            admin.setAdminEmailVerificationSentAt(null);
             admin = userRepository.save(admin);
-        } else if (!emailVerified) {
-            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
-            auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
-            return new AdminLoginResponse(
-                    "EMAIL_VERIFICATION_REQUIRED",
-                    false,
-                    null,
-                    null
-            );
+        } else if (!resolveEmailVerified(firebaseUid, false)) {
+            admin.setAdminEmailVerificationRequired(true);
+            admin.setAdminEmailVerifiedAt(null);
+            admin.setAdminEmailVerificationSentAt(null);
+            admin = userRepository.save(admin);
+            return sendInitialAdminEmailVerification(admin, firebaseUid, firebaseIdToken, request);
         }
 
         return buildLoginResponse(admin, request, false);
@@ -145,6 +134,7 @@ public class AdminAuthService {
         admin.setRole(UserRole.ADMIN);
         admin.setAdminEmailVerificationRequired(false);
         admin.setAdminEmailVerifiedAt(Instant.now());
+        admin.setAdminEmailVerificationSentAt(null);
         admin = userRepository.save(admin);
 
         adminPermissionService.ensureDefaults(admin);
@@ -493,6 +483,22 @@ public class AdminAuthService {
         User saved = userRepository.save(admin);
         userRepository.flush();
         return saved;
+    }
+
+    private AdminLoginResponse sendInitialAdminEmailVerification(User admin, String firebaseUid, String firebaseIdToken, HttpServletRequest request) {
+        resetFirebaseEmailVerified(firebaseUid);
+        adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
+        admin.setAdminEmailVerificationRequired(true);
+        admin.setAdminEmailVerifiedAt(null);
+        admin.setAdminEmailVerificationSentAt(Instant.now());
+        userRepository.save(admin);
+        auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
+        return new AdminLoginResponse(
+                "EMAIL_VERIFICATION_REQUIRED",
+                false,
+                null,
+                null
+        );
     }
 
     private User syncAdminProfileIfMissing(User admin, FirebaseIdentityService.FirebaseIdentity identity, String firebaseUid) {
