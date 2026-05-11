@@ -60,6 +60,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminService {
     private static final Set<ReportStatus> PENDING_REPORT_STATUSES = Set.of(ReportStatus.RECEIVED, ReportStatus.REVIEWING);
+    private static final String DEFAULT_REGION_TYPE = "B";
+    private static final String DEFAULT_REGION_ADDRESS_NAME = "서울특별시 강남구";
+    private static final String DEFAULT_REGION_1DEPTH_NAME = "서울특별시";
+    private static final String DEFAULT_REGION_2DEPTH_NAME = "강남구";
+    private static final String DEFAULT_REGION_3DEPTH_NAME = "역삼동";
 
     private final CommunityPostRepository communityPostRepository;
     private final CommunityCommentRepository communityCommentRepository;
@@ -179,6 +184,12 @@ public class AdminService {
                 .email(normalizedEmail)
                 .nickname(resolveNickname(record.getDisplayName(), normalizedEmail, record.getUid()))
                 .profileImageUrl(record.getPhotoUrl())
+                .region(DEFAULT_REGION_ADDRESS_NAME)
+                .regionType(DEFAULT_REGION_TYPE)
+                .regionAddressName(DEFAULT_REGION_ADDRESS_NAME)
+                .region1DepthName(DEFAULT_REGION_1DEPTH_NAME)
+                .region2DepthName(DEFAULT_REGION_2DEPTH_NAME)
+                .region3DepthName(DEFAULT_REGION_3DEPTH_NAME)
                 .authProvider(resolveAuthProvider(record))
                 .lastActiveAt(Instant.now())
                 .role(UserRole.USER)
@@ -418,5 +429,6 @@ public class AdminService {
         }
         return user.isAdminEmailVerificationRequired() ? "PENDING" : "VERIFIED";
     }
+
 }
 

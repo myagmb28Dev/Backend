@@ -83,6 +83,7 @@ public class AdminAuthService {
         }
 
         User admin = resolveAdminUser(firebaseUid, email);
+        admin = syncAdminProfileIfMissing(admin, identity, firebaseUid);
         boolean emailVerified = resolveEmailVerified(firebaseUid, false);
 
         if (!admin.isAdminEmailVerificationRequired() && admin.getAdminEmailVerifiedAt() == null) {
@@ -452,6 +453,50 @@ public class AdminAuthService {
         User saved = userRepository.save(admin);
         userRepository.flush();
         return saved;
+    }
+
+    private User syncAdminProfileIfMissing(User admin, FirebaseIdentityService.FirebaseIdentity identity, String firebaseUid) {
+        String currentNickname = admin.getNickname();
+        String currentPhoto = admin.getProfileImageUrl();
+        boolean needsNickname = currentNickname == null || currentNickname.isBlank();
+        boolean needsPhoto = currentPhoto == null || currentPhoto.isBlank();
+        if (!needsNickname && !needsPhoto) {
+            return admin;
+        }
+
+        String displayName = identity != null ? identity.displayName() : null;
+        String photoUrl = identity != null ? identity.photoUrl() : null;
+
+        if ((displayName == null || displayName.isBlank()) || (photoUrl == null || photoUrl.isBlank())) {
+            try {
+                UserRecord firebaseUser = firebaseAuth.getUser(firebaseUid);
+                if (displayName == null || displayName.isBlank()) {
+                    displayName = firebaseUser.getDisplayName();
+                }
+                if (photoUrl == null || photoUrl.isBlank()) {
+                    photoUrl = firebaseUser.getPhotoUrl();
+                }
+            } catch (FirebaseAuthException e) {
+                log.warn("관리자 프로필 동기화 조회 실패. userId={}, firebaseUid={}, reason={}",
+                        admin.getId(),
+                        firebaseUid,
+                        e.getMessage());
+            }
+        }
+
+        boolean changed = false;
+        if (needsNickname && displayName != null && !displayName.isBlank()) {
+            admin.setNickname(displayName.trim());
+            changed = true;
+        }
+        if (needsPhoto && photoUrl != null && !photoUrl.isBlank()) {
+            admin.setProfileImageUrl(photoUrl.trim());
+            changed = true;
+        }
+        if (!changed) {
+            return admin;
+        }
+        return userRepository.save(admin);
     }
 
     private AdminSession requireCurrentSessionStage(AdminSessionStage stage) {
