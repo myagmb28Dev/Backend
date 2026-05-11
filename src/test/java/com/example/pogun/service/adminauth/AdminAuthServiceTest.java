@@ -99,7 +99,7 @@ class AdminAuthServiceTest {
         assertThat(response.nextStep()).isEqualTo("EMAIL_VERIFICATION_REQUIRED");
         assertThat(response.requiresPassKey()).isFalse();
         assertThat(admin.isAdminEmailVerificationRequired()).isTrue();
-        verify(adminEmailVerificationService).sendVerificationEmail("id-token");
+        verify(adminEmailVerificationService).sendVerificationEmail("id-token", httpServletRequest);
         verify(adminPasskeyRepository, never()).existsByUser(any(User.class));
     }
 }

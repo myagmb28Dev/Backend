@@ -1,5 +1,6 @@
 package com.example.pogun.service.adminauth;
 
+import com.example.pogun.config.AdminConsoleProperties;
 import com.example.pogun.config.FirebaseAuthProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ class AdminEmailVerificationServiceTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final FirebaseAuthProperties firebaseAuthProperties = new FirebaseAuthProperties();
+    private final AdminConsoleProperties adminConsoleProperties = new AdminConsoleProperties();
     private HttpServer server;
     private AdminEmailVerificationService service;
     private final AtomicReference<String> capturedBody = new AtomicReference<>();
@@ -36,7 +38,7 @@ class AdminEmailVerificationServiceTest {
         server.start();
         int port = server.getAddress().getPort();
 
-        service = new AdminEmailVerificationService(firebaseAuthProperties, WebClient.builder()) {
+        service = new AdminEmailVerificationService(firebaseAuthProperties, adminConsoleProperties, WebClient.builder()) {
             @Override
             String resolveBaseUrl() {
                 return "http://127.0.0.1:" + port;
@@ -58,7 +60,7 @@ class AdminEmailVerificationServiceTest {
 
     @Test
     void sendVerificationEmail_postsFirebaseVerificationRequest() throws Exception {
-        service.sendVerificationEmail("id-token-123");
+        service.sendVerificationEmail("id-token-123", null);
 
         JsonNode body = OBJECT_MAPPER.readTree(capturedBody.get());
         assertThat(capturedKey.get()).isEqualTo("key=test-api-key");

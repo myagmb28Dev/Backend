@@ -1,6 +1,7 @@
 package com.example.pogun.service.adminauth;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.repository.admin.AdminSessionRepository;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.user.UserRepository;
@@ -17,6 +18,7 @@ import java.util.Set;
 public class AdminSecurityService {
 
     private final UserRepository userRepository;
+    private final AdminSessionRepository adminSessionRepository;
 
     public AdminPrincipal getCurrentPrincipal() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -40,6 +42,16 @@ public class AdminSecurityService {
     public void require(AdminPermission permission) {
         if (!getCurrentPermissions().contains(permission)) {
             throw ApiException.forbidden("ADMIN_PERMISSION_DENIED", "해당 관리자 권한이 없습니다.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void requirePromoteStepUp() {
+        AdminPrincipal principal = getCurrentPrincipal();
+        var session = adminSessionRepository.findById(principal.sessionId())
+                .orElseThrow(() -> ApiException.unauthorized("ADMIN_SESSION_REQUIRED", "관리자 세션이 필요합니다."));
+        if (session.getElevatedUntil() == null || !session.getElevatedUntil().isAfter(java.time.Instant.now())) {
+            throw ApiException.forbidden("ADMIN_STEP_UP_REQUIRED", "관리자 승격 전 PassKey 재인증이 필요합니다.");
         }
     }
 }

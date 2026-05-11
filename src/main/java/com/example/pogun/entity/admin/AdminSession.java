@@ -73,4 +73,7 @@ public class AdminSession {
 
     @Column(name = "revoked_at")
     private Instant revokedAt;
+
+    @Column(name = "elevated_until")
+    private Instant elevatedUntil;
 }

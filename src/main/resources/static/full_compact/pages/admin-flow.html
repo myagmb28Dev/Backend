@@ -253,6 +253,7 @@
       <section class="card card-accent">
         <div class="section-title"><h2>사용자 조회</h2><span class="subtle">운영 조회 파라미터</span></div>
         <p class="muted">행을 우클릭하면 관리자 승격/권한 조회 메뉴가 열립니다.</p>
+        <p class="muted">관리자 승격 API 호출 전에는 패스키 재인증(step-up)이 자동 수행됩니다.</p>
         <div class="actions">
           <input id="promoteEmailInput" placeholder="관리자 승격 대상 이메일">
           <button id="promoteEmailButton" class="admin">이메일로 관리자 승격</button>
@@ -992,7 +993,12 @@
   }
 
   async function promoteUserById(userId) {
-    const res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ userId }) });
+    let res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ userId }) });
+    if (!res.ok && res.body?.error?.code === "ADMIN_STEP_UP_REQUIRED") {
+      const stepupOk = await ensurePromoteStepup();
+      if (!stepupOk) return false;
+      res = await adminRequest("/api/admin/users/promote", { method: "PATCH", body: JSON.stringify({ userId }) });
+    }
     if (!res.ok) {
       const code = res.body?.error?.code ? ` (${res.body.error.code})` : "";
       const message = res.body?.error?.message || res.body?.message || "승격 실패";
@@ -1011,10 +1017,18 @@
       setStatus("승격할 이메일을 입력하세요.", "bad");
       return;
     }
-    const res = await adminRequest("/api/admin/users/promote/email", {
+    let res = await adminRequest("/api/admin/users/promote/email", {
       method: "POST",
       body: JSON.stringify({ email })
     });
+    if (!res.ok && res.body?.error?.code === "ADMIN_STEP_UP_REQUIRED") {
+      const stepupOk = await ensurePromoteStepup();
+      if (!stepupOk) return;
+      res = await adminRequest("/api/admin/users/promote/email", {
+        method: "POST",
+        body: JSON.stringify({ email })
+      });
+    }
     const output = el("promoteEmailOutput");
     if (output) output.textContent = JSON.stringify(res.body || {}, null, 2);
     if (!res.ok) {
@@ -1025,6 +1039,47 @@
     }
     setStatus(`${email} 관리자 승격 완료`, "good");
     await Promise.allSettled([loadUsers(), loadAdminStatus()]);
+  }
+
+  async function ensurePromoteStepup() {
+    setStatus("관리자 승격 전 패스키 재인증(step-up) 진행 중...");
+    const optionsRes = await adminRequest("/api/admin/auth/stepup/options", { method: "POST" });
+    if (!optionsRes.ok) {
+      const code = optionsRes.body?.error?.code || `HTTP_${optionsRes.status}`;
+      const message = optionsRes.body?.error?.message || optionsRes.body?.message || "step-up 옵션 발급 실패";
+      setStatus(`step-up 옵션 실패 (${code}): ${message}`, "bad");
+      return false;
+    }
+    try {
+      const options = optionsRes.body.data;
+      const publicKey = resolvePublicKeyOptions(options);
+      const credential = await getPasskey(publicKey);
+      const verifyRes = await adminRequest("/api/admin/auth/stepup/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          challengeId: options.challengeId,
+          credential
+        })
+      });
+      if (!verifyRes.ok) {
+        const code = verifyRes.body?.error?.code || `HTTP_${verifyRes.status}`;
+        const message = verifyRes.body?.error?.message || verifyRes.body?.message || "step-up 검증 실패";
+        setStatus(`step-up 검증 실패 (${code}): ${message}`, "bad");
+        return false;
+      }
+      const refreshedToken = verifyRes.body?.data?.accessToken || verifyRes.body?.data?.session?.accessToken;
+      if (refreshedToken) {
+        adminAccessToken = refreshedToken;
+        localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken);
+      }
+      storeAdminSessionExpiry(verifyRes.body?.data?.expiresAt || null);
+      scheduleAdminRefresh(verifyRes.body?.data?.expiresAt || null);
+      setStatus("step-up 완료. 승격 요청을 이어서 진행합니다.", "good");
+      return true;
+    } catch (error) {
+      setStatus(`step-up 처리 중 오류: ${error?.message || String(error)}`, "bad");
+      return false;
+    }
   }
 
   function renderAdminStatusPanel(data) {

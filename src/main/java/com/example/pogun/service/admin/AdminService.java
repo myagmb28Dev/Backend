@@ -150,6 +150,7 @@ public class AdminService {
 
     @Transactional
     public AdminPromoteResponse promoteUserToAdmin(String userId) {
+        adminSecurityService.requirePromoteStepUp();
         adminSecurityService.require(AdminPermission.ADMIN_PROMOTE);
         if (userId == null || userId.isBlank()) {
             throw ApiException.badRequest("INVALID_USER_ID", "userId는 필수입니다.");
@@ -164,6 +165,7 @@ public class AdminService {
 
     @Transactional
     public AdminPromoteResponse promoteUserToAdminByEmail(String email) {
+        adminSecurityService.requirePromoteStepUp();
         adminSecurityService.require(AdminPermission.ADMIN_PROMOTE);
         String normalizedEmail = normalizeEmail(email);
         if (normalizedEmail == null) {

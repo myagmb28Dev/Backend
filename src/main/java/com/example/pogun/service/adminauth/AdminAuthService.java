@@ -92,7 +92,7 @@ public class AdminAuthService {
             if (emailVerified) {
                 resetFirebaseEmailVerified(firebaseUid);
             }
-            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
+            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
             auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
                     "EMAIL_VERIFICATION_REQUIRED",
@@ -104,7 +104,7 @@ public class AdminAuthService {
 
         if (admin.isAdminEmailVerificationRequired()) {
             if (!emailVerified) {
-                adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
+                adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
                 auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
                 return new AdminLoginResponse(
                         "EMAIL_VERIFICATION_REQUIRED",
@@ -117,7 +117,7 @@ public class AdminAuthService {
             admin.setAdminEmailVerifiedAt(Instant.now());
             admin = userRepository.save(admin);
         } else if (!emailVerified) {
-            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken);
+            adminEmailVerificationService.sendVerificationEmail(firebaseIdToken, request);
             auditSafely("ADMIN_EMAIL_VERIFICATION_SENT", "ADMIN_USER", admin.getId().toString(), null, Map.of("email", admin.getEmail()), null);
             return new AdminLoginResponse(
                     "EMAIL_VERIFICATION_REQUIRED",
@@ -394,6 +394,46 @@ public class AdminAuthService {
     public AdminPasskeyOptionsResponse startPendingPasskeyAssertion(HttpServletRequest request) {
         AdminSession session = requireCurrentSessionStage(AdminSessionStage.MFA_PENDING);
         return startAssertion(session, session.getUser(), request);
+    }
+
+    @Transactional
+    public AdminPasskeyOptionsResponse startPromoteStepUp(HttpServletRequest request) {
+        AdminSession session = requireCurrentSessionStage(AdminSessionStage.AUTHENTICATED);
+        return startAssertion(session, session.getUser(), request);
+    }
+
+    @Transactional
+    public AdminAuthSessionResponse verifyPromoteStepUp(AdminPasskeyCredentialRequest requestBody, HttpServletRequest request) {
+        AdminSession session = requireCurrentSessionStage(AdminSessionStage.AUTHENTICATED);
+        AdminAuthChallenge challenge = getChallenge(session, requestBody.getChallengeId(), AdminAuthChallengeType.PASSKEY_ASSERTION);
+        try {
+            AdminWebAuthnService.AssertionFinishPayload result = adminWebAuthnService.finishAssertion(
+                    challenge.getRequestJson(),
+                    toJsonString(requestBody.getCredential()),
+                    request
+            );
+            String requestRpId = adminWebAuthnService.resolveRpId(request);
+            adminPasskeyRepository.findByCredentialId(result.credentialId()).ifPresent(passkey -> {
+                if (passkey.getRpId() != null && !passkey.getRpId().isBlank()
+                        && !passkey.getRpId().equalsIgnoreCase(requestRpId)) {
+                    throw ApiException.forbidden("PASSKEY_RP_MISMATCH", "현재 도메인과 일치하지 않는 PassKey입니다. 도메인별로 다시 등록해 주세요.");
+                }
+                passkey.setSignatureCount(result.signatureCount());
+                passkey.setLastUsedAt(Instant.now());
+                adminPasskeyRepository.save(passkey);
+            });
+
+            challenge.setUsedAt(Instant.now());
+            session.setElevatedUntil(Instant.now().plusSeconds(adminConsoleProperties.getPromoteStepupTtlSeconds()));
+            adminAuthChallengeRepository.save(challenge);
+            adminSessionRepository.save(session);
+            auditSafely("ADMIN_PROMOTE_STEPUP_VERIFIED", "ADMIN_USER", session.getUser().getId().toString(), null,
+                    Map.of("elevatedUntil", session.getElevatedUntil()), null);
+            return toSessionResponse(null, session, adminPermissionService.getPermissions(session.getUser()));
+        } catch (Exception e) {
+            String failureCode = mapPasskeyFailureCode(e);
+            throw ApiException.forbidden(failureCode, "PassKey 승격 재인증에 실패했습니다.");
+        }
     }
 
     @Transactional

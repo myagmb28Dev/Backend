@@ -61,11 +61,15 @@ app:
       session-ttl-seconds: ${APP_ADMIN_SESSION_TTL_SECONDS:28800}
       bootstrap-session-ttl-seconds: ${APP_ADMIN_BOOTSTRAP_SESSION_TTL_SECONDS:900}
       challenge-ttl-seconds: ${APP_ADMIN_CHALLENGE_TTL_SECONDS:300}
+      promote-stepup-ttl-seconds: 300
       webauthn:
         rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID:localhost}
         rp-name: ${APP_ADMIN_WEBAUTHN_RP_NAME:Pogun Admin}
         allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:http://localhost:8080,http://127.0.0.1:8080}
         origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP:http://localhost:8080=localhost,http://127.0.0.1:8080=localhost,http://localhost:8081=localhost,http://127.0.0.1:8081=localhost}
+      email-verification:
+        continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP:http://localhost:8080=http://localhost:8080/login-flow.html?adminVerify=done,http://127.0.0.1:8080=http://127.0.0.1:8080/login-flow.html?adminVerify=done,http://localhost:8081=http://localhost:8081/login-flow.html?adminVerify=done,http://127.0.0.1:8081=http://127.0.0.1:8081/login-flow.html?adminVerify=done}
+        default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL:http://localhost:8080/login-flow.html?adminVerify=done}
   shelter:
     api:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}

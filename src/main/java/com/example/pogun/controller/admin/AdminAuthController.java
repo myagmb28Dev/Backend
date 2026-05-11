@@ -84,6 +84,23 @@ public class AdminAuthController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "PassKey 인증 옵션 발급 성공", data));
     }
 
+    @PostMapping("/stepup/options")
+    @Operation(summary = "승격 Step-up 옵션 발급", description = "관리자 승격 API 호출 전 PassKey 재인증 옵션을 발급합니다.")
+    public ResponseEntity<ApiResponse<AdminPasskeyOptionsResponse>> stepupOptions(HttpServletRequest request) {
+        AdminPasskeyOptionsResponse data = adminAuthService.startPromoteStepUp(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "승격 Step-up 옵션 발급 성공", data));
+    }
+
+    @PostMapping("/stepup/verify")
+    @Operation(summary = "승격 Step-up 검증", description = "관리자 승격 전 PassKey 재인증을 검증하고 단기 승격 권한을 부여합니다.")
+    public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> stepupVerify(
+            @Valid @RequestBody AdminPasskeyCredentialRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AdminAuthSessionResponse data = adminAuthService.verifyPromoteStepUp(request, httpRequest);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "승격 Step-up 인증 성공", data));
+    }
+
     @PostMapping("/passkeys/reset")
     @Operation(summary = "PassKey 초기화", description = "MFA 대기 단계에서 저장된 PassKey를 초기화하고 재등록 단계로 전환합니다.")
     public ResponseEntity<ApiResponse<AdminAuthSessionResponse>> resetPasskeys() {
