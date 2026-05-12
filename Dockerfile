@@ -11,6 +11,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=jre /opt/java/openjdk ${JAVA_HOME}
+COPY scripts/healthcheck-adaptive.sh /usr/local/bin/healthcheck-adaptive.sh
+RUN chmod +x /usr/local/bin/healthcheck-adaptive.sh
 
 COPY build/libs/app.jar app.jar
 
