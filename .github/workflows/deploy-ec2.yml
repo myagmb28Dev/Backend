@@ -11,6 +11,7 @@ permissions:
 
 env:
   IMAGE_NAME: pawgun
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build-and-push:
@@ -44,7 +45,7 @@ jobs:
 
       - name: Set image tag
         id: image-tag
-        run: echo "short_sha=$(echo \"${GITHUB_SHA}\" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        run: echo "short_sha=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       - name: Install regctl
         uses: regclient/actions/regctl-installer@main
