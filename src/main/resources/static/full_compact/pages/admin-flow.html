@@ -1578,6 +1578,7 @@
   let trafficTrackedApiPrefixes = ["/api/"];
   let selectedTrafficGroup = "ALL";
   let trafficErrorsOnly = false;
+  let trafficErrorCount = 0;
   let userRowContext = null;
   let adminStatusCache = null;
 
@@ -1648,7 +1649,8 @@
     const groups = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     const allCount = groups.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
     const groupItems = [{ key: "ALL", count: allCount }, ...groups.map((key) => ({ key, count: (grouped[key] || []).length }))];
-    const errorToggle = `<button type="button" class="traffic-chip ${trafficErrorsOnly ? "active" : ""}" data-errors-toggle="true">오류만</button>`;
+    const errorBadge = typeof trafficErrorCount === 'number' ? `<span class="traffic-badge">${trafficErrorCount}</span>` : '';
+    const errorToggle = `<button type="button" class="traffic-chip ${trafficErrorsOnly ? "active" : ""}" data-errors-toggle="true">오류만 ${errorBadge}</button>`;
     host.innerHTML = errorToggle + groupItems.map((item) => {
       const active = item.key === selectedTrafficGroup ? "active" : "";
       return `<button type="button" class="traffic-chip ${active}" data-group="${escapeHtml(item.key)}">${escapeHtml(item.key)} <span class="traffic-badge">${item.count}</span></button>`;
@@ -1700,7 +1702,9 @@
   async function loadTrafficLogs() {
     const res = await adminRequest(`/api/admin/traffic/logs?limit=100&errorsOnly=${trafficErrorsOnly ? "true" : "false"}`);
     if (!res.ok) return;
-    const rows = (Array.isArray(res.body?.data) ? res.body.data : [])
+    const payload = res.body?.data || {};
+    const rows = (Array.isArray(payload.items) ? payload.items : []);
+    trafficErrorCount = Number.isFinite(Number(payload.errorCount)) ? Number(payload.errorCount) : 0;
       .filter((row) => isTrackedApiPath(row?.path));
     const grouped = {};
     const freshByGroup = new Map();

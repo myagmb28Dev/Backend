@@ -68,6 +68,12 @@ public class AdminTrafficLogService {
         return TRACKED_API_PREFIXES;
     }
 
+    public int currentErrorCount() {
+        synchronized (lock) {
+            return (int) logs.stream().filter(this::isUnexpectedStatus).count();
+        }
+    }
+
     private void push(Map<String, Object> entry) {
         synchronized (lock) {
             logs.addLast(entry);
@@ -81,12 +87,14 @@ public class AdminTrafficLogService {
         Object value = entry.get("status");
         if (value instanceof Number number) {
             int status = number.intValue();
-            return status < 200 || status >= 300;
+            // Non-errors: 1xx/2xx/3xx (100-399).
+            // Errors: network/external failures represented as 0, or 4xx/5xx (>=400).
+            return status == 0 || status >= 400;
         }
         if (value instanceof String text) {
             try {
                 int status = Integer.parseInt(text);
-                return status < 200 || status >= 300;
+                return status == 0 || status >= 400;
             } catch (NumberFormatException ignored) {
                 return true;
             }

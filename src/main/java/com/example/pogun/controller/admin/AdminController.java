@@ -567,12 +567,18 @@ public class AdminController {
 
     @GetMapping("/traffic/logs")
     @Operation(summary = "요청 로그", description = "프로젝트 IN/OUT 요청 로그를 최근순으로 조회합니다.")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> trafficLogs(
+        public ResponseEntity<ApiResponse<Map<String, Object>>> trafficLogs(
             @RequestParam(required = false, defaultValue = "100") Integer limit,
             @RequestParam(required = false, defaultValue = "false") Boolean errorsOnly
     ) {
-        List<Map<String, Object>> data = adminTrafficLogService.recent(limit == null ? 100 : limit, Boolean.TRUE.equals(errorsOnly));
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 조회 성공", data));
+        int resolvedLimit = limit == null ? 100 : limit;
+        boolean errors = Boolean.TRUE.equals(errorsOnly);
+        List<Map<String, Object>> items = adminTrafficLogService.recent(resolvedLimit, errors);
+        Map<String, Object> payload = Map.of(
+            "items", items,
+            "errorCount", adminTrafficLogService.currentErrorCount()
+        );
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 조회 성공", payload));
     }
 
     @GetMapping("/traffic/config")
@@ -580,7 +586,7 @@ public class AdminController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> trafficConfig() {
         Map<String, Object> data = Map.of(
                 "trackedApiPrefixes", adminTrafficLogService.trackedApiPrefixes(),
-                "errorStatusFilter", "status < 200 || status >= 300"
+                "errorStatusFilter", "status >= 300"
         );
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 설정 조회 성공", data));
     }
