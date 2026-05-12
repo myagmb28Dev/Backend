@@ -42,6 +42,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Set image tag
+        id: image-tag
+        run: echo "short_sha=$(echo \"${GITHUB_SHA}\" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
       - name: Install regctl
         uses: regclient/actions/regctl-installer@main
 
@@ -65,7 +69,7 @@ jobs:
           push: true
           tags: |
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ steps.image-tag.outputs.short_sha }}
           provenance: false
           sbom: false
 
@@ -99,7 +103,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          KEEP_SHA: ${{ github.sha }}
+          KEEP_SHA: sha-${{ steps.image-tag.outputs.short_sha }}
         run: |
           set -euo pipefail
 
@@ -146,7 +150,7 @@ jobs:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
           PREVIOUS_DIGEST: ${{ steps.previous-latest.outputs.digest }}
-          KEEP_SHA: ${{ github.sha }}
+          KEEP_SHA: sha-${{ steps.image-tag.outputs.short_sha }}
         run: |
           set -euo pipefail
 
