@@ -47,9 +47,18 @@ public class AdminTrafficLogService {
     }
 
     public List<Map<String, Object>> recent(int limit) {
+        return recent(limit, false);
+    }
+
+    public List<Map<String, Object>> recent(int limit, boolean errorsOnly) {
         int resolvedLimit = Math.max(1, Math.min(limit, 200));
         synchronized (lock) {
             List<Map<String, Object>> snapshot = new ArrayList<>(logs);
+            if (errorsOnly) {
+                snapshot = snapshot.stream()
+                        .filter(this::isUnexpectedStatus)
+                        .toList();
+            }
             int from = Math.max(0, snapshot.size() - resolvedLimit);
             return snapshot.subList(from, snapshot.size());
         }
@@ -66,5 +75,22 @@ public class AdminTrafficLogService {
                 logs.removeFirst();
             }
         }
+    }
+
+    private boolean isUnexpectedStatus(Map<String, Object> entry) {
+        Object value = entry.get("status");
+        if (value instanceof Number number) {
+            int status = number.intValue();
+            return status < 200 || status >= 300;
+        }
+        if (value instanceof String text) {
+            try {
+                int status = Integer.parseInt(text);
+                return status < 200 || status >= 300;
+            } catch (NumberFormatException ignored) {
+                return true;
+            }
+        }
+        return true;
     }
 }

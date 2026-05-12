@@ -1577,6 +1577,7 @@
   const trafficSeen = new Set();
   let trafficTrackedApiPrefixes = ["/api/"];
   let selectedTrafficGroup = "ALL";
+  let trafficErrorsOnly = false;
   let userRowContext = null;
   let adminStatusCache = null;
 
@@ -1647,10 +1648,19 @@
     const groups = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     const allCount = groups.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
     const groupItems = [{ key: "ALL", count: allCount }, ...groups.map((key) => ({ key, count: (grouped[key] || []).length }))];
-    host.innerHTML = groupItems.map((item) => {
+    const errorToggle = `<button type="button" class="traffic-chip ${trafficErrorsOnly ? "active" : ""}" data-errors-toggle="true">오류만</button>`;
+    host.innerHTML = errorToggle + groupItems.map((item) => {
       const active = item.key === selectedTrafficGroup ? "active" : "";
       return `<button type="button" class="traffic-chip ${active}" data-group="${escapeHtml(item.key)}">${escapeHtml(item.key)} <span class="traffic-badge">${item.count}</span></button>`;
     }).join("");
+    const toggle = host.querySelector("button[data-errors-toggle]");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        trafficErrorsOnly = !trafficErrorsOnly;
+        selectedTrafficGroup = "ALL";
+        loadTrafficLogs().catch(() => {});
+      });
+    }
     host.querySelectorAll("button[data-group]").forEach((button) => {
       button.addEventListener("click", () => {
         selectedTrafficGroup = button.dataset.group || "ALL";
@@ -1688,7 +1698,7 @@
   }
 
   async function loadTrafficLogs() {
-    const res = await adminRequest("/api/admin/traffic/logs?limit=100");
+    const res = await adminRequest(`/api/admin/traffic/logs?limit=100&errorsOnly=${trafficErrorsOnly ? "true" : "false"}`);
     if (!res.ok) return;
     const rows = (Array.isArray(res.body?.data) ? res.body.data : [])
       .filter((row) => isTrackedApiPath(row?.path));

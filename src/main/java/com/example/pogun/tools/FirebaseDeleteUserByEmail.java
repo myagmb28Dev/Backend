@@ -23,6 +23,28 @@ public class FirebaseDeleteUserByEmail {
 
         String keyBase64 = System.getenv("FIREBASE_KEY_BASE64");
         if (keyBase64 == null || keyBase64.isBlank()) {
+            // Try loading from .env like other tools
+            java.nio.file.Path envPath = java.nio.file.Paths.get(".env");
+            if (java.nio.file.Files.exists(envPath)) {
+                try {
+                    for (String line : java.nio.file.Files.readAllLines(envPath)) {
+                        String s = line == null ? "" : line.trim();
+                        if (s.isEmpty() || s.startsWith("#") || !s.contains("=")) continue;
+                        int idx = s.indexOf('=');
+                        if (idx <= 0) continue;
+                        String k = s.substring(0, idx).trim();
+                        String v = s.substring(idx + 1).trim();
+                        if ("FIREBASE_KEY_BASE64".equals(k) && !v.isEmpty()) {
+                            keyBase64 = v;
+                            break;
+                        }
+                    }
+                } catch (Exception ex) {
+                    // ignore and fallthrough
+                }
+            }
+        }
+        if (keyBase64 == null || keyBase64.isBlank()) {
             throw new IllegalStateException("FIREBASE_KEY_BASE64 env var is required");
         }
 

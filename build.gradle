@@ -85,6 +85,19 @@ tasks.register('jdbcDeleteUsersByEmail', JavaExec) {
 	args emails.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
 }
 
+tasks.register('firebaseDeleteUserByEmail', JavaExec) {
+	group = 'maintenance'
+	description = 'Delete a Firebase user by email using service account (FIREBASE_KEY_BASE64 env).'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.pogun.tools.FirebaseDeleteUserByEmail'
+
+	def email = project.findProperty('targetEmail')
+	if (!email) {
+		throw new GradleException("Missing -PtargetEmail (e.g. ./gradlew firebaseDeleteUserByEmail -PtargetEmail=user@example.com)")
+	}
+	args email.toString()
+}
+
 // Ensure Spring Boot creates only the executable bootJar and not the plain jar
 bootJar {
 	enabled = true

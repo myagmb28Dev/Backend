@@ -568,9 +568,10 @@ public class AdminController {
     @GetMapping("/traffic/logs")
     @Operation(summary = "요청 로그", description = "프로젝트 IN/OUT 요청 로그를 최근순으로 조회합니다.")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> trafficLogs(
-            @RequestParam(required = false, defaultValue = "100") Integer limit
+            @RequestParam(required = false, defaultValue = "100") Integer limit,
+            @RequestParam(required = false, defaultValue = "false") Boolean errorsOnly
     ) {
-        List<Map<String, Object>> data = adminTrafficLogService.recent(limit == null ? 100 : limit);
+        List<Map<String, Object>> data = adminTrafficLogService.recent(limit == null ? 100 : limit, Boolean.TRUE.equals(errorsOnly));
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 조회 성공", data));
     }
 
@@ -578,7 +579,8 @@ public class AdminController {
     @Operation(summary = "요청 로그 추적 설정", description = "관리자 요청 콘솔에서 표시할 API prefix 목록을 반환합니다.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> trafficConfig() {
         Map<String, Object> data = Map.of(
-                "trackedApiPrefixes", adminTrafficLogService.trackedApiPrefixes()
+                "trackedApiPrefixes", adminTrafficLogService.trackedApiPrefixes(),
+                "errorStatusFilter", "status < 200 || status >= 300"
         );
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "요청 로그 설정 조회 성공", data));
     }
