@@ -71,6 +71,8 @@ jobs:
           tags: |
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ steps.image-tag.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false
           sbom: false
 
@@ -84,14 +86,14 @@ jobs:
 
           image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
           success=0
-          for attempt in {1..18}; do
+          for attempt in {1..8}; do
             latest_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
-            echo "latest digest verify attempt ${attempt}/18: expected=${PUSHED_DIGEST} actual=${latest_digest:-<none>}"
+            echo "latest digest verify attempt ${attempt}/8: expected=${PUSHED_DIGEST} actual=${latest_digest:-<none>}"
             if [ -n "${latest_digest}" ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ]; then
               success=1
               break
             fi
-            sleep 10
+            sleep 5
           done
 
           if [ "$success" -ne 1 ]; then
@@ -166,7 +168,7 @@ jobs:
           image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
           sha_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${KEEP_SHA}"
           success=0
-          for attempt in {1..18}; do
+          for attempt in {1..8}; do
             next_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100"
             latest_count=0
             sha_count=0
@@ -188,14 +190,14 @@ jobs:
               fi
             fi
 
-            echo "verify attempt ${attempt}/18: latest_count=${latest_count}, sha_count=${sha_count}, non_keep_count=${non_keep_count}, latest_digest=${latest_digest:-<none>}, sha_digest=${sha_digest:-<none>}, stale_digest_gone=${stale_digest_gone}"
+            echo "verify attempt ${attempt}/8: latest_count=${latest_count}, sha_count=${sha_count}, non_keep_count=${non_keep_count}, latest_digest=${latest_digest:-<none>}, sha_digest=${sha_digest:-<none>}, stale_digest_gone=${stale_digest_gone}"
 
             if [ "$latest_count" -eq 1 ] && [ "$sha_count" -eq 1 ] && [ "$non_keep_count" -eq 0 ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ] && [ "${sha_digest}" = "${PUSHED_DIGEST}" ] && [ "$stale_digest_gone" -eq 1 ]; then
               success=1
               break
             fi
 
-            sleep 10
+            sleep 5
           done
 
           if [ "$success" -ne 1 ]; then

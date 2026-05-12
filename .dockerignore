@@ -16,3 +16,4 @@
 !src/
 !src/main/
 !src/main/**
+!scripts/healthcheck-adaptive.sh
