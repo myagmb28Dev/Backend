@@ -28,7 +28,36 @@ public class AdminTrafficLogFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri != null && uri.startsWith("/api/admin/traffic/logs");
+        return uri == null
+                || uri.startsWith("/api/admin/traffic/logs")
+                || isStaticAssetRequest(uri)
+                || "/".equals(uri)
+                || "/favicon.ico".equals(uri);
+    }
+
+    private boolean isStaticAssetRequest(String uri) {
+        String lower = uri.toLowerCase();
+        return lower.startsWith("/full_compact/")
+                || lower.equals("/full_compact.html")
+                || lower.startsWith("/js/")
+                || lower.startsWith("/css/")
+                || lower.startsWith("/images/")
+                || lower.startsWith("/img/")
+                || lower.startsWith("/assets/")
+                || lower.endsWith(".html")
+                || lower.endsWith(".css")
+                || lower.endsWith(".js")
+                || lower.endsWith(".mjs")
+                || lower.endsWith(".map")
+                || lower.endsWith(".png")
+                || lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif")
+                || lower.endsWith(".svg")
+                || lower.endsWith(".ico")
+                || lower.endsWith(".webp")
+                || lower.endsWith(".woff")
+                || lower.endsWith(".woff2");
     }
 
     @Override
