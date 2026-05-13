@@ -183,15 +183,13 @@ async function loadListFirstPage() {
 }
 
 function renderReactions(d) {
-  const myReaction = d.myReaction || null;
-  const reactions = d.reactions || {};
   const types = ["LIKE"];
-  const total = Object.values(reactions).reduce((a, b) => a + (b || 0), 0);
+  const total = Number(d.likeCount ?? 0);
   return `
     <div class="reaction-buttons">
       ${types.map((t) => {
-        const count = reactions[t] || 0;
-        const active = myReaction === t;
+        const count = t === "LIKE" ? total : 0;
+        const active = false;
         return `<button class="reaction-btn${active ? " active" : ""}" data-reaction="${t}" aria-label="좋아요">❤️ ${count || 0}</button>`;
       }).join("")}
       <span class="muted" style="line-height:32px">좋아요 ${total}개 · 조회 ${d.viewCount ?? 0}</span>
@@ -260,7 +258,7 @@ async function loadDetail(postId) {
   detail.className = "detail";
   detail.innerHTML = `
     <div><strong>${esc(d.title)}</strong> <span class="muted">[${esc(d.category || "FREE")}]</span></div>
-    <div class="muted">작성자: ${esc(d.authorName || "-")} · ${esc(d.createdAt || "")}</div>
+    <div class="muted">작성자: ${esc(d.authorNickname || d.authorName || "-")} · ${esc(d.createdAt || "")}</div>
     ${d.tags?.length ? `<div class="muted">태그: ${esc(d.tags.join(", "))}</div>` : ""}
     <div style="margin-top:8px;white-space:pre-wrap">${esc(d.content || "")}</div>
     ${(d.imageUrls || []).length ? `<div class="detail-images">${d.imageUrls.map((u) => `<img src="${esc(u)}" alt="post image">`).join("")}</div>` : ""}

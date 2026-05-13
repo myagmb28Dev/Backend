@@ -706,10 +706,11 @@ public class CommunityService {
     }
 
     private CommunityCommentResponse toCommentResponse(CommunityComment comment) {
+        String authorNickname = comment.getAuthor() != null ? comment.getAuthor().getNickname() : "(탈퇴한 사용자)";
         return new CommunityCommentResponse(
                 comment.getId(),
                 comment.getContent(),
-                comment.getAuthor().getNickname(),
+                authorNickname,
                 comment.getCreatedAt(),
                 comment.getParentComment() == null ? null : comment.getParentComment().getId(),
                 List.of()
