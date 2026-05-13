@@ -23,6 +23,7 @@ public class UserPresenceService {
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
     private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(20);
     private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(18);
+    private static final String AUTH_GLOBAL_SESSION_ID = "auth";
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
 
@@ -36,13 +37,14 @@ public class UserPresenceService {
 
     @Transactional
     public boolean touchFromAuthentication(String firebaseUid) {
+        rememberGlobalAuthenticationSession(firebaseUid);
         return touchInternal(firebaseUid, true);
     }
 
     @Transactional(noRollbackFor = RuntimeException.class)
     public boolean touchFromAuthenticationSafely(String firebaseUid) {
         try {
-            return touchInternal(firebaseUid, true);
+            return touchFromAuthentication(firebaseUid);
         } catch (RuntimeException e) {
             log.warn("[presence] auth touch skipped uid={} reason={}", firebaseUid, e.getClass().getSimpleName());
             return false;
@@ -114,6 +116,7 @@ public class UserPresenceService {
             return;
         }
         log.info("[presence] websocket connected uid={} sessionId={}", firebaseUid, sessionId);
+        rememberGlobalAuthenticationSession(firebaseUid);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         touch(firebaseUid);
         syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
@@ -127,6 +130,7 @@ public class UserPresenceService {
             log.debug("[presence] skip refresh for forced-offline uid={} sessionId={}", firebaseUid, sessionId);
             return;
         }
+        rememberGlobalAuthenticationSession(firebaseUid);
         presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
         rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
@@ -281,6 +285,16 @@ public class UserPresenceService {
         pruneStaleWebSocketSessions(firebaseUid, now);
     }
 
+    private void rememberGlobalAuthenticationSession(String firebaseUid) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return;
+        }
+        Instant now = Instant.now();
+        presenceSessionStore.putGlobalSession(firebaseUid, AUTH_GLOBAL_SESSION_ID, now);
+        presenceSessionStore.clearForcedOfflineAt(firebaseUid);
+        presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
+    }
+
     private void pruneStaleGlobalSessions(String firebaseUid, Instant now) {
         Map<String, Instant> sessions = presenceSessionStore.getGlobalSessions(firebaseUid);
         if (sessions.isEmpty()) {
@@ -313,6 +327,7 @@ public class UserPresenceService {
             return false;
         }
         pruneStaleGlobalSessions(firebaseUid, Instant.now());
+        pruneStaleWebSocketSessions(firebaseUid, Instant.now());
         return !presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty();
     }
 

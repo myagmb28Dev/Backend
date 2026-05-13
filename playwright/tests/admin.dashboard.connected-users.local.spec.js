@@ -231,6 +231,14 @@ test("dashboard summary returns connectedUsers >= 1 for authenticated admin", as
     token: firebaseIdToken,
   });
   expect(backendLogin.status).toBe(200);
+
+  const summaryAfterLogin = await api(request, "/api/admin/dashboard/summary", {
+    method: "GET",
+    token: adminAccessToken,
+  });
+  expect(summaryAfterLogin.status).toBe(200);
+  expect(Number(summaryAfterLogin.body?.data?.connectedUsers ?? 0)).toBeGreaterThanOrEqual(1);
+
   const heartbeat = await api(request, "/api/presence/heartbeat", {
     method: "POST",
     token: firebaseIdToken,
@@ -241,6 +249,8 @@ test("dashboard summary returns connectedUsers >= 1 for authenticated admin", as
     },
   });
   expect(heartbeat.status).toBe(200);
+  expect(heartbeat.body?.data?.globalConnectionState).toBe("connected");
+  expect(["ONLINE", "IDLE"]).toContain(heartbeat.body?.data?.effectivePresenceStatus);
 
   const summary = await api(request, "/api/admin/dashboard/summary", {
     method: "GET",

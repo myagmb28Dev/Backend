@@ -110,7 +110,7 @@ public class AuthService {
 
             syncProviders(user, identity);
             pendingSocialSignupRepository.deleteByFirebaseUid(uid);
-            touchPresenceSafely(uid);
+            touchAndPublishPresenceSafely(uid);
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
@@ -171,7 +171,7 @@ public class AuthService {
         }
 
         pendingSocialSignupRepository.delete(pending);
-        touchPresenceSafely(saved.getFirebaseUid());
+        touchAndPublishPresenceSafely(saved.getFirebaseUid());
         log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
         return buildAuthResponse(saved);
     }
@@ -211,7 +211,7 @@ public class AuthService {
             User saved = userRepository.save(user);
 
             syncProviders(saved, identity);
-            touchPresenceSafely(saved.getFirebaseUid());
+            touchAndPublishPresenceSafely(saved.getFirebaseUid());
             return buildAuthResponse(saved);
         } catch (ApiException e) {
             throw e;
@@ -533,6 +533,20 @@ public class AuthService {
 
     private void touchPresenceSafely(String firebaseUid) {
         userPresenceService.touchFromAuthenticationSafely(firebaseUid);
+    }
+
+    private void touchAndPublishPresenceSafely(String firebaseUid) {
+        touchPresenceSafely(firebaseUid);
+        try {
+            noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
+        } catch (RuntimeException e) {
+            log.warn("로그인 presence publish 실패(firebaseUid={}): {}", firebaseUid, e.getClass().getSimpleName());
+        }
+        try {
+            adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
+        } catch (RuntimeException e) {
+            log.warn("로그인 admin presence publish 실패(firebaseUid={}): {}", firebaseUid, e.getClass().getSimpleName());
+        }
     }
 
 }

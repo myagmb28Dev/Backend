@@ -80,7 +80,7 @@ FirebaseTokenFilter extends OncePerRequestFilter {
                     uid, idToken, resolveAuthorities(user));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 try {
-                    userPresenceService.touch(uid);
+                    userPresenceService.touchFromAuthenticationSafely(uid);
                 } catch (RuntimeException ignored) {
                     // presence 갱신 실패는 인증 실패가 아니므로 요청은 계속 처리한다.
                 }

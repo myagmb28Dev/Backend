@@ -67,6 +67,7 @@ class FirebaseTokenFilterTest {
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.getContentAsString()).contains("USER_BANNED");
         verify(userPresenceService, never()).touch("firebase-uid");
+        verify(userPresenceService, never()).touchFromAuthenticationSafely("firebase-uid");
     }
 
     @Test
@@ -92,7 +93,7 @@ class FirebaseTokenFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
                 .extracting(Object::toString)
                 .containsExactly("ROLE_ADMIN");
-        verify(userPresenceService).touch("firebase-uid");
+        verify(userPresenceService).touchFromAuthenticationSafely("firebase-uid");
     }
 
     private User user(UserStatus status) {

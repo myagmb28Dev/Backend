@@ -42,6 +42,22 @@ class UserPresenceServiceTest {
     }
 
     @Test
+    void websocketConnectCreatesGlobalSessionAndKeepsUserOnline() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("socket-only-user");
+
+        service.markWebSocketConnected(user.getFirebaseUid(), "socket-1");
+
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(store.getGlobalSessions(user.getFirebaseUid())).containsKey("auth");
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
+        assertThat(snapshot.online()).isTrue();
+        assertThat(snapshot.actualConnectionState()).isEqualTo("connected");
+    }
+
+    @Test
     void snapshotReturnsOfflineWhenDisconnectGraceExpired() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
@@ -152,7 +168,24 @@ class UserPresenceServiceTest {
         boolean touched = service.touchFromAuthentication(user.getFirebaseUid());
 
         assertThat(touched).isTrue();
+        assertThat(store.getGlobalSessions(user.getFirebaseUid())).containsKey("auth");
+        assertThat(service.snapshot(user).availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
         verify(userRepository, atLeastOnce()).updateLastActiveAtByFirebaseUid(eq("login-revive-user"), any(Instant.class));
+    }
+
+    @Test
+    void touchFromAuthenticationCreatesGlobalSessionWithoutHeartbeat() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("auth-only-user");
+        when(userRepository.updateLastActiveAtByFirebaseUid(eq("auth-only-user"), any(Instant.class)))
+                .thenReturn(1);
+
+        service.touchFromAuthentication(user.getFirebaseUid());
+
+        assertThat(store.getGlobalSessions(user.getFirebaseUid())).containsKey("auth");
+        assertThat(service.snapshot(user).availabilityStatus()).isEqualTo(UserAvailabilityStatus.ONLINE);
+        assertThat(service.snapshot(user).actualConnectionState()).isEqualTo("connected");
     }
 
     @Test

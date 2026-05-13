@@ -117,7 +117,7 @@ test('admin presence topic receives PRESENCE_CHANGED without refresh', async ({ 
 
   await page.goto(`${baseURL}/login-flow.html`, { waitUntil: 'domcontentloaded' });
 
-  const subscribePromise = page.evaluate(({ socketUrl, token }) => {
+  const subscribePromise = page.evaluate(({ socketUrl, token, targetUserId }) => {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(socketUrl);
       const timeout = setTimeout(() => {
@@ -165,6 +165,9 @@ test('admin presence topic receives PRESENCE_CHANGED without refresh', async ({ 
           if (command === 'MESSAGE') {
             try {
               const payload = JSON.parse(body || '{}');
+              if (String(payload?.userId || '') !== String(targetUserId)) {
+                continue;
+              }
               disconnect();
               resolve(payload);
             } catch (e) {
@@ -181,7 +184,7 @@ test('admin presence topic receives PRESENCE_CHANGED without refresh', async ({ 
         }
       };
     });
-  }, { socketUrl: wsURL, token: adminToken });
+  }, { socketUrl: wsURL, token: adminToken, targetUserId: targetUser.id });
 
   const heartbeatRes = await api('/api/presence/heartbeat', {
     method: 'POST',

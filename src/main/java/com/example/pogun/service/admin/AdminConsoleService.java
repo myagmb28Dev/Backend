@@ -1083,10 +1083,9 @@ public class AdminConsoleService {
     }
 
     private List<User> resolveActiveUsers() {
-        return presenceSessionStore.findUsersWithGlobalSessions().stream()
-                .map(userRepository::findByFirebaseUid)
-                .flatMap(java.util.Optional::stream)
+        return userRepository.findAll().stream()
                 .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                .filter(user -> userPresenceService.snapshot(user).online())
                 .toList();
     }
 
@@ -1103,7 +1102,7 @@ public class AdminConsoleService {
 
     private long resolveConnectedUsersSafely() {
         try {
-            return presenceSessionStore.findUsersWithGlobalSessions().size();
+            return resolveActiveUsers().size();
         } catch (RuntimeException ignored) {
             return 0L;
         }
