@@ -425,10 +425,12 @@ public class AdminConsoleService {
     public Map<String, Object> communityDetail(String postId) {
         adminSecurityService.require(AdminPermission.AUDIT_READ);
         CommunityPost post = getCommunityPost(postId);
-        List<CommunityComment> comments = communityCommentRepository.findByPostOrderByCreatedAtAsc(post);
+        List<CommunityComment> comments = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL);
         List<CommunityPostVote> votes = communityPostVoteRepository.findByPost(post);
         List<CommunityPostReaction> reactions = communityPostReactionRepository.findByPost(post);
+        long likeCount = communityPostReactionRepository.countByPostAndReactionType(post, "LIKE");
         Map<String, Object> response = new LinkedHashMap<>(toCommunitySummaryMap(post));
+        response.put("likes", likeCount);
         response.put("content", post.getContent());
         response.put("tags", Optional.ofNullable(post.getTags())
                 .orElseGet(List::of)
@@ -1330,11 +1332,12 @@ public class AdminConsoleService {
     private Map<String, Object> toCommunitySummaryMap(CommunityPost post) {
         int commentCount = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL).size();
         String authorName = post.getAuthor() == null ? "알 수 없음" : safe(post.getAuthor().getNickname());
+        long likeCount = communityPostReactionRepository.countByPostAndReactionType(post, "LIKE");
         return orderedMap(
                 "id", post.getId(),
                 "title", safe(post.getTitle()),
                 "author", authorName,
-                "likes", post.getLikeCount(),
+                "likes", likeCount,
                 "comments", commentCount,
                 "createdAt", post.getCreatedAt(),
                 "status", post.getStatus() == null ? "UNKNOWN" : post.getStatus().name(),
