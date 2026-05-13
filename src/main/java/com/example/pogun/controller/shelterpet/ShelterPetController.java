@@ -2,6 +2,7 @@ package com.example.pogun.controller.shelterpet;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetDetailResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
@@ -79,6 +80,13 @@ public class ShelterPetController {
     ) {
         ShelterPetDetailResponse data = shelterPetService.getAiSourceDetail(apiKey, id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "유기 동물 공고 AI 상세 조회 성공", data));
+    }
+
+    @GetMapping("/{id:\\d+}/similar-notices")
+    @Operation(summary = "보호 공고 유사 공고 조회", description = "보호 공고 기준 최신 AI 유사 공고 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<SimilarNoticeListResponse>> getSimilarNotices(@PathVariable String id) {
+        SimilarNoticeListResponse data = shelterPetService.getSimilarNotices(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "보호 공고 유사 공고 조회 성공", data));
     }
 
     @PostMapping("/{id:\\d+}/analysis-result")

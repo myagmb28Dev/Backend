@@ -1,6 +1,7 @@
 package com.example.pogun.controller.missingpet;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.missingpet.MissingPetCreateRequest;
 import com.example.pogun.dto.missingpet.MissingPetDetailResponse;
@@ -112,6 +113,13 @@ public class MissingPetController {
     ) {
         MissingPetDetailResponse data = missingPetService.getAiSourceDetail(apiKey, missingPetId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 AI 상세 조회 성공", data));
+    }
+
+    @GetMapping("/{missingPetId}/similar-notices")
+    @Operation(summary = "실종 공고 유사 공고 조회", description = "실종 공고 기준 최신 AI 유사 공고 목록을 조회합니다.")
+    public ResponseEntity<ApiResponse<SimilarNoticeListResponse>> getSimilarNotices(@PathVariable String missingPetId) {
+        SimilarNoticeListResponse data = missingPetService.getSimilarNotices(missingPetId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 유사 공고 조회 성공", data));
     }
 
     @PostMapping("/{missingPetId}/analysis-result")

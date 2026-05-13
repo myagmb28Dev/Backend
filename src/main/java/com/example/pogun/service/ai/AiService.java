@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -73,7 +74,7 @@ public class AiService {
         analysis.setErrorMessage(blankToNull(request.getErrorMessage()));
         analysis.setCompletedAt(request.getAnalyzedAt() == null ? Instant.now() : request.getAnalyzedAt());
         analysis.setFeatures(copyList(request.getFeatures()));
-        analysis.setSimilarNoticeIds(copyList(request.getSimilarNoticeIds()));
+        analysis.setSimilarNoticeIds(sanitizeSimilarNoticeIds(targetType, targetId, request.getSimilarNoticeIds()));
 
         AiAnalysis saved = aiAnalysisRepository.save(analysis);
         return new AiAnalysisResultCallbackResponse(
@@ -118,12 +119,12 @@ public class AiService {
 
     private AiAnalysisStatus parseStatus(String status) {
         if (status == null || status.isBlank()) {
-            throw ApiException.badRequest("INVALID_AI_STATUS", "status는 필수입니다.");
+            return AiAnalysisStatus.FAILED;
         }
         try {
             return AiAnalysisStatus.valueOf(status.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw ApiException.badRequest("INVALID_AI_STATUS", "올바르지 않은 AI 분석 상태입니다.");
+            return AiAnalysisStatus.FAILED;
         }
     }
 
@@ -144,6 +145,37 @@ public class AiService {
                 .filter(item -> item != null && !item.isBlank())
                 .map(String::trim)
                 .toList();
+    }
+
+    private List<String> sanitizeSimilarNoticeIds(AiAnalysisTargetType targetType, String targetId, List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> filtered = new LinkedHashSet<>();
+        for (String raw : values) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String id = raw.trim();
+            if (id.matches("^[0-9]+$")) {
+                if (shelterPetRepository.findById(id).isPresent()) {
+                    filtered.add(id);
+                }
+                continue;
+            }
+            if (id.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) {
+                UUID noticeId = parseNoticeId(id);
+                PetNotice notice = petNoticeRepository.findById(noticeId).orElse(null);
+                if (notice == null || Boolean.TRUE.equals(notice.getHidden())) {
+                    continue;
+                }
+                if (targetType == AiAnalysisTargetType.MISSING_PET && targetId.equalsIgnoreCase(id)) {
+                    continue;
+                }
+                filtered.add(id);
+            }
+        }
+        return new ArrayList<>(filtered);
     }
 
     private AiAnalysisTargetType parseTargetType(String targetType) {

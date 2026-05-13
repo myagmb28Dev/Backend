@@ -2,14 +2,21 @@ package com.example.pogun.service.shelterpet;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetDetailResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListFiltersResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetListResponse;
 import com.example.pogun.dto.shelterpet.ShelterPetSummaryResponse;
+import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
+import com.example.pogun.entity.notification.enums.NotificationTargetType;
+import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.shelterpet.ShelterPet;
+import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
 import com.example.pogun.service.ai.AiService;
 import com.example.pogun.service.cache.AiSourceCacheService;
+import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * 도메인 비즈니스 로직을 담당하는 ShelterPetService이다.
@@ -29,8 +37,10 @@ public class ShelterPetService {
 
     private final ShelterPublicApiClient shelterPublicApiClient;
     private final ShelterPetRepository shelterPetRepository;
+    private final PetNoticeRepository petNoticeRepository;
     private final AiService aiService;
     private final AiSourceCacheService aiSourceCacheService;
+    private final NotificationService notificationService;
 
     private static final String AI_CACHE_NAMESPACE = "shelter-pets";
 
@@ -149,8 +159,50 @@ public class ShelterPetService {
 
     public AiAnalysisResultCallbackResponse receiveAnalysisResult(String id, String apiKey, AiAnalysisResultCallbackRequest request) {
         AiAnalysisResultCallbackResponse response = aiService.saveShelterAnalysisResult(id, apiKey, request);
+        SimilarNoticeListResponse similar = aiService.getLatestSimilarNotices(response.targetType(), response.targetId());
+        List<String> filteredSimilarIds = similar.items().stream().map(item -> item.noticeId()).toList();
+        sendSimilarMissingNoticeNotifications(response.analysisId(), id, filteredSimilarIds);
         aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
         return response;
+    }
+
+    public SimilarNoticeListResponse getSimilarNotices(String id) {
+        if (shelterPetRepository.findById(id).isEmpty()) {
+            shelterPublicApiClient.fetchShelterPet(id);
+        }
+        return aiService.getLatestSimilarNotices("SHELTER", id);
+    }
+
+    private void sendSimilarMissingNoticeNotifications(String analysisId, String shelterId, List<String> similarNoticeIds) {
+        if (analysisId == null || analysisId.isBlank() || similarNoticeIds == null || similarNoticeIds.isEmpty()) {
+            return;
+        }
+        for (String similarId : similarNoticeIds) {
+            if (similarId == null || similarId.isBlank()) {
+                continue;
+            }
+            if (!similarId.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) {
+                continue;
+            }
+            UUID noticeId = UUID.fromString(similarId.trim());
+            PetNotice notice = petNoticeRepository.findById(noticeId).orElse(null);
+            if (notice == null || Boolean.TRUE.equals(notice.getHidden()) || notice.getAuthor() == null) {
+                continue;
+            }
+            String dedupeKey = "ai-similar:shelter:" + analysisId + ":" + notice.getAuthor().getId() + ":" + noticeId;
+            notificationService.createAndSendNotification(
+                    notice.getAuthor(),
+                    null,
+                    NotificationType.AI_SIMILAR_NOTICE_FOUND,
+                    NotificationTargetType.PET_NOTICE,
+                    noticeId,
+                    "유사 보호소 공고가 발견되었습니다.",
+                    "AI가 보호소 공고(" + shelterId + ")와 유사한 실종 공고를 찾았습니다. 공고를 확인해 주세요.",
+                    NotificationPriority.NORMAL,
+                    dedupeKey,
+                    java.util.Map.of("shelterId", shelterId)
+            );
+        }
     }
 
     private ShelterPet getOrCreateShelterPet(String id) {

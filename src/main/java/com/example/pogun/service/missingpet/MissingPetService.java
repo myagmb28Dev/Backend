@@ -2,6 +2,7 @@ package com.example.pogun.service.missingpet;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.missingpet.MissingPetDetailResponse;
 import com.example.pogun.dto.missingpet.MissingPetListFiltersResponse;
 import com.example.pogun.dto.missingpet.MissingPetListResponse;
@@ -18,6 +19,7 @@ import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
+import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.missingpet.enums.PetGender;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
@@ -280,15 +282,23 @@ public class MissingPetService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public SimilarNoticeListResponse getSimilarNotices(String missingPetId) {
+        PetNotice notice = getVisibleNotice(missingPetId);
+        return aiService.getLatestSimilarNotices("MISSING_PET", notice.getId().toString());
+    }
+
     @Transactional
     public AiAnalysisResultCallbackResponse receiveAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
         AiAnalysisResultCallbackResponse response = aiService.saveMissingPetAnalysisResult(missingPetId, apiKey, request);
         PetNotice notice = getVisibleNotice(missingPetId);
-        sendSimilarNoticeFoundNotification(notice, request.getSimilarNoticeIds());
+        SimilarNoticeListResponse similar = aiService.getLatestSimilarNotices(response.targetType(), response.targetId());
+        List<String> filteredSimilarIds = similar.items().stream().map(item -> item.noticeId()).toList();
+        sendSimilarNoticeFoundNotification(response.analysisId(), notice, filteredSimilarIds);
         return response;
     }
 
-    private void sendSimilarNoticeFoundNotification(PetNotice notice, List<String> similarNoticeIds) {
+    private void sendSimilarNoticeFoundNotification(String analysisId, PetNotice notice, List<String> similarNoticeIds) {
         if (notice == null || notice.getAuthor() == null || similarNoticeIds == null || similarNoticeIds.isEmpty()) {
             return;
         }
@@ -300,13 +310,17 @@ public class MissingPetService {
         if (distinctCount <= 0) {
             return;
         }
+        String dedupeKey = "ai-similar:missing:" + analysisId + ":" + notice.getAuthor().getId();
         notificationService.createAndSendNotification(
                 notice.getAuthor(),
+                null,
                 NotificationType.AI_SIMILAR_NOTICE_FOUND,
                 NotificationTargetType.PET_NOTICE,
                 notice.getId(),
                 "유사 공고가 발견되었습니다.",
                 "AI가 " + distinctCount + "건의 유사 공고를 찾았습니다. 공고를 확인해 주세요.",
+                NotificationPriority.NORMAL,
+                dedupeKey,
                 Map.of("similarCount", String.valueOf(distinctCount))
         );
     }
