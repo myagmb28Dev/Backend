@@ -14,7 +14,7 @@ import lombok.Setter;
 @Schema(description = "커뮤니티 반응 요청")
 public class CommunityReactionRequest {
     @NotBlank
-    @Pattern(regexp = "^(?i)(LIKE|LOVE|HAHA|WOW|SAD|ANGRY)$", message = "reaction은 LIKE, LOVE, HAHA, WOW, SAD, ANGRY 중 하나여야 합니다.")
+    @Pattern(regexp = "^(?i)(LIKE)$", message = "reaction은 LIKE만 허용됩니다.")
     @Schema(description = "반응 타입", example = "LIKE")
     private String reaction;
 }

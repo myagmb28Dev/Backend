@@ -185,14 +185,14 @@ async function loadListFirstPage() {
 function renderReactions(d) {
   const myReaction = d.myReaction || null;
   const reactions = d.reactions || {};
-  const types = ["LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"];
+  const types = ["LIKE"];
   const total = Object.values(reactions).reduce((a, b) => a + (b || 0), 0);
   return `
     <div class="reaction-buttons">
       ${types.map((t) => {
         const count = reactions[t] || 0;
         const active = myReaction === t;
-        return `<button class="reaction-btn${active ? " active" : ""}" data-reaction="${t}">${t} ${count || ""}</button>`;
+        return `<button class="reaction-btn${active ? " active" : ""}" data-reaction="${t}" aria-label="좋아요">❤️ ${count || 0}</button>`;
       }).join("")}
       <span class="muted" style="line-height:32px">좋아요 ${total}개 · 조회 ${d.viewCount ?? 0}</span>
     </div>
@@ -301,10 +301,21 @@ async function loadDetail(postId) {
 async function loadComments() {
   if (!currentPostId) return;
   const res = await authApi(`/api/community/posts/${currentPostId}/comments`);
-  if (res.status !== 200) return;
-  const comments = Array.isArray(res.body?.data) ? res.body.data : [];
+  if (res.status !== 200) {
+    setStatus(`댓글 조회 실패 (${res.status})`, "bad");
+    return;
+  }
+  const payload = res.body?.data;
+  const comments = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.comments)
+        ? payload.comments
+        : [];
   const area = document.querySelector("#commentsArea");
   if (area) area.innerHTML = renderComments(comments);
+  setStatus("댓글 조회 성공", "good");
 }
 
 async function createComment() {

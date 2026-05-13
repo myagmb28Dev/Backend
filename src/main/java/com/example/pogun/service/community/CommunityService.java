@@ -65,7 +65,7 @@ public class CommunityService {
     private static final String SORT_LATEST = "LATEST";
     private static final String SORT_POPULAR = "POPULAR";
     private static final List<String> ALLOWED_CATEGORIES = List.of("FREE", "QUESTION", "TIP", "REVIEW", "NOTICE");
-    private static final List<String> ALLOWED_REACTIONS = List.of("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY");
+    private static final List<String> ALLOWED_REACTIONS = List.of("LIKE");
 
     private final CommunityPostRepository communityPostRepository;
     private final CommunityCommentRepository communityCommentRepository;

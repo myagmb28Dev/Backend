@@ -591,13 +591,8 @@
   }
 
   function isLocalAdminShortcutAllowed() {
-    const host = window.location.hostname;
-    const port = window.location.port;
-    // 배포 환경 도메인은 완전히 차단
-    if (host.includes("pawgen.kro.kr") || host.includes("paw.gbsw.hs.kr") || host.includes("43.201.1.61")) {
-      return false;
-    }
-    return (host === "localhost" || host === "127.0.0.1") && port === "8081";
+    const origin = window.location.origin;
+    return origin === "http://localhost:8081" || origin === "http://127.0.0.1:8081";
   }
 
   function configureLocalAdminLoginUi() {
