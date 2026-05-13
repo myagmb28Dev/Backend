@@ -8,6 +8,21 @@ const HEARTBEAT_INTERVAL_MS = 8000;
 
 let heartbeatTimer = null;
 let inFlight = false;
+const CONTROLLER_KEY = "__pogunGlobalPresenceControllerV1";
+
+function topWindowSafe() {
+  try {
+    return window.top && window.top.location.origin === window.location.origin ? window.top : window;
+  } catch {
+    return window;
+  }
+}
+
+const hostWindow = topWindowSafe();
+
+function isEmbeddedFrame() {
+  return hostWindow !== window;
+}
 
 function readSession() {
   try {
@@ -43,6 +58,9 @@ function clearExpiredSession() {
 }
 
 async function sendGlobalPresenceHeartbeat(reason = "interval") {
+  if (isEmbeddedFrame()) {
+    return hostWindow[CONTROLLER_KEY]?.send?.(reason) ?? null;
+  }
   const session = readSession();
   if (!session?.firebaseIdToken || inFlight) return null;
 
@@ -85,12 +103,20 @@ async function sendGlobalPresenceHeartbeat(reason = "interval") {
 }
 
 export function startGlobalPresenceHeartbeat() {
+  if (isEmbeddedFrame()) {
+    hostWindow[CONTROLLER_KEY]?.start?.();
+    return;
+  }
   if (heartbeatTimer) return;
   sendGlobalPresenceHeartbeat("start");
   heartbeatTimer = setInterval(() => sendGlobalPresenceHeartbeat(), HEARTBEAT_INTERVAL_MS);
 }
 
 export function stopGlobalPresenceHeartbeat() {
+  if (isEmbeddedFrame()) {
+    hostWindow[CONTROLLER_KEY]?.stop?.();
+    return;
+  }
   if (!heartbeatTimer) return;
   clearInterval(heartbeatTimer);
   heartbeatTimer = null;
@@ -121,4 +147,16 @@ window.addEventListener("storage", (event) => {
   }
 });
 
-startGlobalPresenceHeartbeat();
+if (!hostWindow[CONTROLLER_KEY]) {
+  hostWindow[CONTROLLER_KEY] = {
+    start: startGlobalPresenceHeartbeat,
+    stop: stopGlobalPresenceHeartbeat,
+    send: sendGlobalPresenceHeartbeat
+  };
+}
+
+if (isEmbeddedFrame()) {
+  hostWindow[CONTROLLER_KEY].start();
+} else {
+  startGlobalPresenceHeartbeat();
+}

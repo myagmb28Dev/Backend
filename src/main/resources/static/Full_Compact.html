@@ -85,28 +85,28 @@
 
       <main class="content">
       <section id="view-admin" class="frame-wrap active">
-        <iframe data-view-frame="admin" src="/full_compact/pages/admin-flow.html" title="admin"></iframe>
+        <iframe data-view-frame="admin" data-src="/full_compact/pages/admin-flow.html" src="about:blank" title="admin"></iframe>
       </section>
       <section id="view-login" class="frame-wrap">
-        <iframe data-view-frame="login" src="/full_compact/pages/login-flow.html" title="login"></iframe>
+        <iframe data-view-frame="login" data-src="/full_compact/pages/login-flow.html" src="about:blank" title="login"></iframe>
       </section>
       <section id="view-notice" class="frame-wrap">
-        <iframe data-view-frame="notice" src="/full_compact/pages/notice-flow.html" title="notice"></iframe>
+        <iframe data-view-frame="notice" data-src="/full_compact/pages/notice-flow.html" src="about:blank" title="notice"></iframe>
       </section>
       <section id="view-community" class="frame-wrap">
-        <iframe data-view-frame="community" src="/full_compact/pages/community-flow.html" title="community"></iframe>
+        <iframe data-view-frame="community" data-src="/full_compact/pages/community-flow.html" src="about:blank" title="community"></iframe>
       </section>
       <section id="view-dm" class="frame-wrap">
-        <iframe data-view-frame="dm" src="/full_compact/pages/dm-flow.html" title="dm"></iframe>
+        <iframe data-view-frame="dm" data-src="/full_compact/pages/dm-flow.html" src="about:blank" title="dm"></iframe>
       </section>
       <section id="view-notification" class="frame-wrap">
-        <iframe data-view-frame="notification" src="/full_compact/pages/notification-flow.html" title="notification"></iframe>
+        <iframe data-view-frame="notification" data-src="/full_compact/pages/notification-flow.html" src="about:blank" title="notification"></iframe>
       </section>
       <section id="view-setting" class="frame-wrap">
-        <iframe data-view-frame="setting" src="/full_compact/pages/setting-flow.html" title="setting"></iframe>
+        <iframe data-view-frame="setting" data-src="/full_compact/pages/setting-flow.html" src="about:blank" title="setting"></iframe>
       </section>
       <section id="view-shelter" class="frame-wrap">
-        <iframe data-view-frame="shelter" src="/full_compact/pages/shelter-flow.html" title="shelter"></iframe>
+        <iframe data-view-frame="shelter" data-src="/full_compact/pages/shelter-flow.html" src="about:blank" title="shelter"></iframe>
       </section>
       </main>
     </div>
@@ -125,9 +125,10 @@
     if (backendBaseOverride) {
       document.querySelectorAll("iframe[data-view-frame]").forEach((frame) => {
         try {
-          const url = new URL(frame.getAttribute("src"), window.location.origin);
+          const basePath = frame.getAttribute("data-src") || frame.getAttribute("src");
+          const url = new URL(basePath, window.location.origin);
           url.searchParams.set("backendBase", backendBaseOverride);
-          frame.setAttribute("src", url.pathname + "?" + url.searchParams.toString());
+          frame.setAttribute("data-src", url.pathname + "?" + url.searchParams.toString());
         } catch {}
       });
     }
@@ -140,15 +141,40 @@
       refreshBtn.classList.add("spinning");
       window.setTimeout(() => refreshBtn.classList.remove("spinning"), ms);
     };
+    const loadedFrames = new Set();
+    const baseFrameSrc = (frame) => frame?.getAttribute("data-src") || "";
+    const ensureViewLoaded = (view) => {
+      const frame = document.querySelector(`iframe[data-view-frame="${view}"]`);
+      if (!frame) return null;
+      const src = baseFrameSrc(frame);
+      if (!src) return frame;
+      if (!loadedFrames.has(view) || frame.getAttribute("src") === "about:blank") {
+        frame.setAttribute("src", src);
+        loadedFrames.add(view);
+      }
+      return frame;
+    };
+    const unloadInactiveViews = (activeView) => {
+      document.querySelectorAll("iframe[data-view-frame]").forEach((frame) => {
+        const view = frame.getAttribute("data-view-frame");
+        if (!view || view === activeView) return;
+        if (frame.getAttribute("src") !== "about:blank") {
+          frame.setAttribute("src", "about:blank");
+        }
+        loadedFrames.delete(view);
+      });
+    };
     const refreshView = (view) => {
       const targetView = normalizeView(view) || currentActiveView();
-      const frame = document.querySelector(`iframe[data-view-frame="${targetView}"]`);
+      const frame = ensureViewLoaded(targetView);
       if (!frame) return;
       spinRefresh();
       try {
-        const url = new URL(frame.getAttribute("src"), window.location.origin);
+        const basePath = baseFrameSrc(frame);
+        const url = new URL(basePath || frame.getAttribute("src"), window.location.origin);
         url.searchParams.set("_refresh", String(Date.now()));
         frame.setAttribute("src", url.pathname + (url.search ? url.search : ""));
+        loadedFrames.add(targetView);
       } catch {
         frame.src = frame.src;
       }
@@ -160,6 +186,8 @@
         document.getElementById(`view-${k}`).classList.toggle("active", k === safeView);
       });
       topTitle.textContent = safeView;
+      ensureViewLoaded(safeView);
+      unloadInactiveViews(safeView);
       if (window.matchMedia("(max-width:1024px)").matches) document.body.classList.remove("menu-open");
       if (options.refresh !== false) {
         refreshView(safeView);
@@ -169,7 +197,7 @@
       if (window.matchMedia("(max-width:1024px)").matches) document.body.classList.toggle("menu-open");
       else document.body.classList.toggle("sidebar-collapsed");
     });
-    navButtons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.view, { refresh: true })));
+    navButtons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.view, { refresh: false })));
     refreshBtn.addEventListener("click", () => refreshView(currentActiveView()));
     backdrop.addEventListener("click", () => document.body.classList.remove("menu-open"));
     window.addEventListener("message", (event) => {
@@ -177,14 +205,14 @@
       const data = event.data || {};
       if (data.type === "pogun-auth-required") {
         try { window.sessionStorage.setItem(PENDING_VIEW_KEY, normalizeView(data.view) || currentActiveView()); } catch {}
-        activate("login", { refresh: true });
+        activate("login", { refresh: false });
       }
       if (data.type === "pogun-open-view") {
         const targetView = normalizeView(data.view) || (() => {
           try { return normalizeView(window.sessionStorage.getItem(PENDING_VIEW_KEY)) || currentActiveView(); } catch { return currentActiveView(); }
         })();
         try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
-        activate(targetView, { refresh: true });
+        activate(targetView, { refresh: false });
       }
     });
     const initialView = normalizeView(query.get("view")) || "admin";

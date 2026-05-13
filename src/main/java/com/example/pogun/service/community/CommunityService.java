@@ -690,10 +690,12 @@ public class CommunityService {
         for (CommunityComment comment : comments) {
             CommentNode node = nodesById.get(comment.getId());
             UUID parentId = comment.getParentComment() == null ? null : comment.getParentComment().getId();
-            if (parentId != null) {
+            if (parentId != null && !parentId.equals(comment.getId())) {
                 CommentNode parent = nodesById.get(parentId);
                 if (parent != null) {
                     parent.children.add(node);
+                } else {
+                    roots.add(node);
                 }
             } else {
                 roots.add(node);
@@ -701,7 +703,7 @@ public class CommunityService {
         }
 
         return roots.stream()
-                .map(CommentNode::toResponse)
+                .map(root -> root.toResponse(new java.util.HashSet<>()))
                 .toList();
     }
 
@@ -741,9 +743,19 @@ public class CommunityService {
             this(response, new ArrayList<>());
         }
 
-        private CommunityCommentResponse toResponse() {
+        private CommunityCommentResponse toResponse(java.util.Set<UUID> path) {
+            if (response.id() != null && !path.add(response.id())) {
+                return new CommunityCommentResponse(
+                        response.id(),
+                        response.content(),
+                        response.authorNickname(),
+                        response.createdAt(),
+                        response.parentCommentId(),
+                        List.of()
+                );
+            }
             List<CommunityCommentResponse> childResponses = children.stream()
-                    .map(CommentNode::toResponse)
+                    .map(child -> child.toResponse(new java.util.HashSet<>(path)))
                     .toList();
             return new CommunityCommentResponse(
                     response.id(),
