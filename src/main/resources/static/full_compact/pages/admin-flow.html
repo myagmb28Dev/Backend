@@ -1705,7 +1705,6 @@
     const payload = res.body?.data || {};
     const rows = (Array.isArray(payload.items) ? payload.items : []);
     trafficErrorCount = Number.isFinite(Number(payload.errorCount)) ? Number(payload.errorCount) : 0;
-      .filter((row) => isTrackedApiPath(row?.path));
     const grouped = {};
     const freshByGroup = new Map();
     let totalFresh = 0;
