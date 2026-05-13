@@ -47,6 +47,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.persistence.EntityNotFoundException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -220,6 +221,7 @@ public class CommunityService {
         return new CommunityPostDeleteResponse(post.getId(), true);
     }
 
+    @Transactional(readOnly = true)
     public List<CommunityCommentResponse> getComments(String postId) {
         CommunityPost post = getActivePost(postId);
 
@@ -689,7 +691,7 @@ public class CommunityService {
         List<CommentNode> roots = new ArrayList<>();
         for (CommunityComment comment : comments) {
             CommentNode node = nodesById.get(comment.getId());
-            UUID parentId = comment.getParentComment() == null ? null : comment.getParentComment().getId();
+            UUID parentId = safeParentCommentId(comment);
             if (parentId != null && !parentId.equals(comment.getId())) {
                 CommentNode parent = nodesById.get(parentId);
                 if (parent != null) {
@@ -708,15 +710,40 @@ public class CommunityService {
     }
 
     private CommunityCommentResponse toCommentResponse(CommunityComment comment) {
-        String authorNickname = comment.getAuthor() != null ? comment.getAuthor().getNickname() : "(탈퇴한 사용자)";
+        String authorNickname = safeAuthorNickname(comment);
         return new CommunityCommentResponse(
                 comment.getId(),
                 comment.getContent(),
                 authorNickname,
                 comment.getCreatedAt(),
-                comment.getParentComment() == null ? null : comment.getParentComment().getId(),
+                safeParentCommentId(comment),
                 List.of()
         );
+    }
+
+    private String safeAuthorNickname(CommunityComment comment) {
+        try {
+            if (comment.getAuthor() == null) {
+                return "(탈퇴한 사용자)";
+            }
+            String nickname = comment.getAuthor().getNickname();
+            return nickname == null || nickname.isBlank() ? "(탈퇴한 사용자)" : nickname;
+        } catch (EntityNotFoundException ex) {
+            log.warn("Community comment author missing. commentId={}", comment.getId());
+            return "(탈퇴한 사용자)";
+        }
+    }
+
+    private UUID safeParentCommentId(CommunityComment comment) {
+        try {
+            if (comment.getParentComment() == null) {
+                return null;
+            }
+            return comment.getParentComment().getId();
+        } catch (EntityNotFoundException ex) {
+            log.warn("Community comment parent missing. commentId={}", comment.getId());
+            return null;
+        }
     }
 
     private void softDeleteCommentTree(CommunityPost post, CommunityComment rootComment) {
