@@ -45,6 +45,7 @@ import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.presence.PresenceSessionStore;
+import com.example.pogun.service.user.UserPresenceService;
 import com.example.pogun.service.shelterpet.ShelterPublicApiClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -106,6 +107,7 @@ public class AdminConsoleService {
     private final AdminPermissionService adminPermissionService;
     private final AdminAuditService adminAuditService;
     private final PresenceSessionStore presenceSessionStore;
+    private final UserPresenceService userPresenceService;
     private final DataSource dataSource;
     private final RedisConnectionFactory redisConnectionFactory;
     private final FirebaseAuth firebaseAuth;
@@ -1174,14 +1176,18 @@ public class AdminConsoleService {
     }
 
     private Map<String, Object> toUserSummaryMap(User user) {
+        var snapshot = userPresenceService.snapshot(user);
         return orderedMap(
-                "id", user.getId(),
-                "name", safe(user.getNickname()),
-                "email", safe(user.getEmail()),
-                "role", user.getRole().name(),
-                "status", normalizeUserStatus(user.getStatus()),
-                "createdAt", user.getCreatedAt(),
-                "lastLoginAt", user.getLastActiveAt()
+            "id", user.getId(),
+            "name", safe(user.getNickname()),
+            "email", safe(user.getEmail()),
+            "role", user.getRole().name(),
+            "status", normalizeUserStatus(user.getStatus()),
+            "presence", snapshot.availabilityStatus().name(),
+            "presenceConnectionState", snapshot.actualConnectionState(),
+            "presenceLastActiveAt", snapshot.lastActiveAt(),
+            "createdAt", user.getCreatedAt(),
+            "lastLoginAt", user.getLastActiveAt()
         );
     }
 

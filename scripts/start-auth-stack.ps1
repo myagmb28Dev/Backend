@@ -20,7 +20,14 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
-. (Join-Path $scriptDir "lib\PogunScriptCommon.ps1")
+
+function Set-PogunWindowTitle {
+    param([string]$Title)
+    try {
+        $host.UI.RawUI.WindowTitle = $Title
+    } catch {
+    }
+}
 
 $localDir = Join-Path $repoRoot ".local"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
@@ -350,6 +357,23 @@ function Invoke-BackendRequest {
     return Invoke-RestMethod @params
 }
 
+function Ensure-GradleWrapperReady {
+    param(
+        [string]$RepoPath,
+        [string]$LogPath
+    )
+    Push-Location $RepoPath
+    try {
+        Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue
+        & ".\gradlew.bat" --version *> $LogPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Gradle wrapper bootstrap failed. Check log: $LogPath"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Ensure-EmulatorUserAndGetToken {
     param(
         [string]$TargetEmail,
@@ -463,8 +487,6 @@ if ([string]::IsNullOrWhiteSpace($SpringProfile)) {
     }
 }
 
-$gradleUserHome = Resolve-PogunGradleUserHome -RepoRoot $repoRoot
-
 if ($Mode -eq "local") {
     $localEnvPath = Join-Path $repoRoot ".env.local"
     $baseEnvPath = Join-Path $repoRoot ".env"
@@ -482,7 +504,15 @@ if (-not $NoDocker -and $Mode -eq "local") {
         $composeEnvPath = Join-Path $repoRoot ".env"
     }
     if (Test-Path $composePath) {
-        Start-DockerServices -Services $DockerServices -ComposeFilePath $composePath -EnvFilePath $composeEnvPath -TimeoutSec $TimeoutSeconds
+        try {
+            Start-DockerServices -Services $DockerServices -ComposeFilePath $composePath -EnvFilePath $composeEnvPath -TimeoutSec $TimeoutSeconds
+        } catch {
+            if (Test-TcpPort -Port 6379) {
+                Write-Warning "Docker startup failed, but Redis port 6379 is already reachable. Continuing."
+            } else {
+                throw "Docker startup failed and Redis is not reachable on 6379. Run terminal as Administrator or pass -NoDocker when Redis is already running."
+            }
+        }
     } else {
         Write-Warning "docker-compose.yml not found at $composePath. Skipping docker startup."
     }
@@ -498,7 +528,7 @@ if ($Mode -eq "real") {
     $env:APP_FIREBASE_AUTH_MODE = "PRODUCTION"
     $env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = "false"
     $env:PORT = "$BackendPort"
-    $env:GRADLE_USER_HOME = $gradleUserHome
+    Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue
 
     & ".\gradlew.bat" bootRun
     exit $LASTEXITCODE
@@ -520,12 +550,15 @@ Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -Timeou
     Start-DetachedPowerShell -Title "Pogun Auth Emulator" -CommandText $emulatorCommand
 }
 
+$gradleCheckLog = Join-Path $localDir "gradle-wrapper-check.log"
+Ensure-GradleWrapperReady -RepoPath $repoRoot -LogPath $gradleCheckLog
+
 Stop-ProcessesListeningOnPort -Port $BackendPort -Name "backend"
 
 $backendCommand = @(
     "`$env:PORT = '$BackendPort'",
     "`$env:SERVER_PORT = '$BackendPort'",
-    "`$env:GRADLE_USER_HOME = '$gradleUserHome'",
+    "Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue",
     "`$env:SPRING_PROFILES_ACTIVE = '$SpringProfile'",
     "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
     "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
