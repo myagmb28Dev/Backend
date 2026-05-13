@@ -14,7 +14,21 @@ if (-not (Test-Path $envPath)) {
 }
 
 if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
-    throw "psql is not installed or not on PATH."
+    $candidatePaths = @(
+        "C:\\Program Files\\PostgreSQL\\18\\bin\\psql.exe",
+        "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
+        "C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe",
+        "C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe",
+        "C:\\Program Files\\PostgreSQL\\14\\bin\\psql.exe"
+    )
+    $resolved = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($resolved) {
+        $env:Path = "$([System.IO.Path]::GetDirectoryName($resolved));$env:Path"
+    }
+}
+
+if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
+    throw "psql is not installed or not on PATH. Install PostgreSQL client or add psql.exe to PATH."
 }
 
 $kv = @{}
@@ -53,5 +67,5 @@ $env:PGDATABASE = $database
 $env:PGUSER = $dbUser
 $env:PGPASSWORD = $dbPass
 
-Write-Host "Connecting with $envFile -> $host:$port/$database"
+Write-Host "Connecting with ${envFile} -> ${host}:${port}/${database}"
 & psql
