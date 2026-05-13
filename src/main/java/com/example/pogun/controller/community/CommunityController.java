@@ -5,6 +5,7 @@ import com.example.pogun.dto.community.CommunityCommentCreateResponse;
 import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
 import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
+import com.example.pogun.dto.community.CommunityCommentUpdateResponse;
 import com.example.pogun.dto.community.CommunityPostCreateResponse;
 import com.example.pogun.dto.community.CommunityPostDeleteResponse;
 import com.example.pogun.dto.community.CommunityPostDetailResponse;
@@ -36,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -140,6 +142,17 @@ public class CommunityController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "댓글 삭제 성공", data));
     }
 
+    @PatchMapping("/{postId}/comments/{commentId}")
+    @Operation(summary = "댓글 수정", description = "지정된 글의 댓글을 수정합니다.")
+    public ResponseEntity<ApiResponse<CommunityCommentUpdateResponse>> updateComment(
+            @PathVariable String postId,
+            @PathVariable String commentId,
+            @Valid @RequestBody CommunityCommentRequest request
+    ) {
+        CommunityCommentUpdateResponse data = communityService.updateComment(postId, commentId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "댓글 수정 성공", data));
+    }
+
     @PostMapping("/{postId}/votes")
     @Operation(summary = "투표 참여", description = "지정된 글의 투표에 참여합니다.")
     public ResponseEntity<ApiResponse<CommunityVoteResponse>> vote(@PathVariable String postId, @Valid @RequestBody CommunityVoteRequest request) {
@@ -154,6 +167,13 @@ public class CommunityController {
         // 반응은 같은 사용자의 기존 값이 있으면 덮어써서 최신 상태만 유지한다.
         CommunityReactionResponse data = communityService.react(postId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요/반응 처리 성공", data));
+    }
+
+    @DeleteMapping("/{postId}/reactions")
+    @Operation(summary = "좋아요 취소", description = "지정된 글의 좋아요/반응을 취소합니다.")
+    public ResponseEntity<ApiResponse<CommunityReactionResponse>> unlike(@PathVariable String postId) {
+        CommunityReactionResponse data = communityService.unlike(postId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "좋아요 취소 성공", data));
     }
 
     private <T> T parseRequest(String request, Class<T> type) {

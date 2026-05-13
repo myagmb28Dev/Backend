@@ -39,7 +39,14 @@
     .detail-images img { width:100%; border-radius:8px; border:1px solid var(--line); background:#111; }
     .comment-list { display:grid; gap:8px; margin-top:8px; max-height:300px; overflow:auto; }
     .comment-item { border:1px solid var(--line); border-radius:8px; padding:8px; background:#201a31; }
+    .comment-item.reply { margin-left:18px; background:#191427; }
     .comment-item .meta { font-size:11px; color:var(--muted); margin-bottom:4px; }
+    .reply-indicator { margin-top:8px; padding:8px 10px; border-radius:8px; background:#201a31; border:1px solid var(--line); display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; }
+    .reply-indicator.hidden { display:none; }
+    .comment-context-menu { position:fixed; z-index:1200; display:none; background:#1f1930; border:1px solid var(--line); border-radius:8px; overflow:hidden; min-width:140px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+    .comment-context-menu.show { display:block; }
+    .comment-context-menu button { width:100%; text-align:left; border:0; border-radius:0; background:transparent; color:var(--ink); padding:10px 12px; }
+    .comment-context-menu button:hover { background:#2b2140; }
     .poll-section { border:1px solid var(--line); border-radius:8px; padding:10px; background:#201a31; margin-top:8px; }
     .poll-option { display:flex; align-items:center; gap:8px; padding:6px 0; }
     .poll-option button { padding:6px 12px; font-size:12px; }
@@ -129,6 +136,12 @@
       <button id="createCancelButton" class="secondary">취소</button>
     </div>
   </div>
+</div>
+
+<div id="commentContextMenu" class="comment-context-menu">
+  <button id="replyContextAction" type="button">답글 달기</button>
+  <button id="editCommentContextAction" type="button">댓글 수정</button>
+  <button id="deleteCommentContextAction" type="button">댓글 삭제</button>
 </div>
 
 <script type="module" src="/js/global-presence.js"></script>

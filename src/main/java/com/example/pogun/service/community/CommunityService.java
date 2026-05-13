@@ -4,6 +4,7 @@ import com.example.pogun.dto.community.CommunityCommentCreateResponse;
 import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
 import com.example.pogun.dto.community.CommunityCommentRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
+import com.example.pogun.dto.community.CommunityCommentUpdateResponse;
 import com.example.pogun.dto.community.CommunityPollResponse;
 import com.example.pogun.dto.community.CommunityPostCreateResponse;
 import com.example.pogun.dto.community.CommunityPostDeleteResponse;
@@ -266,6 +267,21 @@ public class CommunityService {
         softDeleteCommentTree(post, comment);
 
         return new CommunityCommentDeleteResponse(comment.getId(), post.getId(), true);
+    }
+
+    @Transactional
+    public CommunityCommentUpdateResponse updateComment(String postId, String commentId, CommunityCommentRequest request) {
+        CommunityPost post = getActivePost(postId);
+        CommunityComment comment = getActiveComment(post, parseUuid(commentId));
+
+        User currentUser = getCurrentUser();
+        if (!comment.getAuthor().getId().equals(currentUser.getId())) {
+            throw ApiException.forbidden("COMMUNITY_COMMENT_FORBIDDEN", "댓글 수정 권한이 없습니다.");
+        }
+
+        comment.setContent(request.getContent());
+        communityCommentRepository.save(comment);
+        return new CommunityCommentUpdateResponse(comment.getId(), post.getId(), true);
     }
 
     @Transactional

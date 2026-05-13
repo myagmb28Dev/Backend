@@ -13,6 +13,11 @@ let currentTotalPages = 0;
 let currentTotalElements = 0;
 let activeRole = null;
 let currentPost = null;
+let currentUserReaction = "NONE";
+let replyParentCommentId = null;
+let replyParentAuthor = "";
+let contextCommentId = null;
+let contextCommentContent = "";
 
 const users = { google: { label: "Google 사용자", email: "", token: null, userId: null } };
 
@@ -189,7 +194,7 @@ function renderReactions(d) {
     <div class="reaction-buttons">
       ${types.map((t) => {
         const count = t === "LIKE" ? total : 0;
-        const active = false;
+        const active = t === currentUserReaction;
         return `<button class="reaction-btn${active ? " active" : ""}" data-reaction="${t}" aria-label="좋아요">❤️ ${count || 0}</button>`;
       }).join("")}
       <span class="muted" style="line-height:32px">좋아요 ${total}개 · 조회 ${d.viewCount ?? 0}</span>
@@ -235,7 +240,7 @@ function renderComments(comments) {
   return `
     <div class="comment-list">
       ${flatten.map((c) => `
-        <div class="comment-item">
+        <div class="comment-item${c.depth > 0 ? " reply" : ""}" data-comment-id="${esc(c.id || "")}" data-comment-author="${esc(c.authorNickname || "")}" data-comment-content="${esc(c.content || "")}">
           <div class="meta">${"&nbsp;".repeat(c.depth * 2)}${esc(c.authorNickname || "-")} · ${esc(c.createdAt || "")}</div>
           <div>${esc(c.content || "")}</div>
         </div>
@@ -244,11 +249,120 @@ function renderComments(comments) {
   `;
 }
 
+function closeCommentContextMenu() {
+  const menu = el("commentContextMenu");
+  if (!menu) return;
+  menu.classList.remove("show");
+  contextCommentId = null;
+  contextCommentContent = "";
+}
+
+function openCommentContextMenu(x, y, commentId, commentContent) {
+  const menu = el("commentContextMenu");
+  if (!menu || !commentId) return;
+  contextCommentId = commentId;
+  contextCommentContent = commentContent || "";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.classList.add("show");
+}
+
+async function updateComment(commentId, content) {
+  if (!currentPostId || !commentId) return;
+  const nextContent = String(content || "").trim();
+  if (!nextContent) {
+    setStatus("댓글 내용을 입력하세요.", "bad");
+    return;
+  }
+  const res = await authApi(`/api/community/posts/${currentPostId}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content: nextContent })
+  });
+  if (res.status !== 200) {
+    return setStatus(`댓글 수정 실패 (${res.status})`, "bad");
+  }
+  setStatus("댓글 수정 완료", "good");
+  closeCommentContextMenu();
+  await loadComments();
+}
+
+async function deleteComment(commentId) {
+  if (!currentPostId || !commentId) return;
+  if (!window.confirm("이 댓글을 삭제하시겠습니까?")) return;
+  const res = await authApi(`/api/community/posts/${currentPostId}/comments/${commentId}`, { method: "DELETE" });
+  if (res.status !== 200) {
+    return setStatus(`댓글 삭제 실패 (${res.status})`, "bad");
+  }
+  setStatus("댓글 삭제 완료", "good");
+  closeCommentContextMenu();
+  await loadComments();
+}
+
+function clearReplyTarget() {
+  replyParentCommentId = null;
+  replyParentAuthor = "";
+  const indicator = el("replyIndicator");
+  const target = el("replyTargetText");
+  if (target) target.textContent = "";
+  if (indicator) indicator.classList.add("hidden");
+}
+
+function setReplyTarget(commentId, authorName) {
+  replyParentCommentId = commentId || null;
+  replyParentAuthor = authorName || "-";
+  const indicator = el("replyIndicator");
+  const target = el("replyTargetText");
+  if (target) target.textContent = `${replyParentAuthor} 님에게 답글 작성 중`;
+  if (indicator) indicator.classList.remove("hidden");
+  closeCommentContextMenu();
+  el("commentInput")?.focus();
+}
+
+function bindCommentContextEvents() {
+  const area = document.querySelector("#commentsArea");
+  if (!area) return;
+  area.querySelectorAll(".comment-item").forEach((node) => {
+    node.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const commentId = node.getAttribute("data-comment-id");
+      const authorName = node.getAttribute("data-comment-author") || "-";
+      const content = node.getAttribute("data-comment-content") || "";
+      openCommentContextMenu(event.clientX, event.clientY, commentId, content);
+      const replyAction = el("replyContextAction");
+      if (replyAction) {
+        replyAction.onclick = () => setReplyTarget(commentId, authorName);
+      }
+      const editAction = el("editCommentContextAction");
+      if (editAction) {
+        editAction.onclick = async () => {
+          const edited = window.prompt("댓글 내용을 수정하세요.", contextCommentContent || "");
+          if (edited == null) {
+            closeCommentContextMenu();
+            return;
+          }
+          await updateComment(commentId, edited);
+        };
+      }
+      const deleteAction = el("deleteCommentContextAction");
+      if (deleteAction) {
+        deleteAction.onclick = async () => {
+          await deleteComment(commentId);
+        };
+      }
+    });
+  });
+}
+
 async function loadDetail(postId) {
   if (!activeRole) return;
+  const prevPostId = currentPostId;
   const id = postId || currentPostId;
   if (!id) return setStatus("게시글을 선택하세요.", "bad");
   currentPostId = id;
+  if (prevPostId !== id) {
+    currentUserReaction = "NONE";
+    clearReplyTarget();
+  }
   setStatus("게시글 상세 조회 중...");
   const res = await authApi(`/api/community/posts/${id}`);
   if (res.status !== 200) return setStatus(`상세 조회 실패 (${res.status})`, "bad");
@@ -265,6 +379,10 @@ async function loadDetail(postId) {
     ${renderPoll(d)}
     ${renderReactions(d)}
     <div style="margin-top:8px">
+      <div id="replyIndicator" class="reply-indicator hidden">
+        <span id="replyTargetText"></span>
+        <button id="cancelReplyButton" class="secondary" type="button">답글 취소</button>
+      </div>
       <div class="actions">
         <input id="commentInput" placeholder="댓글을 입력하세요" style="flex:1">
         <button id="commentSubmit" class="secondary">댓글 등록</button>
@@ -278,6 +396,7 @@ async function loadDetail(postId) {
   detail.querySelector("#commentSubmit")?.addEventListener("click", () => createComment());
   detail.querySelector("#loadCommentsButton")?.addEventListener("click", () => loadComments());
   detail.querySelector("#deletePostButton")?.addEventListener("click", () => deletePost());
+  detail.querySelector("#cancelReplyButton")?.addEventListener("click", () => clearReplyTarget());
 
   detail.querySelectorAll("[data-reaction]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -312,7 +431,10 @@ async function loadComments() {
         ? payload.comments
         : [];
   const area = document.querySelector("#commentsArea");
-  if (area) area.innerHTML = renderComments(comments);
+  if (area) {
+    area.innerHTML = renderComments(comments);
+    bindCommentContextEvents();
+  }
   setStatus("댓글 조회 성공", "good");
 }
 
@@ -320,11 +442,16 @@ async function createComment() {
   const input = el("commentInput");
   const content = input?.value.trim();
   if (!currentPostId || !content) return setStatus("댓글 내용을 입력하세요.", "bad");
+  const body = { content };
+  if (replyParentCommentId) {
+    body.parentCommentId = replyParentCommentId;
+  }
   const res = await authApi(`/api/community/posts/${currentPostId}/comments`, {
-    method: "POST", body: JSON.stringify({ content })
+    method: "POST", body: JSON.stringify(body)
   });
   if (res.status !== 201) return setStatus(`댓글 작성 실패 (${res.status})`, "bad");
   input.value = "";
+  clearReplyTarget();
   setStatus("댓글 작성 완료", "good");
   await loadDetail(currentPostId);
 }
@@ -344,11 +471,20 @@ async function deletePost() {
 
 async function react(reaction) {
   if (!currentPostId) return;
-  const res = await authApi(`/api/community/posts/${currentPostId}/reactions`, {
-    method: "POST", body: JSON.stringify({ reaction })
-  });
-  if (res.status !== 200) return setStatus(`반응 실패 (${res.status})`, "bad");
-  setStatus("반응 완료", "good");
+  let res;
+  if (reaction === "LIKE" && currentUserReaction === "LIKE") {
+    res = await authApi(`/api/community/posts/${currentPostId}/reactions`, { method: "DELETE" });
+    if (res.status !== 200) return setStatus(`좋아요 취소 실패 (${res.status})`, "bad");
+    currentUserReaction = "NONE";
+    setStatus("좋아요 취소 완료", "good");
+  } else {
+    res = await authApi(`/api/community/posts/${currentPostId}/reactions`, {
+      method: "POST", body: JSON.stringify({ reaction })
+    });
+    if (res.status !== 200) return setStatus(`반응 실패 (${res.status})`, "bad");
+    currentUserReaction = reaction || "NONE";
+    setStatus("반응 완료", "good");
+  }
   await loadDetail(currentPostId);
 }
 
@@ -406,6 +542,13 @@ function bind() {
   el("createModal").addEventListener("click", (e) => { if (e.target === el("createModal")) el("createModal").classList.remove("show"); });
   el("typeInput").addEventListener("change", () => loadListFirstPage());
   el("categoryInput").addEventListener("change", () => loadListFirstPage());
+  document.addEventListener("click", (event) => {
+    const menu = el("commentContextMenu");
+    if (!menu || !menu.classList.contains("show")) return;
+    if (!menu.contains(event.target)) {
+      closeCommentContextMenu();
+    }
+  });
 }
 
 async function init() {
