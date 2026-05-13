@@ -57,9 +57,9 @@ function clearExpiredSession() {
   } catch {}
 }
 
-async function sendGlobalPresenceHeartbeat(reason = "interval") {
-  if (isEmbeddedFrame()) {
-    return hostWindow[CONTROLLER_KEY]?.send?.(reason) ?? null;
+async function sendGlobalPresenceHeartbeat(reason = "interval", delegated = false) {
+  if (isEmbeddedFrame() && !delegated) {
+    return hostWindow[CONTROLLER_KEY]?.send?.(reason, true) ?? null;
   }
   const session = readSession();
   if (!session?.firebaseIdToken || inFlight) return null;
@@ -102,9 +102,9 @@ async function sendGlobalPresenceHeartbeat(reason = "interval") {
   }
 }
 
-export function startGlobalPresenceHeartbeat() {
-  if (isEmbeddedFrame()) {
-    hostWindow[CONTROLLER_KEY]?.start?.();
+export function startGlobalPresenceHeartbeat(delegated = false) {
+  if (isEmbeddedFrame() && !delegated) {
+    hostWindow[CONTROLLER_KEY]?.start?.(true);
     return;
   }
   if (heartbeatTimer) return;
@@ -112,9 +112,9 @@ export function startGlobalPresenceHeartbeat() {
   heartbeatTimer = setInterval(() => sendGlobalPresenceHeartbeat(), HEARTBEAT_INTERVAL_MS);
 }
 
-export function stopGlobalPresenceHeartbeat() {
-  if (isEmbeddedFrame()) {
-    hostWindow[CONTROLLER_KEY]?.stop?.();
+export function stopGlobalPresenceHeartbeat(delegated = false) {
+  if (isEmbeddedFrame() && !delegated) {
+    hostWindow[CONTROLLER_KEY]?.stop?.(true);
     return;
   }
   if (!heartbeatTimer) return;
@@ -147,16 +147,19 @@ window.addEventListener("storage", (event) => {
   }
 });
 
-if (!hostWindow[CONTROLLER_KEY]) {
-  hostWindow[CONTROLLER_KEY] = {
-    start: startGlobalPresenceHeartbeat,
-    stop: stopGlobalPresenceHeartbeat,
-    send: sendGlobalPresenceHeartbeat
-  };
-}
-
-if (isEmbeddedFrame()) {
-  hostWindow[CONTROLLER_KEY].start();
+if (!isEmbeddedFrame()) {
+  if (!hostWindow[CONTROLLER_KEY]) {
+    hostWindow[CONTROLLER_KEY] = {
+      start: startGlobalPresenceHeartbeat,
+      stop: stopGlobalPresenceHeartbeat,
+      send: sendGlobalPresenceHeartbeat
+    };
+  }
+  startGlobalPresenceHeartbeat(true);
 } else {
-  startGlobalPresenceHeartbeat();
+  if (hostWindow[CONTROLLER_KEY]) {
+    hostWindow[CONTROLLER_KEY].start(true);
+  } else {
+    startGlobalPresenceHeartbeat(true);
+  }
 }
