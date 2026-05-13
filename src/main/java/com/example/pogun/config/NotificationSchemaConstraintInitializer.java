@@ -73,7 +73,9 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                     resultSet -> resultSet.next() ? resultSet.getString(1) : ""
             );
 
-            if (typeConstraintDefinition == null || !typeConstraintDefinition.contains("ADMIN_BROADCAST")) {
+            if (typeConstraintDefinition == null
+                    || !typeConstraintDefinition.contains("ADMIN_BROADCAST")
+                    || !typeConstraintDefinition.contains("AI_SIMILAR_NOTICE_FOUND")) {
                 jdbcTemplate.execute("alter table notifications drop constraint if exists notifications_type_check");
                 jdbcTemplate.execute(
                         """
@@ -81,6 +83,7 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                                 add constraint notifications_type_check
                                 check (type in (
                                     'NEW_NOTICE',
+                                    'AI_SIMILAR_NOTICE_FOUND',
                                     'NOTICE_COMMENT',
                                     'NOTICE_STATUS_CHANGED',
                                     'COMMUNITY_COMMENT',
@@ -126,7 +129,9 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                     resultSet -> resultSet.next() ? resultSet.getString(1) : ""
             );
 
-            if (settingsTypeConstraintDefinition == null || !settingsTypeConstraintDefinition.contains("ADMIN_BROADCAST")) {
+            if (settingsTypeConstraintDefinition == null
+                    || !settingsTypeConstraintDefinition.contains("ADMIN_BROADCAST")
+                    || !settingsTypeConstraintDefinition.contains("AI_SIMILAR_NOTICE_FOUND")) {
                 jdbcTemplate.execute("alter table user_notification_settings drop constraint if exists user_notification_settings_type_check");
                 jdbcTemplate.execute(
                         """
@@ -134,6 +139,7 @@ public class NotificationSchemaConstraintInitializer implements ApplicationRunne
                                 add constraint user_notification_settings_type_check
                                 check (type in (
                                     'NEW_NOTICE',
+                                    'AI_SIMILAR_NOTICE_FOUND',
                                     'NOTICE_COMMENT',
                                     'NOTICE_STATUS_CHANGED',
                                     'COMMUNITY_COMMENT',

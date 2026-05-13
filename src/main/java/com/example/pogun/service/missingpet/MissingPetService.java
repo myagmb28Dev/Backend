@@ -282,7 +282,33 @@ public class MissingPetService {
 
     @Transactional
     public AiAnalysisResultCallbackResponse receiveAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
-        return aiService.saveMissingPetAnalysisResult(missingPetId, apiKey, request);
+        AiAnalysisResultCallbackResponse response = aiService.saveMissingPetAnalysisResult(missingPetId, apiKey, request);
+        PetNotice notice = getVisibleNotice(missingPetId);
+        sendSimilarNoticeFoundNotification(notice, request.getSimilarNoticeIds());
+        return response;
+    }
+
+    private void sendSimilarNoticeFoundNotification(PetNotice notice, List<String> similarNoticeIds) {
+        if (notice == null || notice.getAuthor() == null || similarNoticeIds == null || similarNoticeIds.isEmpty()) {
+            return;
+        }
+        long distinctCount = similarNoticeIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .map(String::trim)
+                .distinct()
+                .count();
+        if (distinctCount <= 0) {
+            return;
+        }
+        notificationService.createAndSendNotification(
+                notice.getAuthor(),
+                NotificationType.AI_SIMILAR_NOTICE_FOUND,
+                NotificationTargetType.PET_NOTICE,
+                notice.getId(),
+                "유사 공고가 발견되었습니다.",
+                "AI가 " + distinctCount + "건의 유사 공고를 찾았습니다. 공고를 확인해 주세요.",
+                Map.of("similarCount", String.valueOf(distinctCount))
+        );
     }
 
     private User getCurrentUser() {

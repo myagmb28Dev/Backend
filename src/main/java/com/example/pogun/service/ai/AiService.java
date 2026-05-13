@@ -2,6 +2,8 @@ package com.example.pogun.service.ai;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.SimilarNoticeItemResponse;
+import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.ai.AiAnalysis;
 import com.example.pogun.entity.ai.enums.AiAnalysisStatus;
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 
 /**
  * AI 분석 결과 수신과 후처리 로직이 붙을 자리이다.
@@ -92,6 +96,26 @@ public class AiService {
         }
     }
 
+    public SimilarNoticeListResponse getLatestSimilarNotices(String targetType, String targetId) {
+        AiAnalysisTargetType resolvedTargetType = parseTargetType(targetType);
+        String resolvedTargetId = normalizeAndValidateTargetId(resolvedTargetType, targetId);
+        AiAnalysis analysis = aiAnalysisRepository.findTopByTargetTypeAndTargetIdOrderByCreatedAtDesc(
+                        resolvedTargetType,
+                        resolvedTargetId
+                )
+                .orElse(null);
+        List<String> similarIds = analysis == null ? List.of() : copyList(analysis.getSimilarNoticeIds());
+        List<SimilarNoticeItemResponse> items = similarIds.stream()
+                .map(id -> new SimilarNoticeItemResponse(id, inferNoticeType(id), inferDetailPath(id)))
+                .toList();
+        return new SimilarNoticeListResponse(
+                resolvedTargetType.name(),
+                resolvedTargetId,
+                items.size(),
+                items
+        );
+    }
+
     private AiAnalysisStatus parseStatus(String status) {
         if (status == null || status.isBlank()) {
             throw ApiException.badRequest("INVALID_AI_STATUS", "status는 필수입니다.");
@@ -120,5 +144,63 @@ public class AiService {
                 .filter(item -> item != null && !item.isBlank())
                 .map(String::trim)
                 .toList();
+    }
+
+    private AiAnalysisTargetType parseTargetType(String targetType) {
+        if (targetType == null || targetType.isBlank()) {
+            throw ApiException.badRequest("INVALID_TARGET_TYPE", "targetType은 필수입니다.");
+        }
+        try {
+            return AiAnalysisTargetType.valueOf(targetType.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_TARGET_TYPE", "지원하지 않는 targetType입니다.");
+        }
+    }
+
+    private String normalizeAndValidateTargetId(AiAnalysisTargetType targetType, String targetId) {
+        if (targetId == null || targetId.isBlank()) {
+            throw ApiException.badRequest("INVALID_TARGET_ID", "targetId는 필수입니다.");
+        }
+        String normalized = targetId.trim();
+        switch (targetType) {
+            case MISSING_PET -> {
+                UUID noticeId = parseNoticeId(normalized);
+                PetNotice notice = petNoticeRepository.findById(noticeId)
+                        .orElseThrow(() -> ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다."));
+                if (Boolean.TRUE.equals(notice.getHidden())) {
+                    throw ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다.");
+                }
+                return notice.getId().toString();
+            }
+            case SHELTER -> {
+                if (shelterPetRepository.findById(normalized).isEmpty()) {
+                    shelterPublicApiClient.fetchShelterPet(normalized);
+                }
+                return normalized;
+            }
+            default -> throw ApiException.badRequest("INVALID_TARGET_TYPE", "지원하지 않는 targetType입니다.");
+        }
+    }
+
+    private String inferNoticeType(String id) {
+        if (id == null || id.isBlank()) {
+            return "UNKNOWN";
+        }
+        String normalized = id.trim().toLowerCase(Locale.ROOT);
+        if (normalized.matches("^[0-9]+$")) {
+            return "SHELTER";
+        }
+        if (normalized.matches("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")) {
+            return "MISSING_PET";
+        }
+        return "UNKNOWN";
+    }
+
+    private String inferDetailPath(String id) {
+        return switch (inferNoticeType(id)) {
+            case "SHELTER" -> "/api/shelter/" + id;
+            case "MISSING_PET" -> "/api/missing-pets/" + id;
+            default -> null;
+        };
     }
 }

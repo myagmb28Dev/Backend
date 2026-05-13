@@ -22,6 +22,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class UserService {
     private final UserSocialAccountRepository userSocialAccountRepository;
     private final S3ImageStorageService s3ImageStorageService;
     private final NoticeChatService noticeChatService;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
     private final UserPresenceService userPresenceService;
     private final KakaoLocalService kakaoLocalService;
 
@@ -111,6 +113,7 @@ public class UserService {
         userPresenceService.applyManualPresenceStatus(saved.getFirebaseUid(), availabilityStatus);
         UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(saved);
         noticeChatService.publishPresenceUpdates(saved);
+        adminPresenceRealtimeService.publishByFirebaseUid(saved.getFirebaseUid());
         return new UserAvailabilityResponse(
             resolveAvailabilityStatus(saved).name(),
             snapshot.manualPresenceStatus().name(),

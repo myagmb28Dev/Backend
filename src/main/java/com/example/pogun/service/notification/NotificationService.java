@@ -39,10 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 /**
  * 도메인 비즈니스 로직을 담당하는 NotificationService이다.
@@ -180,12 +182,16 @@ public class NotificationService {
             throw ApiException.badRequest("MISSING_FCM_TOKEN", "FCM token은 필수입니다.");
         }
 
-        UserFcmToken fcmToken = userFcmTokenRepository.findByToken(token)
-                .orElseGet(() -> UserFcmToken.builder().token(token).build());
-
-        fcmToken.setUser(user);
         String platform = trimToNull(request.getOrDefault("platform", "ANDROID"));
         String deviceId = trimToNull(request.get("deviceId"));
+
+        UserFcmToken fcmToken = userFcmTokenRepository.findByToken(token)
+                .orElseGet(() -> userFcmTokenRepository
+                        .findFirstByUserAndPlatformAndDeviceIdOrderByUpdatedAtDesc(user, platform, deviceId)
+                        .orElseGet(() -> UserFcmToken.builder().token(token).build()));
+
+        fcmToken.setToken(token);
+        fcmToken.setUser(user);
         fcmToken.setPlatform(platform);
         fcmToken.setDeviceId(deviceId);
         fcmToken.setActive(true);
@@ -199,8 +205,10 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public List<NotificationDeviceResponse> getDevices() {
         User user = getCurrentUser();
+        Set<String> seenDeviceKeys = new HashSet<>();
         return userFcmTokenRepository.findByUserOrderByUpdatedAtDesc(user)
                 .stream()
+                .filter(token -> seenDeviceKeys.add(buildDeviceKey(token)))
                 .map(this::toDeviceResponse)
                 .toList();
     }
@@ -465,5 +473,14 @@ public class NotificationService {
                 token.getLastSeenAt(),
                 token.getUpdatedAt()
         );
+    }
+
+    private String buildDeviceKey(UserFcmToken token) {
+        String platform = trimToNull(token.getPlatform());
+        String deviceId = trimToNull(token.getDeviceId());
+        if (platform != null && deviceId != null) {
+            return platform + "::" + deviceId;
+        }
+        return "token::" + token.getId();
     }
 }

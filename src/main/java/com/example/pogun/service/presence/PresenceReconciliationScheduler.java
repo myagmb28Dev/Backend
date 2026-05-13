@@ -1,6 +1,7 @@
 package com.example.pogun.service.presence;
 
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ public class PresenceReconciliationScheduler {
 
     private final UserPresenceService userPresenceService;
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @Scheduled(fixedDelayString = "${app.presence.reconcile-interval-ms:5000}")
     public void reconcileStaleSessions() {
@@ -26,6 +28,7 @@ public class PresenceReconciliationScheduler {
             log.info("[presence] reconciled stale/disconnected uid={} -> broadcast", firebaseUid);
             noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
             noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
+            adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         });
     }
 }

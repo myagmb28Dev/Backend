@@ -1,6 +1,7 @@
 package com.example.pogun.config;
 
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -15,13 +16,16 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 public class NoticeChatWebSocketEventListener {
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
     private final UserPresenceService userPresenceService;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     public NoticeChatWebSocketEventListener(
             ObjectProvider<NoticeChatService> noticeChatServiceProvider,
-            UserPresenceService userPresenceService
+            UserPresenceService userPresenceService,
+            AdminPresenceRealtimeService adminPresenceRealtimeService
     ) {
         this.noticeChatServiceProvider = noticeChatServiceProvider;
         this.userPresenceService = userPresenceService;
+        this.adminPresenceRealtimeService = adminPresenceRealtimeService;
     }
 
     @EventListener
@@ -36,6 +40,7 @@ public class NoticeChatWebSocketEventListener {
         userPresenceService.markWebSocketConnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
         noticeChatServiceProvider.getObject().publishPresenceEventsByFirebaseUid(firebaseUid);
+        adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         log.debug("[ws-event] presence broadcast published for connect uid={}", firebaseUid);
     }
 
@@ -51,6 +56,7 @@ public class NoticeChatWebSocketEventListener {
         userPresenceService.markWebSocketDisconnected(firebaseUid, accessor.getSessionId());
         noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
         noticeChatServiceProvider.getObject().publishPresenceEventsByFirebaseUid(firebaseUid);
+        adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         log.debug("[ws-event] presence broadcast published for disconnect uid={}", firebaseUid);
     }
 

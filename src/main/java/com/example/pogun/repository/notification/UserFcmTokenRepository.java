@@ -19,6 +19,7 @@ import java.util.UUID;
 @Repository
 public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID> {
     Optional<UserFcmToken> findByToken(String token);
+    Optional<UserFcmToken> findFirstByUserAndPlatformAndDeviceIdOrderByUpdatedAtDesc(User user, String platform, String deviceId);
 
     List<UserFcmToken> findByUserAndActiveTrueOrderByUpdatedAtDesc(User user);
     List<UserFcmToken> findByUserOrderByUpdatedAtDesc(User user);

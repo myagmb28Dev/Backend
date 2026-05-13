@@ -5,6 +5,7 @@ package com.example.pogun.entity.notification.enums;
 
 public enum NotificationType {
     NEW_NOTICE,
+    AI_SIMILAR_NOTICE_FOUND,
     NOTICE_COMMENT,
     NOTICE_STATUS_CHANGED,
     COMMUNITY_COMMENT,

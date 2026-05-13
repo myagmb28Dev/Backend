@@ -3,6 +3,7 @@ package com.example.pogun.controller.presence;
 import com.example.pogun.config.StompAuthChannelInterceptor;
 import com.example.pogun.config.WebSocketPrincipal;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ public class PresenceMessageController {
 
     private final UserPresenceService userPresenceService;
     private final NoticeChatService noticeChatService;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @MessageMapping("/presence/ping")
     public void ping(Principal principal, SimpMessageHeaderAccessor headerAccessor) {
@@ -37,6 +39,7 @@ public class PresenceMessageController {
         if (userPresenceService.touch(firebaseUid)) {
             log.debug("[presence] ping touch updated uid={} sessionId={}", firebaseUid, sessionId);
             noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
+            adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         } else {
             log.trace("[presence] ping touch skipped uid={} sessionId={}", firebaseUid, sessionId);
         }

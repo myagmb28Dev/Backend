@@ -4,6 +4,7 @@ import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.presence.PresenceHeartbeatRequest;
 import com.example.pogun.dto.presence.PresenceHeartbeatResponse;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class PresenceRestController {
 
     private final UserPresenceService userPresenceService;
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @PostMapping("/heartbeat")
     public ResponseEntity<ApiResponse<PresenceHeartbeatResponse>> heartbeat(
@@ -38,6 +40,7 @@ public class PresenceRestController {
             noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
             noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
         }
+        adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         log.trace("[presence] heartbeat uid={} page={} connectionState={} effective={}",
                 firebaseUid,
                 request.getPage(),

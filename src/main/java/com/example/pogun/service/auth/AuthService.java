@@ -18,6 +18,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
@@ -57,6 +58,7 @@ public class AuthService {
     private final PendingSocialSignupRepository pendingSocialSignupRepository;
     private final KakaoLocalService kakaoLocalService;
     private final UserPresenceService userPresenceService;
+    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
 
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
@@ -266,6 +268,11 @@ public class AuthService {
                 noticeChatServiceProvider.getObject().publishPresenceUpdates(user);
             } catch (RuntimeException e) {
                 log.warn("로그아웃 presence publish 실패(userId={}): {}", user.getId(), e.getClass().getSimpleName());
+            }
+            try {
+                adminPresenceRealtimeService.publishByFirebaseUid(user.getFirebaseUid());
+            } catch (RuntimeException e) {
+                log.warn("로그아웃 admin presence publish 실패(userId={}): {}", user.getId(), e.getClass().getSimpleName());
             }
             return new LogoutResponse(true, "로그아웃 성공. 모든 세션이 만료되었습니다.");
         } catch (FirebaseAuthException e) {
