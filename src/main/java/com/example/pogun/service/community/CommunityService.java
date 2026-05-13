@@ -421,12 +421,12 @@ public class CommunityService {
     }
 
     private String normalizeCategoryFilter(String category) {
-        if (category == null) {
+        if (category == null || category.trim().isEmpty()) {
             return "";
         }
         String normalized = normalizeFilter(category);
         if (normalized == null) {
-            throw ApiException.badRequest("INVALID_CATEGORY", "카테고리는 비어 있을 수 없습니다.");
+            return "";
         }
         String upper = normalized.toUpperCase(Locale.ROOT);
         if (!ALLOWED_CATEGORIES.contains(upper)) {

@@ -592,11 +592,20 @@
 
   function isLocalAdminShortcutAllowed() {
     const host = window.location.hostname;
-    return (host === "localhost" || host === "127.0.0.1") && window.location.port === "8081";
+    const port = window.location.port;
+    // 배포 환경 도메인은 완전히 차단
+    if (host.includes("pawgen.kro.kr") || host.includes("paw.gbsw.hs.kr") || host.includes("43.201.1.61")) {
+      return false;
+    }
+    return (host === "localhost" || host === "127.0.0.1") && port === "8081";
   }
 
   function configureLocalAdminLoginUi() {
-    if (!isLocalAdminShortcutAllowed()) {
+    const allowed = isLocalAdminShortcutAllowed();
+    if (!allowed) {
+      // 배포 환경에서는 버튼을DOM에서 제거하여 아예 클릭도 불가하게 함
+      const btn = el("localAdminButton");
+      if (btn) btn.remove();
       return;
     }
     // 로컬에서도 Google 로그인 플로우(이메일 인증 포함)를 검증해야 하므로,
