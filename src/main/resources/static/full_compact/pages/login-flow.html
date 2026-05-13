@@ -189,10 +189,13 @@ let firebaseUserSyncPromise = null;
 let googleLoginInProgress = false;
 const FIREBASE_TOKEN_CHECK_TIMEOUT_MS = 15000;
 const BACKEND_LOGIN_TIMEOUT_MS = 60000;
+const BACKEND_SYNC_DEBOUNCE_MS = 12000;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
 const LOCAL_AUTH_EMULATOR_BASE = "http://127.0.0.1:9099";
 const LOCAL_PLAYWRIGHT_USER = { email: "playwright-user1@local.dev", password: "Test1234!" };
 const users = { [REAL_ROLE]: { label: DEFAULT_USER_LABEL, email: "", token: null, userId: null, registrationStatus: null } };
+let lastBackendSyncToken = "";
+let lastBackendSyncAt = 0;
 
 const el = (id) => document.getElementById(id);
 function setStatus(message, tone = "") { const node = el("status"); node.textContent = message; node.className = `status${tone ? ` ${tone}` : ""}`; }
@@ -266,6 +269,8 @@ function clearSession() {
   removeSession(REAL_SESSION_KEY);
   removeSession(ACTIVE_ROLE_KEY);
   clearRefreshToken();
+  lastBackendSyncToken = "";
+  lastBackendSyncAt = 0;
   window.dispatchEvent(new CustomEvent("pogun-auth-session-changed"));
 }
 
@@ -373,7 +378,20 @@ function openTargetView(view = resolveTargetView()) {
   else window.location.href = "/full_compact/pages/notice-flow.html";
 }
 
-async function syncBackendLogin(token, fallbackUser = {}) {
+async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
+  const shouldNavigate = options.navigate !== false;
+  const now = Date.now();
+  const isStableLoggedIn = Boolean(currentSession?.userId && activeRole === REAL_ROLE && pendingOnboardingRole == null);
+  if (
+    !IS_LOCAL_AUTH_FLOW &&
+    isStableLoggedIn &&
+    token &&
+    token === lastBackendSyncToken &&
+    now - lastBackendSyncAt < BACKEND_SYNC_DEBOUNCE_MS
+  ) {
+    return;
+  }
+
   const loginRequest = async (candidateToken) => withTimeout(
     request(`${BACKEND_BASE}/api/auth/login`, {
       method: "POST",
@@ -435,9 +453,13 @@ async function syncBackendLogin(token, fallbackUser = {}) {
   }
   activeRole = REAL_ROLE;
   pendingOnboardingRole = null;
+  lastBackendSyncToken = token || "";
+  lastBackendSyncAt = Date.now();
   renderSession();
   setStatus(`${users[REAL_ROLE].label} 로그인 완료`, "good");
-  openTargetView();
+  if (shouldNavigate) {
+    openTargetView();
+  }
 }
 
 async function postJson(url, body) {
@@ -540,7 +562,8 @@ async function startGoogleLogin() {
   }
 }
 
-async function handleFirebaseUser(user, forceRefresh = false) {
+async function handleFirebaseUser(user, forceRefresh = false, options = {}) {
+  const shouldNavigate = options.navigate !== false;
   if (!user) {
     firebaseUser = null;
     if (!restoreSession()) {
@@ -564,7 +587,7 @@ async function handleFirebaseUser(user, forceRefresh = false) {
       if (rawRefreshToken) {
         setRefreshToken(rawRefreshToken);
       }
-      await syncBackendLogin(token, user);
+      await syncBackendLogin(token, user, { navigate: shouldNavigate });
     } catch (error) {
       if (!IS_LOCAL_AUTH_FLOW && auth) {
         try { await firebaseAuthFns?.signOut(auth); } catch {}
@@ -591,7 +614,7 @@ async function resyncAuthenticatedSession(forceRefresh = false) {
       await loadFirebaseAuth();
     }
     if (auth.currentUser) {
-      await handleFirebaseUser(auth.currentUser, forceRefresh);
+      await handleFirebaseUser(auth.currentUser, forceRefresh, { navigate: false });
       return;
     }
     const restored = restoreSession();
@@ -600,7 +623,7 @@ async function resyncAuthenticatedSession(forceRefresh = false) {
       const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
       const tokenToVerify = refreshedSession?.firebaseIdToken || restored.firebaseIdToken;
       if (tokenToVerify) {
-        await syncBackendLogin(tokenToVerify, restored);
+        await syncBackendLogin(tokenToVerify, restored, { navigate: false });
       } else {
         setStatus("저장된 로그인 세션을 복원했습니다.", "good");
       }
@@ -789,7 +812,7 @@ el("refreshLoginButton").addEventListener("click", run(async () => {
     setStatus("로그인 세션 새로고침 중...");
     const refreshed = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
     if (!refreshed?.firebaseIdToken) throw new Error("refresh 결과에 Firebase 토큰이 없습니다.");
-    await syncBackendLogin(refreshed.firebaseIdToken, refreshed);
+    await syncBackendLogin(refreshed.firebaseIdToken, refreshed, { navigate: false });
     renderSession();
     setStatus("로그인 세션 새로고침 완료", "good");
   } finally {
