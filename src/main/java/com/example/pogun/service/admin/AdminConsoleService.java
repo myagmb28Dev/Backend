@@ -54,7 +54,9 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -222,18 +224,49 @@ public class AdminConsoleService {
         Instant to = blank(createdTo) ? null : parseInstant(createdTo);
         UserStatus status = parseNullableUserStatus(statusValue);
         UserRole role = parseNullableRole(roleValue);
+        String normalizedQuery = blank(query) ? null : query.trim().toLowerCase(Locale.ROOT);
+        Specification<User> spec = (root, criteriaQuery, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (role != null) {
+                predicates.add(cb.equal(root.get("role"), role));
+            }
+            if (from != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
+            }
+            if (to != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), to));
+            }
+            if (normalizedQuery != null) {
+                String pattern = "%" + normalizedQuery + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("email")), pattern),
+                        cb.like(cb.lower(root.get("nickname")), pattern)
+                ));
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
 
-        List<Map<String, Object>> items = userRepository.findAll().stream()
-                .filter(user -> status == null || user.getStatus() == status)
-                .filter(user -> role == null || user.getRole() == role)
-                .filter(user -> from == null || !user.getCreatedAt().isBefore(from))
-                .filter(user -> to == null || !user.getCreatedAt().isAfter(to))
-                .filter(user -> matchesUserQuery(user, query))
-                .sorted(userComparator(sortBy, sortOrder))
+        Pageable pageable = PageRequest.of(
+                resolvedPage,
+                resolvedPageSize,
+                "asc".equalsIgnoreCase(sortOrder) ? Sort.Direction.ASC : Sort.Direction.DESC,
+                resolveUserSortProperty(sortBy)
+        );
+
+        var resultPage = userRepository.findAll(spec, pageable);
+        List<Map<String, Object>> items = resultPage.getContent().stream()
                 .map(this::toUserSummaryMap)
                 .toList();
 
-        return paginate(items, resolvedPage, resolvedPageSize);
+        return orderedMap(
+                "items", items,
+                "page", resolvedPage + 1,
+                "pageSize", resolvedPageSize,
+                "total", resultPage.getTotalElements()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -1115,6 +1148,14 @@ public class AdminConsoleService {
             default -> Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Instant::compareTo));
         };
         return "asc".equalsIgnoreCase(sortOrder) ? comparator : comparator.reversed();
+    }
+
+    private String resolveUserSortProperty(String sortBy) {
+        return switch (blank(sortBy) ? "createdAt" : sortBy.trim()) {
+            case "email" -> "email";
+            case "lastLoginAt", "lastActiveAt" -> "lastActiveAt";
+            default -> "createdAt";
+        };
     }
 
     private Comparator<PetNotice> noticeComparator(String sortBy, String sortOrder) {

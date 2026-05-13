@@ -4,6 +4,7 @@ import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserStatus;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -16,7 +17,7 @@ import java.util.UUID;
  */
 
 @Repository
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
     Optional<User> findByFirebaseUid(String firebaseUid);
     Optional<User> findByEmail(String email);
     boolean existsByFirebaseUid(String firebaseUid);
