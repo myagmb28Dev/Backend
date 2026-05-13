@@ -48,6 +48,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         "http://43.201.1.61:8080",
                         "http://paw.gbsw.hs.kr",
                         "https://paw.gbsw.hs.kr",
+                        "https://pawgen.kro.kr",
                         "http://192.168.*.*:8080",
                         "http://172.*.*.*:8080",
                         "http://10.*.*.*:8080"
