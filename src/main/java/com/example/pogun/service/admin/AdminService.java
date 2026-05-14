@@ -46,7 +46,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -203,14 +202,10 @@ public class AdminService {
     @Transactional(readOnly = true)
     public AdminStatusResponse getAdminStatus() {
         adminSecurityService.require(AdminPermission.AUDIT_READ);
-        List<User> admins = userRepository.findAll().stream()
-                .filter(user -> user.getRole() == UserRole.ADMIN)
-                .sorted(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
-                .toList();
-
-        long active = admins.stream().filter(user -> user.getStatus() == UserStatus.ACTIVE).count();
-        long suspended = admins.stream().filter(user -> user.getStatus() == UserStatus.BANNED).count();
-        long withdrawn = admins.stream().filter(user -> user.getStatus() == UserStatus.WITHDRAWN).count();
+        List<User> admins = userRepository.findByRoleOrderByCreatedAtDesc(UserRole.ADMIN);
+        long active = userRepository.countByRoleAndStatus(UserRole.ADMIN, UserStatus.ACTIVE);
+        long suspended = userRepository.countByRoleAndStatus(UserRole.ADMIN, UserStatus.BANNED);
+        long withdrawn = userRepository.countByRoleAndStatus(UserRole.ADMIN, UserStatus.WITHDRAWN);
 
         List<AdminStatusItemResponse> items = admins.stream()
                 .map(user -> new AdminStatusItemResponse(

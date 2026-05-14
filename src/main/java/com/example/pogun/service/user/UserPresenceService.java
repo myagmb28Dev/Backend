@@ -243,8 +243,9 @@ public class UserPresenceService {
     }
 
     private PresenceSnapshot buildSnapshot(String firebaseUid, UserAvailabilityStatus manualStatus, Instant persistedLastActiveAt) {
+        Instant now = Instant.now();
         Instant lastActiveAt = resolveLastActiveAt(firebaseUid, persistedLastActiveAt);
-        boolean connected = resolveIsConnected(firebaseUid);
+        boolean connected = resolveIsConnected(firebaseUid, now);
         UserAvailabilityStatus effectiveStatus = resolveEffectivePresenceStatus(connected, manualStatus);
         presenceSessionStore.setManualPresenceStatus(firebaseUid, manualStatus);
         presenceSessionStore.setEffectivePresenceStatus(firebaseUid, effectiveStatus);
@@ -256,11 +257,12 @@ public class UserPresenceService {
         if (firebaseUid == null || firebaseUid.isBlank()) {
             return;
         }
+        Instant now = Instant.now();
         UserAvailabilityStatus resolvedManualStatus = manualStatus != null
                 ? manualStatus
                 : presenceSessionStore.getManualPresenceStatus(firebaseUid);
         UserAvailabilityStatus effectiveManual = resolvedManualStatus != null ? resolvedManualStatus : UserAvailabilityStatus.ONLINE;
-        boolean connected = resolveIsConnected(firebaseUid);
+        boolean connected = resolveIsConnected(firebaseUid, now);
         UserAvailabilityStatus effectiveStatus = resolveEffectivePresenceStatus(connected, effectiveManual);
         if (resolvedManualStatus != null) {
             presenceSessionStore.setManualPresenceStatus(firebaseUid, resolvedManualStatus);
@@ -323,11 +325,15 @@ public class UserPresenceService {
     }
 
     private boolean resolveIsConnected(String firebaseUid) {
+        return resolveIsConnected(firebaseUid, Instant.now());
+    }
+
+    private boolean resolveIsConnected(String firebaseUid, Instant now) {
         if (isForcedOfflineWithoutTrackedSession(firebaseUid)) {
             return false;
         }
-        pruneStaleGlobalSessions(firebaseUid, Instant.now());
-        pruneStaleWebSocketSessions(firebaseUid, Instant.now());
+        pruneStaleGlobalSessions(firebaseUid, now);
+        pruneStaleWebSocketSessions(firebaseUid, now);
         return !presenceSessionStore.getGlobalSessions(firebaseUid).isEmpty();
     }
 

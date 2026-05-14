@@ -37,7 +37,9 @@ import java.util.UUID;
         },
         indexes = {
                 @Index(name = "idx_user_fcm_tokens_user", columnList = "user_id"),
-                @Index(name = "idx_user_fcm_tokens_active", columnList = "is_active")
+                @Index(name = "idx_user_fcm_tokens_active", columnList = "is_active"),
+                @Index(name = "idx_user_fcm_tokens_user_platform_device_updated", columnList = "user_id,platform,device_id,updated_at"),
+                @Index(name = "idx_user_fcm_tokens_user_active_updated", columnList = "user_id,is_active,updated_at")
         })
 /**
  * 데이터베이스 테이블과 매핑되는 UserFcmToken 엔티티이다.

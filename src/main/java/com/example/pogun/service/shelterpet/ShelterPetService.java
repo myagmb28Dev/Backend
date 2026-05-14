@@ -23,9 +23,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -54,13 +56,14 @@ public class ShelterPetService {
         String requestedBreed = normalizeTextFilter(breed);
         boolean regionCodeFilter = isCodeFilter(requestedRegion);
         boolean breedCodeFilter = isCodeFilter(requestedBreed);
+        int apiFetchSize = Math.min(Math.max((normalizedPage + 1) * normalizedSize, normalizedSize), 1000);
         ShelterPublicApiClient.ShelterPublicApiPage result = shelterPublicApiClient.fetchShelterPets(
                 regionCodeFilter ? requestedRegion : null,
                 breedCodeFilter ? requestedBreed : null,
                 status,
                 sort,
                 0,
-                1000
+                apiFetchSize
         );
         List<ShelterPublicApiClient.ShelterPublicApiAnimal> filteredItems = result.items().stream()
                 .filter(item -> matchesStatus(item, status))
@@ -70,10 +73,14 @@ public class ShelterPetService {
 
         int fromIndex = Math.min(normalizedPage * normalizedSize, filteredItems.size());
         int toIndex = Math.min(fromIndex + normalizedSize, filteredItems.size());
+        List<ShelterPublicApiClient.ShelterPublicApiAnimal> pageItems = filteredItems.subList(fromIndex, toIndex);
+        List<String> pageIds = pageItems.stream().map(ShelterPublicApiClient.ShelterPublicApiAnimal::desertionNo).toList();
+        Map<String, ShelterPet> localById = new HashMap<>();
+        shelterPetRepository.findAllById(pageIds).forEach(local -> localById.put(local.getId(), local));
 
-        List<ShelterPetSummaryResponse> items = filteredItems.subList(fromIndex, toIndex).stream()
+        List<ShelterPetSummaryResponse> items = pageItems.stream()
                 .map(item -> {
-                    ShelterPet local = shelterPetRepository.findById(item.desertionNo()).orElse(null);
+                    ShelterPet local = localById.get(item.desertionNo());
                     return new ShelterPetSummaryResponse(
                             item.desertionNo(),
                             item.noticeNo(),

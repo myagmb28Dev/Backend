@@ -122,24 +122,20 @@ public class AdminConsoleService {
         adminSecurityService.require(AdminPermission.AUDIT_READ);
         Instant from = resolveFrom(fromValue);
         Instant to = resolveTo(toValue);
-        List<User> users = userRepository.findAll();
-        List<PetNotice> notices = petNoticeRepository.findAll();
-        List<CommunityPost> posts = communityPostRepository.findAll();
-        List<Report> reports = reportRepository.findAll();
         List<AdminNotificationDispatch> dispatches = adminNotificationDispatchRepository.findAll(PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
 
         List<User> activeUsersList = resolveActiveUsersSafely();
         long activeUsers = activeUsersList.size();
         long connectedUsers = resolveConnectedUsersSafely();
         String serverStatus = latestGlobalStatus();
-        long newUsers = users.stream().filter(user -> between(user.getCreatedAt(), from, to)).count();
-        long announcementsPosted = notices.stream().filter(notice -> between(notice.getCreatedAt(), from, to)).count();
-        long communityPosts = posts.stream().filter(post -> between(post.getCreatedAt(), from, to)).count();
-        long processedTasks = reports.stream()
-                .filter(report -> between(report.getReviewedAt(), from, to))
-                .filter(report -> report.getStatus() == ReportStatus.RESOLVED || report.getStatus() == ReportStatus.REJECTED)
-                .count();
-        long userReports = reports.stream().filter(report -> between(report.getCreatedAt(), from, to)).count();
+        long newUsers = userRepository.countByCreatedAtBetween(from, to);
+        long announcementsPosted = petNoticeRepository.countByCreatedAtBetween(from, to);
+        long communityPosts = communityPostRepository.countByCreatedAtBetween(from, to);
+        long processedTasks = reportRepository.countByReviewedAtBetweenAndStatusIn(from, to, List.of(ReportStatus.RESOLVED, ReportStatus.REJECTED));
+        long userReports = reportRepository.countByCreatedAtBetween(from, to);
+        List<Map<String, Object>> recentReports = reportRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, 5)).getContent().stream()
+                .map(this::toReportSummaryMap)
+                .toList();
 
         return orderedMap(
                 "activeUsers", activeUsers,
@@ -153,11 +149,7 @@ public class AdminConsoleService {
                 "kpiToday", kpiForRange(LocalDate.now(ZoneId.systemDefault()), LocalDate.now(ZoneId.systemDefault())),
                 "kpiWeekly", kpiForRange(LocalDate.now(ZoneId.systemDefault()).minusDays(6), LocalDate.now(ZoneId.systemDefault())),
                 "kpiMonthly", kpiForRange(LocalDate.now(ZoneId.systemDefault()).withDayOfMonth(1), LocalDate.now(ZoneId.systemDefault())),
-                "recentReports", reports.stream()
-                        .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
-                        .limit(5)
-                        .map(this::toReportSummaryMap)
-                        .toList(),
+                "recentReports", recentReports,
                 "recentDispatchFailures", dispatches.stream()
                         .filter(dispatch -> dispatch.getFailedCount() > 0)
                         .map(this::toDispatchMap)
@@ -172,18 +164,15 @@ public class AdminConsoleService {
         LocalDate from = resolveDate(fromValue, LocalDate.now(zoneId).minusDays(6));
         LocalDate to = resolveDate(toValue, LocalDate.now(zoneId));
         List<Map<String, Object>> series = new ArrayList<>();
-        List<User> users = userRepository.findAll();
-        List<PetNotice> notices = petNoticeRepository.findAll();
-        List<Report> reports = reportRepository.findAll();
 
         for (LocalDate cursor = from; !cursor.isAfter(to); cursor = cursor.plusDays(1)) {
             Instant start = cursor.atStartOfDay(zoneId).toInstant();
             Instant end = cursor.plusDays(1).atStartOfDay(zoneId).toInstant();
             series.add(Map.of(
                     "label", cursor.toString(),
-                    "notices", notices.stream().filter(notice -> between(notice.getCreatedAt(), start, end)).count(),
-                    "reports", reports.stream().filter(report -> between(report.getCreatedAt(), start, end)).count(),
-                    "users", users.stream().filter(user -> between(user.getCreatedAt(), start, end)).count()
+                    "notices", petNoticeRepository.countByCreatedAtBetween(start, end),
+                    "reports", reportRepository.countByCreatedAtBetween(start, end),
+                    "users", userRepository.countByCreatedAtBetween(start, end)
             ));
         }
 
@@ -196,10 +185,11 @@ public class AdminConsoleService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> dashboardPriorities() {
         adminSecurityService.require(AdminPermission.REPORT_REVIEW);
-        Map<String, Long> counts = reportRepository.findAll().stream()
+        List<Report> activeReports = reportRepository.findByStatusInOrderByCreatedAtDesc(ACTIVE_REPORT_STATUSES);
+        Map<String, Long> counts = activeReports.stream()
                 .filter(report -> ACTIVE_REPORT_STATUSES.contains(report.getStatus()))
                 .collect(Collectors.groupingBy(this::priorityKey, Collectors.counting()));
-        return reportRepository.findAll().stream()
+        return activeReports.stream()
                 .filter(report -> ACTIVE_REPORT_STATUSES.contains(report.getStatus()))
                 .filter(report -> counts.getOrDefault(priorityKey(report), 0L) >= 10L)
                 .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
@@ -772,18 +762,19 @@ public class AdminConsoleService {
     @Transactional(readOnly = true)
     public Map<String, Object> settings() {
         adminSecurityService.require(AdminPermission.SETTINGS_MANAGE);
+        String defaultApiEndpoint = "https://apis.data.go.kr/1543061/abandonmentPublicService_v2";
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("siteName", settingValue("siteName", "Pogun"));
         values.put("supportEmail", settingValue("supportEmail", "support@paw.gbsw.hs.kr"));
         values.put("defaultLanguage", settingValue("defaultLanguage", "ko"));
         values.put("logoUrl", settingValue("logoUrl", ""));
-        values.put("apiEndpoint", settingValue("apiEndpoint", "https://apis.data.go.kr/1543061/abandonmentPublicService_v2"));
+        values.put("apiEndpoint", settingValue("apiEndpoint", defaultApiEndpoint));
         values.put("autoSyncEnabled", settingBoolean("autoSyncEnabled", true));
         values.put("globalPushEnabled", settingBoolean("globalPushEnabled", true));
         values.put("fcmServerKeyMasked", maskSecret(settingValue("fcmServerKey", "")));
         values.put("firebaseProjectId", safe(firebaseAuthProperties.getProjectId()));
         values.put("fcmConfigured", firebaseAuth != null);
-        values.put("shelterApiConfigured", settingValue("apiEndpoint", "").startsWith("http"));
+        values.put("shelterApiConfigured", settingValue("apiEndpoint", defaultApiEndpoint).startsWith("http"));
         return values;
     }
 
@@ -793,7 +784,11 @@ public class AdminConsoleService {
         User actor = adminSecurityService.getCurrentAdminUser();
         Map<String, Object> before = settings();
         Set<String> allowedKeys = Set.of("siteName", "supportEmail", "defaultLanguage", "logoUrl", "apiEndpoint", "autoSyncEnabled", "globalPushEnabled", "fcmServerKey");
+        Set<String> readOnlyKeys = Set.of("fcmServerKeyMasked", "firebaseProjectId", "fcmConfigured", "shelterApiConfigured");
         request.forEach((key, value) -> {
+            if (readOnlyKeys.contains(key)) {
+                return;
+            }
             if (!allowedKeys.contains(key)) {
                 throw ApiException.badRequest("INVALID_SETTING_KEY", "지원하지 않는 설정 키입니다: " + key);
             }
@@ -897,7 +892,16 @@ public class AdminConsoleService {
         checkDatabase();
         checkRedis();
         checkFirebase();
-        checkShelterApi();
+        if (settingBoolean("autoSyncEnabled", true)) {
+            checkShelterApi();
+        } else {
+            adminIntegrationStatusRepository.save(AdminIntegrationStatus.builder()
+                    .integrationKey("SHELTER_API")
+                    .status("DISABLED")
+                    .latencyMs(0L)
+                    .message("autoSyncEnabled=false (수동 비활성화)")
+                    .build());
+        }
     }
 
     private AdminIntegrationStatus checkDatabase() {
@@ -1023,16 +1027,10 @@ public class AdminConsoleService {
         ZoneId zone = ZoneId.systemDefault();
         Instant from = fromDate.atStartOfDay(zone).toInstant();
         Instant to = toDate.plusDays(1).atStartOfDay(zone).toInstant();
-        long reportNotices = reportRepository.findAll().stream()
-                .filter(report -> report.getTargetType() == ReportTargetType.PET_NOTICE)
-                .filter(report -> between(report.getCreatedAt(), from, to))
-                .count();
-        long resolvedNotices = petNoticeRepository.findAll().stream()
-                .filter(notice -> notice.getStatus() == PetNoticeStatus.RESOLVED)
-                .filter(notice -> between(notice.getUpdatedAt(), from, to))
-                .count();
-        long reports = reportRepository.findAll().stream().filter(report -> between(report.getCreatedAt(), from, to)).count();
-        long signups = userRepository.findAll().stream().filter(user -> between(user.getCreatedAt(), from, to)).count();
+        long reportNotices = reportRepository.countByTargetTypeAndCreatedAtBetween(ReportTargetType.PET_NOTICE, from, to);
+        long resolvedNotices = petNoticeRepository.countByStatusAndUpdatedAtBetween(PetNoticeStatus.RESOLVED, from, to);
+        long reports = reportRepository.countByCreatedAtBetween(from, to);
+        long signups = userRepository.countByCreatedAtBetween(from, to);
         return orderedMap(
                 "reportedNotices", reportNotices,
                 "resolvedNotices", resolvedNotices,

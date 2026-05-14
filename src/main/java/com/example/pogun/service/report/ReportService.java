@@ -31,6 +31,10 @@ import com.example.pogun.service.adminauth.AdminPrincipal;
 import com.example.pogun.service.adminauth.AdminSecurityService;
 import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Comparator;
 /**
  * 도메인 비즈니스 로직을 담당하는 ReportService이다.
  */
@@ -99,15 +102,29 @@ public class ReportService {
         ReportTargetType targetType = parseOptionalAdminTargetType(targetTypeValue);
         int resolvedPage = Math.max((page == null ? 1 : page) - 1, 0);
         int resolvedPageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 100);
+        Pageable pageable = PageRequest.of(resolvedPage, resolvedPageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        List<Map<String, Object>> items = reportRepository.findAll().stream()
-                .filter(report -> status == null || report.getStatus() == status)
-                .filter(report -> targetType == null || report.getTargetType() == targetType)
-                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+        Page<Report> resultPage;
+        if (status != null && targetType != null) {
+            resultPage = reportRepository.findByStatusAndTargetTypeOrderByCreatedAtDesc(status, targetType, pageable);
+        } else if (status != null) {
+            resultPage = reportRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+        } else if (targetType != null) {
+            resultPage = reportRepository.findByTargetTypeOrderByCreatedAtDesc(targetType, pageable);
+        } else {
+            resultPage = reportRepository.findAllByOrderByCreatedAtDesc(pageable);
+        }
+
+        List<Map<String, Object>> items = resultPage.getContent().stream()
                 .map(this::toAdminReportSummaryMap)
                 .toList();
 
-        return paginate(items, resolvedPage, resolvedPageSize);
+        return orderedMap(
+                "items", items,
+                "page", resolvedPage + 1,
+                "pageSize", resolvedPageSize,
+                "total", resultPage.getTotalElements()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -121,10 +138,7 @@ public class ReportService {
     public List<Map<String, Object>> getAdminReporters(String reportId) {
         adminSecurityService.require(AdminPermission.REPORT_REVIEW);
         Report report = getReport(reportId);
-        return reportRepository.findAll().stream()
-                .filter(candidate -> candidate.getTargetType() == report.getTargetType())
-                .filter(candidate -> candidate.getTargetId().equals(report.getTargetId()))
-                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+        return reportRepository.findByTargetTypeAndTargetIdOrderByCreatedAtDesc(report.getTargetType(), report.getTargetId()).stream()
                 .map(candidate -> orderedMap(
                         "userId", candidate.getReporter().getId(),
                         "name", candidate.getReporter().getNickname(),
@@ -164,19 +178,30 @@ public class ReportService {
         ReportTargetType targetType = parseOptionalTargetType(targetTypeValue);
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? 20 : Math.min(size, 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        List<ReportResponse> filtered = reportRepository.findAll().stream()
-                .filter(report -> status == null || report.getStatus() == status)
-                .filter(report -> targetType == null || report.getTargetType() == targetType)
-                .sorted(Comparator.comparing(Report::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+        Page<Report> filteredPage;
+        if (status != null && targetType != null) {
+            filteredPage = reportRepository.findByStatusAndTargetTypeOrderByCreatedAtDesc(status, targetType, pageable);
+        } else if (status != null) {
+            filteredPage = reportRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+        } else if (targetType != null) {
+            filteredPage = reportRepository.findByTargetTypeOrderByCreatedAtDesc(targetType, pageable);
+        } else {
+            filteredPage = reportRepository.findAllByOrderByCreatedAtDesc(pageable);
+        }
+
+        List<ReportResponse> items = filteredPage.getContent().stream()
                 .map(this::toReportResponse)
                 .toList();
 
-        int fromIndex = Math.min(safePage * safeSize, filtered.size());
-        int toIndex = Math.min(fromIndex + safeSize, filtered.size());
-        List<ReportResponse> items = filtered.subList(fromIndex, toIndex);
-        int totalPages = filtered.isEmpty() ? 0 : (int) Math.ceil((double) filtered.size() / safeSize);
-        return new AdminReportListResponse(items, filtered.size(), totalPages, safePage, safeSize);
+        return new AdminReportListResponse(
+                items,
+                (int) filteredPage.getTotalElements(),
+                filteredPage.getTotalPages(),
+                safePage,
+                safeSize
+        );
     }
 
     @Transactional(readOnly = true)
@@ -709,17 +734,6 @@ public class ReportService {
 
     private String normalizeAdminReportStatus(ReportStatus status) {
         return status == ReportStatus.RECEIVED ? "PENDING" : status.name();
-    }
-
-    private Map<String, Object> paginate(List<Map<String, Object>> items, int page, int pageSize) {
-        int fromIndex = Math.min(page * pageSize, items.size());
-        int toIndex = Math.min(fromIndex + pageSize, items.size());
-        return orderedMap(
-                "items", items.subList(fromIndex, toIndex),
-                "page", page + 1,
-                "pageSize", pageSize,
-                "total", items.size()
-        );
     }
 
     private Map<String, Object> orderedMap(Object... keyValues) {

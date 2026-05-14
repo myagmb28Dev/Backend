@@ -4,6 +4,9 @@ import com.example.pogun.entity.report.Report;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.report.enums.ReportStatus;
 import com.example.pogun.entity.report.enums.ReportTargetType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -29,6 +32,19 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
     long countByTargetTypeAndTargetId(ReportTargetType targetType, UUID targetId);
 
     long countByCreatedAtBetween(Instant from, Instant to);
+    long countByTargetTypeAndCreatedAtBetween(ReportTargetType targetType, Instant from, Instant to);
 
     long countByStatusIn(Collection<ReportStatus> statuses);
+    long countByReviewedAtBetweenAndStatusIn(Instant from, Instant to, Collection<ReportStatus> statuses);
+    List<Report> findByStatusInOrderByCreatedAtDesc(Collection<ReportStatus> statuses);
+    @EntityGraph(attributePaths = {"reporter", "reviewedBy"})
+    Page<Report> findByStatusAndTargetTypeOrderByCreatedAtDesc(ReportStatus status, ReportTargetType targetType, Pageable pageable);
+    @EntityGraph(attributePaths = {"reporter", "reviewedBy"})
+    Page<Report> findByStatusOrderByCreatedAtDesc(ReportStatus status, Pageable pageable);
+    @EntityGraph(attributePaths = {"reporter", "reviewedBy"})
+    Page<Report> findByTargetTypeOrderByCreatedAtDesc(ReportTargetType targetType, Pageable pageable);
+    @EntityGraph(attributePaths = {"reporter", "reviewedBy"})
+    Page<Report> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    @EntityGraph(attributePaths = {"reporter"})
+    List<Report> findByTargetTypeAndTargetIdOrderByCreatedAtDesc(ReportTargetType targetType, UUID targetId);
 }

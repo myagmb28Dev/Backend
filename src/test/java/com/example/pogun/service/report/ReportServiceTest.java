@@ -24,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -132,7 +133,8 @@ class ReportServiceTest {
                 .createdAt(Instant.parse("2026-04-26T00:00:00Z"))
                 .build();
 
-        when(reportRepository.findAll()).thenReturn(List.of(report));
+        when(reportRepository.findByStatusAndTargetTypeOrderByCreatedAtDesc(any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(report)));
         when(reportRepository.countByTargetTypeAndTargetId(ReportTargetType.PET_NOTICE, targetId)).thenReturn(1L);
 
         Map<String, Object> result = reportService.listAdminReports("PENDING", "NOTICE", 1, 20);

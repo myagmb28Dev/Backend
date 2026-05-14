@@ -63,6 +63,7 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     List<CommunityPost> findByStatusAndUpdatedAtBefore(CommunityPostStatus status, Instant updatedAt);
 
     long countByStatus(CommunityPostStatus status);
+    long countByCreatedAtBetween(Instant from, Instant to);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

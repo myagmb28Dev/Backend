@@ -10,8 +10,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.example.pogun.entity.user.enums.UserRole;
 /**
  * 영속성 조회와 저장을 담당하는 UserRepository이다.
  */
@@ -23,6 +25,9 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     boolean existsByFirebaseUid(String firebaseUid);
     long countByStatus(UserStatus status);
     long countByCreatedAtBetween(Instant from, Instant to);
+    long countByRole(UserRole role);
+    long countByRoleAndStatus(UserRole role, UserStatus status);
+    List<User> findByRoleOrderByCreatedAtDesc(UserRole role);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

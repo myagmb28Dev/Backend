@@ -10,6 +10,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.CompletableFuture;
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -34,8 +36,13 @@ public class StartupWarmupRunner implements ApplicationRunner {
         long start = System.currentTimeMillis();
         try {
             jdbcTemplate.queryForObject("select 1", Integer.class);
-            communityService.getPostList("LATEST", null, null, null, 0, 1);
-            missingPetService.getMissingPetList(null, null, null, null, null, "createdAt,desc", 0, 1);
+            CompletableFuture<Void> communityWarmup = CompletableFuture.runAsync(
+                    () -> communityService.getPostList("LATEST", null, null, null, 0, 1)
+            );
+            CompletableFuture<Void> missingPetWarmup = CompletableFuture.runAsync(
+                    () -> missingPetService.getMissingPetList(null, null, null, null, null, "createdAt,desc", 0, 1)
+            );
+            CompletableFuture.allOf(communityWarmup, missingPetWarmup).join();
         } catch (Exception e) {
             log.warn("Startup warmup encountered error; traffic will still open", e);
         } finally {

@@ -33,4 +33,7 @@ public interface PetNoticeRepository extends JpaRepository<PetNotice, UUID> {
     );
 
     long countByHiddenTrue();
+    long countByCreatedAtBetween(Instant from, Instant to);
+    long countByStatusAndCreatedAtBetween(PetNoticeStatus status, Instant from, Instant to);
+    long countByStatusAndUpdatedAtBetween(PetNoticeStatus status, Instant from, Instant to);
 }

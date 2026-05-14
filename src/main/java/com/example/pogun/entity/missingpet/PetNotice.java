@@ -43,7 +43,11 @@ import java.util.List;
 @Table(name = "pet_notices", indexes = {
         @Index(name = "idx_pet_notices_status", columnList = "status"),
         @Index(name = "idx_pet_notices_missing_date", columnList = "missing_date"),
-        @Index(name = "idx_pet_notices_missing_region", columnList = "missing_region")
+        @Index(name = "idx_pet_notices_missing_region", columnList = "missing_region"),
+        @Index(name = "idx_pet_notices_created_at", columnList = "created_at"),
+        @Index(name = "idx_pet_notices_status_updated_at", columnList = "status,updated_at"),
+        @Index(name = "idx_pet_notices_hidden", columnList = "is_hidden"),
+        @Index(name = "idx_pet_notices_author_created_at", columnList = "author_id,created_at")
 })
 /**
  * 데이터베이스 테이블과 매핑되는 PetNotice 엔티티이다.

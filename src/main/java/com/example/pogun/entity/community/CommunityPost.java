@@ -48,7 +48,9 @@ import jakarta.persistence.OrderBy;
         @Index(name = "idx_community_posts_created_at", columnList = "created_at"),
         @Index(name = "idx_community_posts_status", columnList = "status"),
         @Index(name = "idx_community_posts_category", columnList = "category"),
-        @Index(name = "idx_community_posts_like_count", columnList = "like_count")
+        @Index(name = "idx_community_posts_like_count", columnList = "like_count"),
+        @Index(name = "idx_community_posts_status_updated_at", columnList = "status,updated_at"),
+        @Index(name = "idx_community_posts_author_status_created_at", columnList = "author_id,status,created_at")
 })
 /**
  * 데이터베이스 테이블과 매핑되는 CommunityPost 엔티티이다.

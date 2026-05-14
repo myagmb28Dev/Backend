@@ -35,7 +35,9 @@ import lombok.Setter;
 @Entity
 @Table(name = "community_comments", indexes = {
         @Index(name = "idx_community_comments_post", columnList = "post_id"),
-        @Index(name = "idx_community_comments_parent", columnList = "parent_comment_id")
+        @Index(name = "idx_community_comments_parent", columnList = "parent_comment_id"),
+        @Index(name = "idx_community_comments_post_status_created", columnList = "post_id,status,created_at"),
+        @Index(name = "idx_community_comments_status_updated", columnList = "status,updated_at")
 })
 /**
  * 데이터베이스 테이블과 매핑되는 CommunityComment 엔티티이다.

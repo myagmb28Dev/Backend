@@ -36,7 +36,10 @@ import lombok.Setter;
 @Entity
 @Table(name = "reports", indexes = {
         @Index(name = "idx_reports_target", columnList = "target_type,target_id"),
-        @Index(name = "idx_reports_status", columnList = "status")
+        @Index(name = "idx_reports_status", columnList = "status"),
+        @Index(name = "idx_reports_created_at", columnList = "created_at"),
+        @Index(name = "idx_reports_status_reviewed_at", columnList = "status,reviewed_at"),
+        @Index(name = "idx_reports_reporter", columnList = "reporter_id")
 })
 /**
  * 데이터베이스 테이블과 매핑되는 Report 엔티티이다.
