@@ -5,7 +5,7 @@ param(
     [string]$Email = "playwright-user1@local.dev",
     [string]$Password = "Test1234!",
     [int]$AuthPort = 9099,
-    [int]$BackendPort = 8081,
+    [int]$BackendPort = 8080,
     [int]$UiPort = 4000,
     [int]$TimeoutSeconds = 30,
     [int]$StartupTimeoutSec = 45,
@@ -218,7 +218,8 @@ function Wait-BackendHealth {
     param(
         [int]$Port,
         [int]$TimeoutSec,
-        [System.Diagnostics.Process]$Process = $null
+        [System.Diagnostics.Process]$Process = $null,
+        [string]$LogPath = ""
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -235,7 +236,11 @@ function Wait-BackendHealth {
         }
         Start-Sleep -Seconds 1
     }
-    throw "Spring Boot backend health did not become ready on port $Port ($HealthPath) within $TimeoutSec seconds."
+    $logHint = ""
+    if (-not [string]::IsNullOrWhiteSpace($LogPath) -and (Test-Path $LogPath)) {
+        $logHint = " Check log: $LogPath"
+    }
+    throw "Spring Boot backend health did not become ready on port $Port ($HealthPath) within $TimeoutSec seconds.$logHint"
 }
 
 function Ensure-PortReadyWithRetry {
@@ -619,13 +624,18 @@ $backendCommand = @(
     "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
     "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
     "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
-    "& '.\\gradlew.bat' bootRun"
+    "& '.\\gradlew.bat' bootRun *> '.\\.local\\backend-local.log'"
 ) -join "; "
 
 $backendProcess = Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand -RunAsAdmin:$ElevateGradle
 
 Write-Step "health_wait"
-Wait-BackendHealth -Port $BackendPort -TimeoutSec $StartupTimeoutSec -Process $backendProcess
+try {
+    Wait-BackendHealth -Port $BackendPort -TimeoutSec $StartupTimeoutSec -Process $backendProcess -LogPath (Join-Path $localDir "backend-local.log")
+} catch {
+    # Gradle cold start can exceed the first window. Retry once with short grace.
+    Wait-BackendHealth -Port $BackendPort -TimeoutSec 45 -Process $backendProcess -LogPath (Join-Path $localDir "backend-local.log")
+}
 Write-Step "ready"
 
 $authTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password

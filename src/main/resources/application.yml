@@ -122,7 +122,7 @@ server:
       force: true
 
 ---
-# 로컬 개발 환경용 강제 설정
+# 로컬 개발 환경용 설정
 spring:
   config:
     activate:
@@ -137,7 +137,7 @@ app:
     enabled: true
 
 ---
-# 운영 환경용 강제 설정
+# 운영 환경용 설정
 spring:
   config:
     activate:
@@ -145,7 +145,4 @@ spring:
   data:
     redis:
       host: redis
-  web:
-    resources:
-      add-mappings: false
 

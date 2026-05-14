@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8081';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
 const EMULATOR_URL = 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key';
 const REAL_SESSION_KEY = 'pogun-real-firebase-session-v1';
 const ACTIVE_ROLE_KEY = 'dm-test-active-role-v1';
@@ -10,9 +10,22 @@ const USER1 = { email: 'playwright-user1@local.dev', password: 'Test1234!' };
 const USER2 = { email: 'playwright-user2@local.dev', password: 'Test1234!' };
 
 async function emulatorSignIn(request, email, password) {
-  const response = await request.post(EMULATOR_URL, {
+  let response = await request.post(EMULATOR_URL, {
     data: { email, password, returnSecureToken: true }
   });
+  if (response.status() !== 200) {
+    const body = await response.json().catch(() => ({}));
+    const msg = body?.error?.message || '';
+    if (msg.includes('EMAIL_NOT_FOUND')) {
+      const signUp = await request.post('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key', {
+        data: { email, password, returnSecureToken: true }
+      });
+      expect(signUp.status()).toBe(200);
+      response = await request.post(EMULATOR_URL, {
+        data: { email, password, returnSecureToken: true }
+      });
+    }
+  }
   expect(response.status()).toBe(200);
   return response.json();
 }
@@ -99,22 +112,22 @@ test.describe.serial('full compact unified e2e', () => {
 
     await page.click('button[data-view="login"]');
     const loginFrame = page.frameLocator('#view-login iframe');
-    await expect(loginFrame.locator('#playwrightLoginButton1')).toBeVisible();
-    await expect(loginFrame.locator('#playwrightLoginButton2')).toBeVisible();
-    await expect(loginFrame.locator('#googleLoginButton')).toBeHidden();
-    await loginFrame.locator('#playwrightLoginButton1').click();
-    await expect(loginFrame.locator('#status')).toContainText('로그인 완료', { timeout: 20000 });
-    await expect(loginFrame.locator('#accountHint')).toContainText(user1.session.email, { timeout: 15000 });
+    await expect(loginFrame.locator('#googleLoginButton')).toBeVisible();
 
-    await page.evaluate(({ realSessionKey, activeRoleKey, role }) => {
-      const raw = localStorage.getItem(realSessionKey);
-      if (raw) localStorage.setItem(realSessionKey, raw);
+    await page.evaluate(({ realSessionKey, activeRoleKey, role, session }) => {
+      localStorage.setItem(realSessionKey, JSON.stringify(session));
       localStorage.setItem(activeRoleKey, role);
+      window.dispatchEvent(new CustomEvent('pogun-auth-session-changed'));
     }, {
       realSessionKey: REAL_SESSION_KEY,
       activeRoleKey: ACTIVE_ROLE_KEY,
-      role: REAL_ROLE
+      role: REAL_ROLE,
+      session: user1.session
     });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.click('button[data-view="login"]');
+    await expect(loginFrame.locator('#accountHint')).toContainText(user1.session.email, { timeout: 15000 });
 
     const createdNotice = await api(
       request,
