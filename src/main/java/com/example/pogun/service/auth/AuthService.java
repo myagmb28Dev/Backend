@@ -28,11 +28,14 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 /**
@@ -61,7 +64,7 @@ public class AuthService {
 
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
-    public AuthResponse loginOrSignUp(String idToken) {
+    public AuthResponse loginOrSignUp(String idToken, HttpServletRequest httpRequest) {
         long loginStart = System.currentTimeMillis();
         log.info("[LOGIN] loginOrSignUp started, token_length={}", idToken.length());
         try {
@@ -108,7 +111,7 @@ public class AuthService {
 
             syncProviders(user, identity);
             pendingSocialSignupRepository.deleteByFirebaseUid(uid);
-            touchAndPublishPresenceSafely(uid);
+            touchAndPublishPresenceSafely(uid, resolveRequestHost(httpRequest));
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
@@ -169,13 +172,13 @@ public class AuthService {
         }
 
         pendingSocialSignupRepository.delete(pending);
-        touchAndPublishPresenceSafely(saved.getFirebaseUid());
+        touchAndPublishPresenceSafely(saved.getFirebaseUid(), null);
         log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
         return buildAuthResponse(saved);
     }
 
     @Transactional
-    public AuthResponse loginAdmin(String idToken) {
+    public AuthResponse loginAdmin(String idToken, HttpServletRequest httpRequest) {
         try {
             FirebaseIdentityService.FirebaseIdentity identity = firebaseIdentityService.verifyIdToken(idToken);
             String uid = identity.uid();
@@ -209,7 +212,7 @@ public class AuthService {
             User saved = userRepository.save(user);
 
             syncProviders(saved, identity);
-            touchAndPublishPresenceSafely(saved.getFirebaseUid());
+            touchAndPublishPresenceSafely(saved.getFirebaseUid(), resolveRequestHost(httpRequest));
             return buildAuthResponse(saved);
         } catch (ApiException e) {
             throw e;
@@ -524,17 +527,84 @@ public class AuthService {
         };
     }
 
-    private void touchPresenceSafely(String firebaseUid) {
-        userPresenceService.touchFromAuthenticationSafely(firebaseUid);
+    private void touchPresenceSafely(String firebaseUid, String sessionScopeHost) {
+        userPresenceService.touchFromAuthenticationSafely(firebaseUid, sessionScopeHost);
     }
 
-    private void touchAndPublishPresenceSafely(String firebaseUid) {
-        touchPresenceSafely(firebaseUid);
+    private void touchAndPublishPresenceSafely(String firebaseUid, String sessionScopeHost) {
+        touchPresenceSafely(firebaseUid, sessionScopeHost);
         try {
             noticeChatServiceProvider.getObject().publishPresenceUpdatesByFirebaseUid(firebaseUid);
         } catch (RuntimeException e) {
             log.warn("로그인 presence publish 실패(firebaseUid={}): {}", firebaseUid, e.getClass().getSimpleName());
         }
+    }
+
+    private String resolveRequestHost(HttpServletRequest request) {
+        if (request == null) {
+            return "unknown-host";
+        }
+
+        String origin = trimToNull(request.getHeader("Origin"));
+        if (origin != null) {
+            String originHost = hostFromOrigin(origin);
+            if (originHost != null) {
+                return originHost;
+            }
+        }
+
+        String forwardedHost = firstHostHeader(request.getHeader("X-Forwarded-Host"));
+        if (forwardedHost != null) {
+            return stripPort(forwardedHost);
+        }
+
+        String hostHeader = firstHostHeader(request.getHeader("Host"));
+        if (hostHeader != null) {
+            return stripPort(hostHeader);
+        }
+
+        String serverName = trimToNull(request.getServerName());
+        return serverName != null ? serverName.toLowerCase(Locale.ROOT) : "unknown-host";
+    }
+
+    private String hostFromOrigin(String origin) {
+        try {
+            URI uri = URI.create(origin.trim());
+            String host = uri.getHost();
+            return host == null || host.isBlank() ? null : host.toLowerCase(Locale.ROOT);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private String firstHostHeader(String value) {
+        String raw = trimToNull(value);
+        if (raw == null) {
+            return null;
+        }
+        int commaIndex = raw.indexOf(',');
+        String first = commaIndex >= 0 ? raw.substring(0, commaIndex) : raw;
+        return trimToNull(first);
+    }
+
+    private String stripPort(String hostValue) {
+        String normalized = hostValue.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("[")) {
+            int end = normalized.indexOf(']');
+            if (end > 0) {
+                return normalized.substring(1, end);
+            }
+        }
+        int colon = normalized.indexOf(':');
+        return colon > 0 ? normalized.substring(0, colon) : normalized;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
 }
