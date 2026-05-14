@@ -39,6 +39,10 @@ spring:
     show-sql: ${JPA_SHOW_SQL:false}
 
 app:
+  schema-sync:
+    enabled: ${APP_SCHEMA_SYNC_ENABLED:false}
+  startup-warmup:
+    enabled: ${APP_STARTUP_WARMUP_ENABLED:true}
   storage:
     s3:
       bucket: ${AWS_S3_BUCKET:}
@@ -110,6 +114,12 @@ spring:
   config:
     activate:
       on-profile: local
+app:
+  schema-sync:
+    enabled: true
+  startup-warmup:
+    enabled: true
+spring:
   data:
     redis:
       host: localhost

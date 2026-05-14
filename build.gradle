@@ -102,6 +102,9 @@ tasks.register('firebaseDeleteUserByEmail', JavaExec) {
 bootJar {
 	enabled = true
 	archiveFileName = 'app.jar'
+	layered {
+		enabled = true
+	}
 }
 
 jar {

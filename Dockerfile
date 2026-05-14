@@ -12,8 +12,9 @@ RUN apt-get update \
 
 COPY --from=jre /opt/java/openjdk ${JAVA_HOME}
 COPY scripts/healthcheck-adaptive.sh /usr/local/bin/healthcheck-adaptive.sh
-RUN chmod +x /usr/local/bin/healthcheck-adaptive.sh
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/healthcheck-adaptive.sh /usr/local/bin/docker-entrypoint.sh
 
 COPY build/libs/app.jar app.jar
 
-ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT:-8080} -Dfile.encoding=UTF-8 -jar app.jar"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

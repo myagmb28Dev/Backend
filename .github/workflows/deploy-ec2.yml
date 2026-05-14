@@ -280,6 +280,9 @@ jobs:
           SPRING_PROFILES_ACTIVE=prod
           PORT=${{ secrets.PORT }}
           APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:latest
+          APP_STARTUP_WARMUP_ENABLED=true
+          APP_SCHEMA_SYNC_ENABLED=false
+          JAVA_STARTUP_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom
           AI_API_KEY=${{ secrets.AI_API_KEY }}
           APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS=${{ secrets.APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS }}
           APP_ADMIN_WEBAUTHN_RP_ID=${{ secrets.APP_ADMIN_WEBAUTHN_RP_ID }}

@@ -2,6 +2,7 @@ package com.example.pogun.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,9 +14,15 @@ import org.springframework.stereotype.Component;
 public class NotificationSchemaConstraintInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
+    @Value("${app.schema-sync.enabled:false}")
+    private boolean schemaSyncEnabled;
 
     @Override
     public void run(ApplicationArguments args) {
+        if (!schemaSyncEnabled) {
+            log.info("Notification schema sync skipped (app.schema-sync.enabled=false)");
+            return;
+        }
         try {
             Boolean notificationsTableExists = jdbcTemplate.queryForObject(
                     """

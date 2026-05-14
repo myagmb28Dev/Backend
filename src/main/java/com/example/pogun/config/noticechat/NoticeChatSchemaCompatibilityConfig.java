@@ -2,6 +2,7 @@ package com.example.pogun.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,10 +14,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NoticeChatSchemaCompatibilityConfig {
 
     private final JdbcTemplate jdbcTemplate;
+    @Value("${app.schema-sync.enabled:false}")
+    private boolean schemaSyncEnabled;
 
     @Bean
     ApplicationRunner noticeChatMessageTypeCheckConstraintUpdater() {
         return args -> {
+            if (!schemaSyncEnabled) {
+                log.info("NoticeChat schema sync skipped (app.schema-sync.enabled=false)");
+                return;
+            }
             try {
                 jdbcTemplate.execute("ALTER TABLE notice_chat_messages ALTER COLUMN message DROP NOT NULL");
                 jdbcTemplate.execute("ALTER TABLE notice_chat_messages ADD COLUMN IF NOT EXISTS edited_at timestamp with time zone");
