@@ -91,7 +91,6 @@
       <h2>로그인</h2>
       <p id="accountHint" class="muted">로그인해주세요.</p>
       <div class="actions">
-        <button id="playwrightLoginButton1" type="button" style="display:none;">Playwright1 로컬 로그인</button>
         <button id="googleLoginButton" type="button">Google로 로그인</button>
         <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
         <button id="refreshLoginButton" type="button" class="secondary small">Refresh</button>
@@ -166,7 +165,6 @@ import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/
     const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const redirectPath = (query.get("redirect") || "").trim();
 const REAL_ROLE = "google";
-const IS_LOCAL_HOST = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const DEFAULT_USER_LABEL = "Google 사용자";
 const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
 let auth = null;
@@ -190,10 +188,6 @@ const FIREBASE_TOKEN_CHECK_TIMEOUT_MS = 15000;
 const BACKEND_LOGIN_TIMEOUT_MS = 60000;
 const BACKEND_SYNC_DEBOUNCE_MS = 12000;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
-const LOCAL_AUTH_EMULATOR_BASE = "http://127.0.0.1:9099";
-const LOCAL_PLAYWRIGHT_USERS = {
-  user1: { email: "playwright-user1@local.dev", password: "Test1234!", label: "Playwright1" }
-};
 const users = { [REAL_ROLE]: { label: DEFAULT_USER_LABEL, email: "", token: null, userId: null, registrationStatus: null } };
 let lastBackendSyncToken = "";
 let lastBackendSyncAt = 0;
@@ -224,9 +218,7 @@ function renderSession() {
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
   el("googleLoginButton").style.display = "";
-  el("playwrightLoginButton1").style.display = IS_LOCAL_HOST ? "" : "none";
   el("googleLoginButton").disabled = googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton1").disabled = !IS_LOCAL_HOST || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
   el("refreshLoginButton").disabled = Boolean(sessionResyncPromise);
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
@@ -235,7 +227,6 @@ function renderSession() {
 
 function setLoginButtonsBusy(isBusy) {
   el("googleLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton1").disabled = !IS_LOCAL_HOST || isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = isBusy || !currentSession;
   el("refreshLoginButton").disabled = false;
 }
@@ -457,38 +448,6 @@ async function postJson(url, body) {
     parsed = null;
   }
   return { ok: response.ok, status: response.status, body: parsed, text };
-}
-
-async function signInLocalPlaywrightUser(userKey) {
-  if (!IS_LOCAL_HOST) {
-    throw new Error("Playwright 로컬 로그인은 localhost에서만 사용할 수 있습니다.");
-  }
-  const target = LOCAL_PLAYWRIGHT_USERS[userKey];
-  if (!target) {
-    throw new Error("지원하지 않는 로컬 계정입니다.");
-  }
-  setStatus(`${target.label} 로컬 계정 로그인 중...`);
-  const response = await postJson(
-    `${LOCAL_AUTH_EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
-    {
-      email: target.email,
-      password: target.password,
-      returnSecureToken: true
-    }
-  );
-  if (!response.ok || !response.body?.idToken) {
-    throw new Error(`${target.label} 로컬 로그인 실패: ${response.body?.error?.message || response.status}`);
-  }
-  if (response.body.refreshToken) {
-    setRefreshToken(response.body.refreshToken);
-  }
-  await syncBackendLogin(response.body.idToken, {
-    uid: response.body.localId || "",
-    email: target.email,
-    displayName: target.label,
-    photoURL: "",
-    refreshToken: response.body.refreshToken || ""
-  });
 }
 
 async function loadFirebaseAuth() {
@@ -773,7 +732,6 @@ function run(handler) {
 
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
 el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
-el("playwrightLoginButton1").addEventListener("click", run(() => signInLocalPlaywrightUser("user1")));
 el("refreshLoginButton").addEventListener("click", run(async () => {
   const button = el("refreshLoginButton");
   if (button.disabled) return;
