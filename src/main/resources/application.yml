@@ -114,15 +114,14 @@ spring:
   config:
     activate:
       on-profile: local
+  data:
+    redis:
+      host: localhost
 app:
   schema-sync:
     enabled: true
   startup-warmup:
     enabled: true
-spring:
-  data:
-    redis:
-      host: localhost
 
 ---
 # 운영 환경용 강제 설정
