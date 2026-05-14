@@ -21,10 +21,10 @@ import java.util.Set;
 public class UserPresenceService {
 
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
-    // Global online should survive short polling gaps/network jitter from external admin front.
-    private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(120);
-    // DM/socket freshness can stay shorter than global presence.
-    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(45);
+    // Realtime-biased: tolerate brief jitter, but mark offline faster.
+    private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(60);
+    // DM/socket freshness stays shorter than global presence.
+    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(30);
     private static final String AUTH_GLOBAL_SESSION_ID = "auth";
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
