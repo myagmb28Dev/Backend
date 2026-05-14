@@ -89,6 +89,7 @@ import java.util.stream.Collectors;
 public class AdminConsoleService {
 
     private static final Set<ReportStatus> ACTIVE_REPORT_STATUSES = Set.of(ReportStatus.RECEIVED, ReportStatus.REVIEWING);
+    private static final String USER_APP_DOMAIN = "paw.gbsw.hs.kr";
 
     private final UserRepository userRepository;
     private final PetNoticeRepository petNoticeRepository;
@@ -1083,6 +1084,7 @@ public class AdminConsoleService {
     private List<User> resolveActiveUsers() {
         return userRepository.findAll().stream()
                 .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                .filter(this::hasUserAppSession)
                 .filter(user -> userPresenceService.snapshot(user).online())
                 .toList();
     }
@@ -1104,6 +1106,26 @@ public class AdminConsoleService {
         } catch (RuntimeException ignored) {
             return 0L;
         }
+    }
+
+    private boolean hasUserAppSession(User user) {
+        if (user == null || user.getFirebaseUid() == null || user.getFirebaseUid().isBlank()) {
+            return false;
+        }
+        Map<String, Instant> sessions = presenceSessionStore.getGlobalSessions(user.getFirebaseUid());
+        if (sessions.isEmpty()) {
+            return false;
+        }
+        for (String sessionKey : sessions.keySet()) {
+            if (sessionKey == null || sessionKey.isBlank()) {
+                continue;
+            }
+            String normalized = sessionKey.trim().toLowerCase(Locale.ROOT);
+            if (normalized.startsWith(USER_APP_DOMAIN + ":")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean between(Instant value, Instant from, Instant to) {
@@ -1216,6 +1238,10 @@ public class AdminConsoleService {
     }
 
     private Map<String, Object> toUserSummaryMap(User user) {
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(user);
+        String effective = snapshot.availabilityStatus() == null ? "OFFLINE" : snapshot.availabilityStatus().name();
+        String connection = snapshot.actualConnectionState();
+        Instant lastActiveAt = snapshot.lastActiveAt() != null ? snapshot.lastActiveAt() : user.getLastActiveAt();
         return orderedMap(
             "id", user.getId(),
             "name", safe(user.getNickname()),
@@ -1223,7 +1249,10 @@ public class AdminConsoleService {
             "role", user.getRole().name(),
             "status", normalizeUserStatus(user.getStatus()),
             "createdAt", user.getCreatedAt(),
-            "lastLoginAt", user.getLastActiveAt()
+            "lastLoginAt", user.getLastActiveAt(),
+            "presence", effective,
+            "presenceConnectionState", connection,
+            "presenceLastActiveAt", lastActiveAt
         );
     }
 

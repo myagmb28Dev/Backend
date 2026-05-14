@@ -409,6 +409,10 @@ public class AdminAuthService {
     }
 
     private AdminPasskeyOptionsResponse startAssertion(AdminSession session, User admin, HttpServletRequest request) {
+        AdminPasskeyOptionsResponse reusable = reusePendingAssertionChallenge(session);
+        if (reusable != null) {
+            return reusable;
+        }
         invalidatePendingChallenges(session, AdminAuthChallengeType.PASSKEY_ASSERTION);
         var assertion = adminWebAuthnService.startAssertion(admin, request);
         AdminAuthChallenge challenge = adminAuthChallengeRepository.save(AdminAuthChallenge.builder()
@@ -419,6 +423,28 @@ public class AdminAuthService {
                 .expiresAt(Instant.now().plusSeconds(adminConsoleProperties.getChallengeTtlSeconds()))
                 .build());
         return new AdminPasskeyOptionsResponse(challenge.getId(), readJson(serializeAssertionOptions(assertion)));
+    }
+
+    private AdminPasskeyOptionsResponse reusePendingAssertionChallenge(AdminSession session) {
+        Instant now = Instant.now();
+        return adminAuthChallengeRepository.findBySessionAndTypeAndUsedAtIsNull(session, AdminAuthChallengeType.PASSKEY_ASSERTION)
+                .stream()
+                .filter(challenge -> challenge.getExpiresAt() != null && challenge.getExpiresAt().isAfter(now))
+                .max(java.util.Comparator.comparing(AdminAuthChallenge::getCreatedAt))
+                .map(challenge -> {
+                    try {
+                        var assertion = com.yubico.webauthn.AssertionRequest.fromJson(challenge.getRequestJson());
+                        return new AdminPasskeyOptionsResponse(
+                                challenge.getId(),
+                                readJson(serializeAssertionOptions(assertion))
+                        );
+                    } catch (Exception e) {
+                        challenge.setUsedAt(now);
+                        adminAuthChallengeRepository.save(challenge);
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
     private User resolveAdminUser(String firebaseUid, String email) {

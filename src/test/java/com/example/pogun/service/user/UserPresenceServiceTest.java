@@ -194,7 +194,7 @@ class UserPresenceServiceTest {
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("grace-expired-user");
 
-        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(130));
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(60));
 
         assertThat(service.reconcileStaleSessions()).contains(user.getFirebaseUid());
         assertThat(service.snapshot(user).availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);

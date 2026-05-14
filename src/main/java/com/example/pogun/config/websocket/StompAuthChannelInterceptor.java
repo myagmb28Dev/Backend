@@ -3,7 +3,6 @@ package com.example.pogun.config;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.user.User;
-import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -31,7 +30,6 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private static final String ROOM_TOPIC_PREFIX = "/topic/chat/rooms/";
     private static final String ROOM_QUEUE_PREFIX = "/user/queue/chat/rooms/";
     private static final String USER_ROOM_TOPIC_PREFIX = "/topic/chat/users/";
-    private static final String ADMIN_PRESENCE_TOPIC = "/topic/admin/presence";
 
     private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
@@ -89,8 +87,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         boolean roomTopic = destination.startsWith(ROOM_TOPIC_PREFIX);
         boolean roomQueue = destination.startsWith(ROOM_QUEUE_PREFIX);
         boolean userRoomTopic = destination.startsWith(USER_ROOM_TOPIC_PREFIX);
-        boolean adminPresenceTopic = ADMIN_PRESENCE_TOPIC.equals(destination);
-        if (!roomTopic && !roomQueue && !userRoomTopic && !adminPresenceTopic) {
+        if (!roomTopic && !roomQueue && !userRoomTopic) {
             return;
         }
 
@@ -104,13 +101,6 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         if (user.getStatus() != null && user.getStatus() != UserStatus.ACTIVE) {
             throw ApiException.forbidden("CHAT_USER_FORBIDDEN", "채팅을 구독할 수 없는 사용자 상태입니다.");
         }
-        if (adminPresenceTopic) {
-            if (user.getRole() != UserRole.ADMIN) {
-                throw ApiException.forbidden("ADMIN_PRESENCE_FORBIDDEN", "관리자 사용자만 presence 토픽을 구독할 수 있습니다.");
-            }
-            return;
-        }
-
         DestinationInfo destinationInfo = extractDestinationInfo(destination);
         if (destinationInfo.userId() != null && !destinationInfo.userId().equals(user.getId())) {
             throw ApiException.forbidden("CHAT_ROOM_FORBIDDEN", "본인에게 전달되는 채널만 구독할 수 있습니다.");

@@ -4,7 +4,6 @@ import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.presence.PresenceHeartbeatRequest;
 import com.example.pogun.dto.presence.PresenceHeartbeatResponse;
 import com.example.pogun.service.noticechat.NoticeChatService;
-import com.example.pogun.service.presence.AdminPresenceRealtimeService;
 import com.example.pogun.service.user.UserPresenceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/presence")
@@ -27,20 +27,20 @@ public class PresenceRestController {
 
     private final UserPresenceService userPresenceService;
     private final ObjectProvider<NoticeChatService> noticeChatServiceProvider;
-    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @PostMapping("/heartbeat")
     public ResponseEntity<ApiResponse<PresenceHeartbeatResponse>> heartbeat(
-            @Valid @RequestBody PresenceHeartbeatRequest request
+            @Valid @RequestBody PresenceHeartbeatRequest request,
+            HttpServletRequest httpRequest
     ) {
         String firebaseUid = currentFirebaseUid();
-        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.heartbeat(firebaseUid, request.getClientSessionId());
+        String scopedSessionId = scopedSessionId(request.getClientSessionId(), httpRequest);
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.heartbeat(firebaseUid, scopedSessionId);
         NoticeChatService noticeChatService = noticeChatServiceProvider.getIfAvailable();
         if (noticeChatService != null) {
             noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
             noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
         }
-        adminPresenceRealtimeService.publishByFirebaseUid(firebaseUid);
         log.trace("[presence] heartbeat uid={} page={} connectionState={} effective={}",
                 firebaseUid,
                 request.getPage(),
@@ -59,5 +59,13 @@ public class PresenceRestController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         Object principal = authentication != null ? authentication.getPrincipal() : null;
         return principal instanceof String firebaseUid ? firebaseUid : "";
+    }
+
+    private String scopedSessionId(String clientSessionId, HttpServletRequest request) {
+        String host = request != null && request.getServerName() != null && !request.getServerName().isBlank()
+                ? request.getServerName().trim().toLowerCase()
+                : "unknown-host";
+        String rawClientId = (clientSessionId == null || clientSessionId.isBlank()) ? "unknown-client" : clientSessionId.trim();
+        return host + ":" + rawClientId;
     }
 }

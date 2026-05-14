@@ -7,8 +7,6 @@ import com.example.pogun.repository.admin.AdminPasskeyRepository;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminPrincipal;
 import com.example.pogun.service.adminauth.AdminSessionTokenService;
-import com.example.pogun.service.presence.AdminPresenceRealtimeService;
-import com.example.pogun.service.user.UserPresenceService;
 import com.example.pogun.repository.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -34,8 +32,6 @@ public class AdminSessionAuthenticationFilter extends OncePerRequestFilter {
     private final AdminPermissionService adminPermissionService;
     private final AdminPasskeyRepository adminPasskeyRepository;
     private final UserRepository userRepository;
-    private final UserPresenceService userPresenceService;
-    private final AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -96,14 +92,6 @@ public class AdminSessionAuthenticationFilter extends OncePerRequestFilter {
                 new UsernamePasswordAuthenticationToken(principal, token, authorities)
         );
         adminSessionTokenService.touch(session);
-        try {
-            if (user.getFirebaseUid() != null && !user.getFirebaseUid().isBlank()) {
-                userPresenceService.touchFromAuthenticationSafely(user.getFirebaseUid());
-                adminPresenceRealtimeService.publishByFirebaseUid(user.getFirebaseUid());
-            }
-        } catch (RuntimeException ignored) {
-            // presence update failure must not block admin API flow
-        }
         filterChain.doFilter(request, response);
     }
 }

@@ -10,8 +10,6 @@ import com.example.pogun.repository.admin.AdminPasskeyRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSessionTokenService;
-import com.example.pogun.service.presence.AdminPresenceRealtimeService;
-import com.example.pogun.service.user.UserPresenceService;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -31,7 +29,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,10 +43,6 @@ class AdminSessionAuthenticationFilterTest {
     private AdminPasskeyRepository adminPasskeyRepository;
     @Mock
     private UserRepository userRepository;
-    @Mock
-    private UserPresenceService userPresenceService;
-    @Mock
-    private AdminPresenceRealtimeService adminPresenceRealtimeService;
 
     @AfterEach
     void tearDown() {
@@ -69,9 +62,7 @@ class AdminSessionAuthenticationFilterTest {
                 adminSessionTokenService,
                 adminPermissionService,
                 adminPasskeyRepository,
-                userRepository,
-                userPresenceService,
-                adminPresenceRealtimeService
+                userRepository
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/admin/reports");
@@ -99,9 +90,7 @@ class AdminSessionAuthenticationFilterTest {
                 adminSessionTokenService,
                 adminPermissionService,
                 adminPasskeyRepository,
-                userRepository,
-                userPresenceService,
-                adminPresenceRealtimeService
+                userRepository
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/admin/reports");
@@ -111,8 +100,6 @@ class AdminSessionAuthenticationFilterTest {
         filter.doFilterInternal(request, response, new MockFilterChain());
 
         verify(adminSessionTokenService, never()).revoke(session);
-        verify(userPresenceService, times(1)).touchFromAuthenticationSafely("admin-firebase-uid");
-        verify(adminPresenceRealtimeService, times(1)).publishByFirebaseUid("admin-firebase-uid");
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
         assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
                 .extracting(Object::toString)
