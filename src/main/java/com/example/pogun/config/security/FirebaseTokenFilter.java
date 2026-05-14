@@ -18,7 +18,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 /**
  * 애플리케이션 설정을 담당하는 FirebaseTokenFilter이다.
@@ -80,7 +82,7 @@ FirebaseTokenFilter extends OncePerRequestFilter {
                     uid, idToken, resolveAuthorities(user));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 try {
-                    userPresenceService.touchFromAuthenticationSafely(uid);
+                    userPresenceService.touchFromAuthenticationSafely(uid, resolveRequestHost(request));
                 } catch (RuntimeException ignored) {
                     // presence 갱신 실패는 인증 실패가 아니므로 요청은 계속 처리한다.
                 }
@@ -133,5 +135,72 @@ FirebaseTokenFilter extends OncePerRequestFilter {
                 .orElse(UserRole.USER);
 
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+    }
+
+    private String resolveRequestHost(HttpServletRequest request) {
+        if (request == null) {
+            return "unknown-host";
+        }
+
+        String origin = trimToNull(request.getHeader("Origin"));
+        if (origin != null) {
+            String originHost = hostFromOrigin(origin);
+            if (originHost != null) {
+                return originHost;
+            }
+        }
+
+        String forwardedHost = firstHostHeader(request.getHeader("X-Forwarded-Host"));
+        if (forwardedHost != null) {
+            return stripPort(forwardedHost);
+        }
+
+        String hostHeader = firstHostHeader(request.getHeader("Host"));
+        if (hostHeader != null) {
+            return stripPort(hostHeader);
+        }
+
+        String serverName = trimToNull(request.getServerName());
+        return serverName != null ? serverName.toLowerCase(Locale.ROOT) : "unknown-host";
+    }
+
+    private String hostFromOrigin(String origin) {
+        try {
+            URI uri = URI.create(origin.trim());
+            String host = uri.getHost();
+            return host == null || host.isBlank() ? null : host.toLowerCase(Locale.ROOT);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private String firstHostHeader(String value) {
+        String raw = trimToNull(value);
+        if (raw == null) {
+            return null;
+        }
+        int commaIndex = raw.indexOf(',');
+        String first = commaIndex >= 0 ? raw.substring(0, commaIndex) : raw;
+        return trimToNull(first);
+    }
+
+    private String stripPort(String hostValue) {
+        String normalized = hostValue.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("[")) {
+            int end = normalized.indexOf(']');
+            if (end > 0) {
+                return normalized.substring(1, end);
+            }
+        }
+        int colon = normalized.indexOf(':');
+        return colon > 0 ? normalized.substring(0, colon) : normalized;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
