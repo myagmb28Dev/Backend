@@ -16,7 +16,7 @@ firebase-debug.log
 /uploads/
 node_modules/
 playwright/artifacts/
-
+.sisyphus/
 
 ### resources secrets ###
 src/main/resources/config/

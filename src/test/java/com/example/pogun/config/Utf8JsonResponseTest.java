@@ -1,6 +1,7 @@
 package com.example.pogun.config;
 
 import com.example.pogun.controller.common.GlobalExceptionHandler;
+import com.example.pogun.config.startup.StartupWarmupState;
 import com.example.pogun.config.web.WebMvcConfig;
 import com.example.pogun.controller.common.HealthController;
 import com.example.pogun.dto.common.ApiResponse;
@@ -33,7 +34,10 @@ class Utf8JsonResponseTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(), new TestApiController())
+        StartupWarmupState startupWarmupState = new StartupWarmupState();
+        startupWarmupState.markReady();
+
+        mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(startupWarmupState), new TestApiController())
                 .addFilters(new WebMvcConfig.Utf8JsonContentTypeFilter())
                 .setControllerAdvice(new GlobalExceptionHandler(), new WebMvcConfig.Utf8JsonResponseAdvice())
                 .setMessageConverters(jacksonConverter())
