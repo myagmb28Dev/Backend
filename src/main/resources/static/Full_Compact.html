@@ -56,7 +56,6 @@
       <div class="brand"><span>Pogun Admin</span><button id="menuBtn" class="hamburger" aria-label="menu">☰</button></div>
       <nav class="side" id="sideNav">
         <div class="nav-group">개요</div>
-        <button data-view="admin" data-short="A" aria-label="Admin" class="active"><span class="label">Admin</span></button>
         <button data-view="login" data-short="L" aria-label="Login"><span class="label">Login</span></button>
         <div class="nav-group">운영</div>
         <button data-view="notice" data-short="N" aria-label="Notice"><span class="label">실종 공고</span></button>
@@ -84,10 +83,7 @@
       </header>
 
       <main class="content">
-      <section id="view-admin" class="frame-wrap active">
-        <iframe data-view-frame="admin" data-src="/full_compact/pages/admin-flow.html" src="about:blank" title="admin"></iframe>
-      </section>
-      <section id="view-login" class="frame-wrap">
+      <section id="view-login" class="frame-wrap active">
         <iframe data-view-frame="login" data-src="/full_compact/pages/login-flow.html" src="about:blank" title="login"></iframe>
       </section>
       <section id="view-notice" class="frame-wrap">
@@ -119,7 +115,7 @@
     const backdrop = document.getElementById("menuBackdrop");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
     const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
-    const VIEWS = ["admin","login","notice","community","dm","notification","setting","shelter"];
+    const VIEWS = ["login","notice","community","dm","notification","setting","shelter"];
     const query = new URLSearchParams(window.location.search);
     const backendBaseOverride = (query.get("backendBase") || query.get("apiBase") || "").trim();
     if (backendBaseOverride) {
@@ -135,7 +131,7 @@
     const normalizeView = (view) => VIEWS.includes(view) ? view : null;
     const currentActiveView = () => {
       const active = document.querySelector("#sideNav button.active");
-      return normalizeView(active?.dataset?.view) || "admin";
+      return normalizeView(active?.dataset?.view) || "login";
     };
     const spinRefresh = (ms = 700) => {
       refreshBtn.classList.add("spinning");
@@ -180,7 +176,7 @@
       }
     };
     const activate = (view, options = {}) => {
-      const safeView = normalizeView(view) || "admin";
+      const safeView = normalizeView(view) || "login";
       navButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === safeView));
       VIEWS.forEach((k) => {
         document.getElementById(`view-${k}`).classList.toggle("active", k === safeView);
@@ -215,7 +211,7 @@
         activate(targetView, { refresh: false });
       }
     });
-    const initialView = normalizeView(query.get("view")) || "admin";
+    const initialView = normalizeView(query.get("view")) || "login";
     activate(initialView, { refresh: false });
   </script>
 </body>

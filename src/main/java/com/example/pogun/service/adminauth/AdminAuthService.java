@@ -119,49 +119,6 @@ public class AdminAuthService {
         return buildLoginResponse(admin, request, false);
     }
 
-    @Transactional
-    public AdminLoginResponse loginLocalTestAdmin(String email, boolean forcePasskeyEnroll, HttpServletRequest request) {
-        if (email == null || email.isBlank()) {
-            throw ApiException.badRequest("INVALID_EMAIL", "email은 필수입니다.");
-        }
-
-        User admin = userRepository.findByEmail(email.trim())
-                .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
-
-        if (admin.getStatus() != UserStatus.ACTIVE) {
-            admin.setStatus(UserStatus.ACTIVE);
-        }
-        admin.setRole(UserRole.ADMIN);
-        admin.setAdminEmailVerificationRequired(false);
-        admin.setAdminEmailVerifiedAt(Instant.now());
-        admin.setAdminEmailVerificationSentAt(null);
-        admin = userRepository.save(admin);
-
-        adminPermissionService.ensureDefaults(admin);
-        var permissions = adminPermissionService.getPermissions(admin);
-
-        if (forcePasskeyEnroll) {
-            adminPasskeyRepository.deleteByUser(admin);
-        }
-
-        AdminSessionTokenService.IssuedSession issuedSession = adminSessionTokenService.issue(
-                admin,
-                AdminSessionStage.PASSKEY_ENROLL,
-                adminConsoleProperties.getBootstrapSessionTtlSeconds()
-        );
-        AdminAuthSessionResponse sessionResponse = toSessionResponse(
-                issuedSession.rawToken(),
-                issuedSession.session(),
-                permissions
-        );
-        return new AdminLoginResponse(
-                "PASSKEY_REGISTRATION_REQUIRED",
-                true,
-                sessionResponse,
-                null
-        );
-    }
-
     private boolean isGoogleSignIn(FirebaseIdentityService.FirebaseIdentity identity) {
         if (identity == null) {
             return false;

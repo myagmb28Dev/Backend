@@ -27,6 +27,9 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+  web:
+    resources:
+      add-mappings: true
   jpa:
     open-in-view: false
     hibernate:
@@ -142,4 +145,7 @@ spring:
   data:
     redis:
       host: redis
+  web:
+    resources:
+      add-mappings: false
 

@@ -91,7 +91,7 @@
       <h2>로그인</h2>
       <p id="accountHint" class="muted">로그인해주세요.</p>
       <div class="actions">
-        <button id="playwrightLoginButton" type="button" style="display:none;">Playwright1 로컬 로그인</button>
+        <button id="playwrightLoginButton1" type="button" style="display:none;">Playwright1 로컬 로그인</button>
         <button id="googleLoginButton" type="button">Google로 로그인</button>
         <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
         <button id="refreshLoginButton" type="button" class="secondary small">Refresh</button>
@@ -166,9 +166,8 @@ import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/
     const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const redirectPath = (query.get("redirect") || "").trim();
 const REAL_ROLE = "google";
-const IS_LOCAL_AUTH_FLOW = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-const LOCAL_AUTH_PROJECT_ID = "pogun-local";
-const DEFAULT_USER_LABEL = IS_LOCAL_AUTH_FLOW ? "로컬 사용자" : "Google 사용자";
+const IS_LOCAL_HOST = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+const DEFAULT_USER_LABEL = "Google 사용자";
 const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
 let auth = null;
 let firebaseUser = null;
@@ -192,7 +191,9 @@ const BACKEND_LOGIN_TIMEOUT_MS = 60000;
 const BACKEND_SYNC_DEBOUNCE_MS = 12000;
 const DEFAULT_LOCATION = { x: 127.1086228, y: 37.4012191 };
 const LOCAL_AUTH_EMULATOR_BASE = "http://127.0.0.1:9099";
-const LOCAL_PLAYWRIGHT_USER = { email: "playwright-user1@local.dev", password: "Test1234!" };
+const LOCAL_PLAYWRIGHT_USERS = {
+  user1: { email: "playwright-user1@local.dev", password: "Test1234!", label: "Playwright1" }
+};
 const users = { [REAL_ROLE]: { label: DEFAULT_USER_LABEL, email: "", token: null, userId: null, registrationStatus: null } };
 let lastBackendSyncToken = "";
 let lastBackendSyncAt = 0;
@@ -222,10 +223,10 @@ function renderSession() {
     : pendingUser
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
-  el("googleLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "none" : "";
-  el("playwrightLoginButton").style.display = IS_LOCAL_AUTH_FLOW ? "" : "none";
-  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || Boolean(activeRole || pendingOnboardingRole);
+  el("googleLoginButton").style.display = "";
+  el("playwrightLoginButton1").style.display = IS_LOCAL_HOST ? "" : "none";
+  el("googleLoginButton").disabled = googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton1").disabled = !IS_LOCAL_HOST || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
   el("refreshLoginButton").disabled = Boolean(sessionResyncPromise);
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
@@ -233,8 +234,8 @@ function renderSession() {
 }
 
 function setLoginButtonsBusy(isBusy) {
-  el("googleLoginButton").disabled = IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
-  el("playwrightLoginButton").disabled = !IS_LOCAL_AUTH_FLOW || isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("googleLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("playwrightLoginButton1").disabled = !IS_LOCAL_HOST || isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = isBusy || !currentSession;
   el("refreshLoginButton").disabled = false;
 }
@@ -248,17 +249,6 @@ function saveSession(session) {
 
 function saveSessionStore(session) {
   saveStoredSession(REAL_SESSION_KEY, session);
-}
-
-function tokenAudience(token) {
-  try {
-    const payloadSegment = String(token || "").split(".")[1] || "";
-    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return JSON.parse(atob(padded)).aud || "";
-  } catch {
-    return "";
-  }
 }
 
 function clearSession() {
@@ -286,13 +276,11 @@ async function performLogout() {
       // Local cleanup below is still the source of truth for the static pages.
     }
   }
-  if (!IS_LOCAL_AUTH_FLOW) {
-    try {
-      if (!auth) await loadFirebaseAuth();
-      await firebaseAuthFns?.signOut(auth);
-    } catch {
-      // Firebase can already be signed out or unavailable; clear local state anyway.
-    }
+  try {
+    if (!auth) await loadFirebaseAuth();
+    await firebaseAuthFns?.signOut(auth);
+  } catch {
+    // Firebase can already be signed out or unavailable; clear local state anyway.
   }
   clearSession();
   try {
@@ -306,10 +294,6 @@ function restoreSession() {
   try {
     const parsed = loadStoredSession(REAL_SESSION_KEY);
     if (!parsed) return null;
-    if (IS_LOCAL_AUTH_FLOW && tokenAudience(parsed.firebaseIdToken) !== LOCAL_AUTH_PROJECT_ID) {
-      clearSession();
-      return null;
-    }
     currentSession = parsed;
     users[REAL_ROLE] = {
       label: parsed.nickname || parsed.email || DEFAULT_USER_LABEL,
@@ -349,7 +333,6 @@ function resolveTargetView() {
     if (redirect.includes("/dm-flow")) return "dm";
     if (redirect.includes("/notification-flow")) return "notification";
     if (redirect.includes("/shelter-flow")) return "shelter";
-    if (redirect.includes("/admin-flow")) return "admin";
     if (redirect.includes("/login-flow")) return "login";
     if (redirect.includes("/notice-flow")) return "notice";
   }
@@ -373,7 +356,6 @@ function openTargetView(view = resolveTargetView()) {
   if (fallback === "dm") window.location.href = "/full_compact/pages/dm-flow.html";
   else if (fallback === "notification") window.location.href = "/full_compact/pages/notification-flow.html";
   else if (fallback === "shelter") window.location.href = "/full_compact/pages/shelter-flow.html";
-  else if (fallback === "admin") window.location.href = "/full_compact/pages/admin-flow.html";
   else if (fallback === "login") window.location.href = "/full_compact/pages/login-flow.html";
   else window.location.href = "/full_compact/pages/notice-flow.html";
 }
@@ -383,7 +365,6 @@ async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
   const now = Date.now();
   const isStableLoggedIn = Boolean(currentSession?.userId && activeRole === REAL_ROLE && pendingOnboardingRole == null);
   if (
-    !IS_LOCAL_AUTH_FLOW &&
     isStableLoggedIn &&
     token &&
     token === lastBackendSyncToken &&
@@ -404,7 +385,7 @@ async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
 
   let response = await loginRequest(token);
   // 오래된/폐기 토큰이면 1회 강제 갱신해서 재시도
-  if (!IS_LOCAL_AUTH_FLOW && response.status === 401 && auth?.currentUser) {
+  if (response.status === 401 && auth?.currentUser) {
     try {
       const refreshedToken = await auth.currentUser.getIdToken(true);
       if (refreshedToken && refreshedToken !== token) {
@@ -417,7 +398,7 @@ async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
   }
 
   if (response.status !== 200) {
-    if (!IS_LOCAL_AUTH_FLOW && response.status === 401) {
+    if (response.status === 401) {
       const refreshedSession = await refreshFirebaseSession(REAL_SESSION_KEY, BACKEND_BASE);
       if (refreshedSession?.firebaseIdToken) {
         response = await loginRequest(refreshedSession.firebaseIdToken);
@@ -427,7 +408,7 @@ async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
   }
 
   if (response.status !== 200) {
-    if (!IS_LOCAL_AUTH_FLOW && response.status === 401 && auth?.currentUser) {
+    if (response.status === 401 && auth?.currentUser) {
       try { await firebaseAuthFns?.signOut(auth); } catch {}
     }
     clearSession();
@@ -478,38 +459,39 @@ async function postJson(url, body) {
   return { ok: response.ok, status: response.status, body: parsed, text };
 }
 
-async function signInLocalPlaywrightUser() {
-  if (!IS_LOCAL_AUTH_FLOW) {
+async function signInLocalPlaywrightUser(userKey) {
+  if (!IS_LOCAL_HOST) {
     throw new Error("Playwright 로컬 로그인은 localhost에서만 사용할 수 있습니다.");
   }
-  setStatus("Playwright1 로컬 계정 로그인 중...");
+  const target = LOCAL_PLAYWRIGHT_USERS[userKey];
+  if (!target) {
+    throw new Error("지원하지 않는 로컬 계정입니다.");
+  }
+  setStatus(`${target.label} 로컬 계정 로그인 중...`);
   const response = await postJson(
     `${LOCAL_AUTH_EMULATOR_BASE}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
     {
-      email: LOCAL_PLAYWRIGHT_USER.email,
-      password: LOCAL_PLAYWRIGHT_USER.password,
+      email: target.email,
+      password: target.password,
       returnSecureToken: true
     }
   );
   if (!response.ok || !response.body?.idToken) {
-    throw new Error(`Playwright1 로컬 로그인 실패: ${response.body?.error?.message || response.status}`);
+    throw new Error(`${target.label} 로컬 로그인 실패: ${response.body?.error?.message || response.status}`);
   }
   if (response.body.refreshToken) {
     setRefreshToken(response.body.refreshToken);
   }
   await syncBackendLogin(response.body.idToken, {
     uid: response.body.localId || "",
-    email: LOCAL_PLAYWRIGHT_USER.email,
-    displayName: "Playwright1",
+    email: target.email,
+    displayName: target.label,
     photoURL: "",
     refreshToken: response.body.refreshToken || ""
   });
 }
 
 async function loadFirebaseAuth() {
-  if (IS_LOCAL_AUTH_FLOW) {
-    throw new Error("로컬 디버그에서는 Google 로그인을 사용하지 않습니다. Playwright1 로컬 로그인을 사용하세요.");
-  }
   if (auth) return auth;
   const { FIREBASE_WEB_CONFIG } = await import("/js/firebase-web-config.js");
   const config = FIREBASE_WEB_CONFIG;
@@ -589,7 +571,7 @@ async function handleFirebaseUser(user, forceRefresh = false, options = {}) {
       }
       await syncBackendLogin(token, user, { navigate: shouldNavigate });
     } catch (error) {
-      if (!IS_LOCAL_AUTH_FLOW && auth) {
+      if (auth) {
         try { await firebaseAuthFns?.signOut(auth); } catch {}
       }
       clearSession();
@@ -605,11 +587,6 @@ async function handleFirebaseUser(user, forceRefresh = false, options = {}) {
 async function resyncAuthenticatedSession(forceRefresh = false) {
   if (sessionResyncPromise) return sessionResyncPromise;
   sessionResyncPromise = (async () => {
-    if (IS_LOCAL_AUTH_FLOW) {
-      restoreSession();
-      renderSession();
-      return;
-    }
     if (!auth) {
       await loadFirebaseAuth();
     }
@@ -795,10 +772,8 @@ function run(handler) {
 }
 
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
-if (!IS_LOCAL_AUTH_FLOW) {
-  el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
-}
-el("playwrightLoginButton").addEventListener("click", run(signInLocalPlaywrightUser));
+el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+el("playwrightLoginButton1").addEventListener("click", run(() => signInLocalPlaywrightUser("user1")));
 el("refreshLoginButton").addEventListener("click", run(async () => {
   const button = el("refreshLoginButton");
   if (button.disabled) return;
@@ -833,12 +808,6 @@ renderSession();
 setStatus("로그인해주세요.");
 
 run(async () => {
-  if (IS_LOCAL_AUTH_FLOW) {
-    restoreSession();
-    renderSession();
-    setStatus("로컬 디버그에서는 Playwright1 로컬 로그인을 사용하세요.");
-    return;
-  }
   await loadFirebaseAuth();
   try {
     const result = await firebaseAuthFns.getRedirectResult(auth);

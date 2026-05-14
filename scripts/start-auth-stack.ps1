@@ -7,13 +7,17 @@ param(
     [int]$AuthPort = 9099,
     [int]$BackendPort = 8081,
     [int]$UiPort = 4000,
-    [int]$TimeoutSeconds = 180,
+    [int]$TimeoutSeconds = 30,
+    [int]$StartupTimeoutSec = 45,
+    [string]$HealthPath = "/health",
     [string]$SpringProfile = "",
+    [switch]$FailFast = $true,
     [switch]$ElevateGradle,
     [switch]$NoDocker,
     [string[]]$DockerServices = @("redis"),
     [switch]$NoAutoOpen,
-    [switch]$NoKeepAlive
+    [switch]$NoKeepAlive = $true,
+    [switch]$WaitForEnd
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +35,22 @@ function Set-PogunWindowTitle {
 
 $localDir = Join-Path $repoRoot ".local"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
+$lockFile = Join-Path $localDir "start-auth-stack.lock"
+
+function Write-Step {
+    param([string]$Name)
+    Write-Host ("STEP=" + $Name)
+}
+
+if (Test-Path $lockFile) {
+    throw "Another start-auth-stack run appears active: $lockFile"
+}
+New-Item -ItemType File -Force -Path $lockFile | Out-Null
+trap {
+    Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+    Write-Error ("start-auth-stack failed: " + $_.Exception.Message)
+    throw $_
+}
 
 function Get-ExecutablePath {
     param([string[]]$Names)
@@ -189,7 +209,7 @@ function Wait-TcpPort {
         if ($Process -and $Process.HasExited) {
             throw "$Name process exited before port $Port became ready. Check the visible $Name window."
         }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 500
     }
     throw "$Name did not become ready on port $Port within $TimeoutSec seconds."
 }
@@ -204,7 +224,7 @@ function Wait-BackendHealth {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         try {
-            $response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 3
+            $response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$Port$HealthPath" -TimeoutSec 3
             if ($response.status -eq 200 -or $response.ok -eq $true) {
                 return
             }
@@ -213,9 +233,9 @@ function Wait-BackendHealth {
         if ($Process -and $Process.HasExited) {
             throw "Spring Boot backend process exited before health became ready. Check the visible backend window."
         }
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
     }
-    throw "Spring Boot backend health did not become ready on port $Port within $TimeoutSec seconds."
+    throw "Spring Boot backend health did not become ready on port $Port ($HealthPath) within $TimeoutSec seconds."
 }
 
 function Ensure-PortReadyWithRetry {
@@ -355,6 +375,29 @@ function Invoke-BackendRequest {
         $params["Body"] = ($Body | ConvertTo-Json)
     }
     return Invoke-RestMethod @params
+}
+
+function Preflight-Check {
+    Write-Step "preflight"
+    $checks = @(
+        @{ Name = "java"; Cmd = { cmd /c "java -version >nul 2>&1" } },
+        @{ Name = "gradle-wrapper"; Cmd = { cmd /c ".\gradlew.bat -v >nul 2>&1" } },
+        @{ Name = "psql"; Cmd = { cmd /c "psql --version >nul 2>&1" } }
+    )
+    foreach ($check in $checks) {
+        try {
+            $global:LASTEXITCODE = 0
+            & $check.Cmd
+            if ($LASTEXITCODE -ne 0) {
+                throw "$($check.Name) check failed"
+            }
+        } catch {
+            if ($FailFast) {
+                throw "Preflight failed: $($check.Name). $($_.Exception.Message)"
+            }
+            Write-Warning "Preflight warning: $($check.Name) failed."
+        }
+    }
 }
 
 function Ensure-GradleWrapperReady {
@@ -498,6 +541,7 @@ if ($Mode -eq "local") {
 }
 
 if (-not $NoDocker -and $Mode -eq "local") {
+    Write-Step "redis"
     $composePath = Join-Path $repoRoot "docker-compose.yml"
     $composeEnvPath = Join-Path $repoRoot ".env.local"
     if (-not (Test-Path $composeEnvPath)) {
@@ -518,7 +562,10 @@ if (-not $NoDocker -and $Mode -eq "local") {
     }
 }
 
+Preflight-Check
+
 if ($Mode -eq "real") {
+    Write-Step "backend_start"
     Set-PogunWindowTitle -Title "Pogun Backend Real"
     Set-Location $repoRoot
     Remove-Item Env:FIREBASE_AUTH_EMULATOR_HOST -ErrorAction SilentlyContinue
@@ -531,6 +578,7 @@ if ($Mode -eq "real") {
     Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue
 
     & ".\gradlew.bat" bootRun
+    Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
     exit $LASTEXITCODE
 }
 
@@ -543,6 +591,7 @@ New-Item -ItemType Directory -Force -Path $env:XDG_CONFIG_HOME | Out-Null
 $firebaseExe = Get-ExecutablePath -Names @("firebase.cmd")
 
 Ensure-PortReadyWithRetry -Port $AuthPort -Name "Firebase Auth Emulator" -TimeoutSec $TimeoutSeconds -StartAction {
+    Write-Step "auth_emulator_start"
     $emulatorCommand = @(
         "`$env:XDG_CONFIG_HOME = '$($env:XDG_CONFIG_HOME)'",
         "& `"$firebaseExe`" emulators:start --only auth --project $ProjectId"
@@ -560,7 +609,7 @@ $backendCommand = @(
     "`$env:SERVER_PORT = '$BackendPort'",
     "Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue",
     "`$env:SPRING_PROFILES_ACTIVE = '$SpringProfile'",
-    "`$env:APP_FIREBASE_AUTH_MODE = 'EMULATOR'",
+    "`$env:APP_FIREBASE_AUTH_MODE = 'PRODUCTION'",
     "`$env:APP_FIREBASE_AUTH_ALLOW_EMULATOR = 'true'",
     "`$env:APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID = '$ProjectId'",
     "`$env:FIREBASE_PROJECT_ID = '$ProjectId'",
@@ -578,7 +627,9 @@ $backendCommand = @(
 
 $backendProcess = Start-DetachedPowerShell -Title "Pogun Backend Local" -CommandText $backendCommand -RunAsAdmin:$ElevateGradle
 
-Wait-BackendHealth -Port $BackendPort -TimeoutSec $TimeoutSeconds -Process $backendProcess
+Write-Step "health_wait"
+Wait-BackendHealth -Port $BackendPort -TimeoutSec $StartupTimeoutSec -Process $backendProcess
+Write-Step "ready"
 
 $authTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
 $idToken = $authTokenResponse.idToken
@@ -674,3 +725,17 @@ if (-not $NoKeepAlive) {
         }
     }
 }
+
+if ($WaitForEnd) {
+    Write-Host ""
+    Write-Host "Type 'end' and press Enter to stop backend on port $BackendPort." -ForegroundColor Cyan
+    while ($true) {
+        $command = Read-Host "command"
+        if ($null -ne $command -and $command.Trim().ToLowerInvariant() -eq "end") {
+            Stop-ProcessesListeningOnPort -Port $BackendPort -Name "backend"
+            break
+        }
+    }
+}
+
+Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
