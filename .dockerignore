@@ -9,3 +9,4 @@
 !build/libs/
 !build/libs/app.jar
 !scripts/healthcheck-adaptive.sh
+!scripts/docker-entrypoint.sh
