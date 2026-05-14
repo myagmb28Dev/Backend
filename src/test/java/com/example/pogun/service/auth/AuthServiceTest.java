@@ -17,6 +17,7 @@ import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,6 +74,9 @@ class AuthServiceTest {
     @Mock
     private NoticeChatService noticeChatService;
 
+    @Mock
+    private HttpServletRequest httpServletRequest;
+
     @InjectMocks
     private AuthService authService;
 
@@ -102,7 +106,7 @@ class AuthServiceTest {
             return pending;
         });
 
-        AuthResponse response = authService.loginOrSignUp("id-token");
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
 
         assertThat(response.registrationStatus()).isEqualTo("PENDING_ONBOARDING");
         assertThat(response.id()).isNull();
@@ -162,7 +166,7 @@ class AuthServiceTest {
         assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
         assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
-        verify(userPresenceService).touchFromAuthenticationSafely("firebase-uid");
+        verify(userPresenceService).touchFromAuthenticationSafely("firebase-uid", null);
         verify(pendingSocialSignupRepository).delete(pending);
     }
 
@@ -219,7 +223,7 @@ class AuthServiceTest {
         when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
         when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
 
-        authService.loginOrSignUp("id-token");
+        authService.loginOrSignUp("id-token", httpServletRequest);
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
@@ -252,13 +256,13 @@ class AuthServiceTest {
         when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
         when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
 
-        AuthResponse response = authService.loginAdmin("admin-token");
+        AuthResponse response = authService.loginAdmin("admin-token", httpServletRequest);
 
         assertThat(response.id()).isEqualTo(admin.getId());
         assertThat(response.role()).isEqualTo("ADMIN");
         assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
         assertThat(response.provider()).isEqualTo("EMAIL");
-        verify(userPresenceService).touchFromAuthenticationSafely("admin-uid");
+        verify(userPresenceService).touchFromAuthenticationSafely("admin-uid", "unknown-host");
     }
 
     @Test
@@ -284,7 +288,7 @@ class AuthServiceTest {
         when(firebaseIdentityService.verifyIdToken("user-token")).thenReturn(identity);
         when(userRepository.findByFirebaseUid("user-uid")).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> authService.loginAdmin("user-token"))
+        assertThatThrownBy(() -> authService.loginAdmin("user-token", httpServletRequest))
                 .hasMessageContaining("관리자 계정만 로그인할 수 있습니다.");
     }
 }
