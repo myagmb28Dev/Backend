@@ -89,6 +89,20 @@ class UserPresenceServiceTest {
     }
 
     @Test
+    void snapshotTreatsGlobalSessionOlderThanOfflineThresholdAsOffline() {
+        InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
+        UserPresenceService service = new UserPresenceService(userRepository, store);
+        User user = user("quick-offline-user");
+
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(30));
+
+        UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
+
+        assertThat(snapshot.availabilityStatus()).isEqualTo(UserAvailabilityStatus.OFFLINE);
+        assertThat(snapshot.actualConnectionState()).isEqualTo("disconnected");
+    }
+
+    @Test
     void webSocketDisconnectDoesNotForceOfflineWhenGlobalSessionIsFresh() {
         InMemoryPresenceSessionStore store = new InMemoryPresenceSessionStore();
         UserPresenceService service = new UserPresenceService(userRepository, store);
