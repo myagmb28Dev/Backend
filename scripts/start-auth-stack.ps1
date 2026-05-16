@@ -498,14 +498,6 @@ function Ensure-BackendUserReady {
     return Invoke-BackendRequest -Path "/api/auth/login" -Method "Post" -Body @{ firebaseIdToken = $Token }
 }
 
-function Bootstrap-LocalAdmin {
-    param([string]$TargetEmail)
-    return Invoke-BackendRequest -Path "/api/admin/auth/local/login" -Method "Post" -Body @{
-        localTestEmail = $TargetEmail
-        forcePasskeyEnroll = $true
-    }
-}
-
 function Write-TokenArtifacts {
     param(
         [string]$Token,
@@ -647,17 +639,6 @@ $playwrightAccounts = @(
     @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" }
 )
 
-$legacyFiles = @(
-    (Join-Path $localDir "firebase-id-token.txt"),
-    (Join-Path $localDir "authorization-header.txt"),
-    (Join-Path $localDir "login-request.json")
-)
-foreach ($legacyFile in $legacyFiles) {
-    if (Test-Path $legacyFile) {
-        Remove-Item $legacyFile -Force
-    }
-}
-
 Write-TokenArtifacts -Token $idToken -RefreshToken $refreshToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json" -RefreshTokenFileName "emulator-refresh-token.txt"
 
 foreach ($account in $playwrightAccounts) {
@@ -671,13 +652,6 @@ foreach ($account in $playwrightAccounts) {
         Ensure-BackendUserReady -Token $accountToken | Out-Null
     } catch {
         Write-Warning "Backend bootstrap failed for $($account.Email). Continuing without onboarding bootstrap."
-    }
-    if ($account.Index -eq 1) {
-        try {
-            Bootstrap-LocalAdmin -TargetEmail $account.Email | Out-Null
-        } catch {
-            Write-Warning "Local admin bootstrap failed for $($account.Email). Continuing without admin bootstrap."
-        }
     }
     Write-TokenArtifacts `
         -Token $accountToken `
