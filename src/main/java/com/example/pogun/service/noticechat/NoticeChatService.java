@@ -40,6 +40,7 @@ import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
+import com.example.pogun.service.user.LocalTestUserLabel;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -1224,25 +1225,11 @@ public class NoticeChatService {
         if (user.getStatus() == UserStatus.BANNED) {
             return "이용 제한 사용자";
         }
-        String testLabel = testUserLabel(user);
+        String testLabel = LocalTestUserLabel.displayNameFromEmail(user.getEmail()).orElse(null);
         if (testLabel != null) {
             return testLabel;
         }
         return user.getNickname();
-    }
-
-    private String testUserLabel(User user) {
-        if (user.getEmail() == null) {
-            return null;
-        }
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("^(?:dm-user|playwright-user)(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
-                .matcher(user.getEmail());
-        if (!matcher.matches()) {
-            return null;
-        }
-        int number = Integer.parseInt(matcher.group(1));
-        return number >= 1 && number <= 10 ? "유저 " + number : null;
     }
 
     private NoticeChatMessage resolveReplyTarget(UUID replyToMessageId, NoticeChatRoom room) {

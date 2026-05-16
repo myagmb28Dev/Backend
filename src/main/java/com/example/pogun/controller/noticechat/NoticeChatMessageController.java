@@ -1,7 +1,6 @@
 package com.example.pogun.controller.noticechat;
 
-import com.example.pogun.config.StompAuthChannelInterceptor;
-import com.example.pogun.config.WebSocketPrincipal;
+import com.example.pogun.config.websocket.StompPrincipalResolver;
 import com.example.pogun.dto.noticechat.NoticeChatMessageRequest;
 import com.example.pogun.dto.noticechat.NoticeChatReadRequest;
 import com.example.pogun.dto.noticechat.NoticeChatRoomEventRequest;
@@ -16,7 +15,6 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
-import java.util.Map;
 /**
  * HTTP/WebSocket 진입점을 담당하는 NoticeChatMessageController이다.
  */
@@ -31,7 +29,7 @@ public class NoticeChatMessageController {
     public void send(@Valid @Payload NoticeChatMessageRequest request,
                      Principal principal,
                      SimpMessageHeaderAccessor headerAccessor) {
-        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        Principal resolvedPrincipal = StompPrincipalResolver.resolve(principal, headerAccessor);
         log.debug("웹소켓 SEND 수신 destination=/app/chat/send principal={} roomId={}",
                 resolvedPrincipal != null ? resolvedPrincipal.getName() : "anonymous",
                 request.getRoomId());
@@ -60,7 +58,7 @@ public class NoticeChatMessageController {
     public void typing(@Valid @Payload NoticeChatTypingRequest request,
                        Principal principal,
                        SimpMessageHeaderAccessor headerAccessor) {
-        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        Principal resolvedPrincipal = StompPrincipalResolver.resolve(principal, headerAccessor);
         log.debug("웹소켓 SEND 수신 destination=/app/chat/typing principal={} roomId={} isTyping={}",
                 resolvedPrincipal != null ? resolvedPrincipal.getName() : "anonymous",
                 request.getRoomId(),
@@ -73,7 +71,7 @@ public class NoticeChatMessageController {
     public void enter(@Valid @Payload NoticeChatRoomEventRequest request,
                       Principal principal,
                       SimpMessageHeaderAccessor headerAccessor) {
-        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        Principal resolvedPrincipal = StompPrincipalResolver.resolve(principal, headerAccessor);
         noticeChatService.enterRoom(resolvedPrincipal, request);
     }
 
@@ -81,7 +79,7 @@ public class NoticeChatMessageController {
     public void leave(@Valid @Payload NoticeChatRoomEventRequest request,
                       Principal principal,
                       SimpMessageHeaderAccessor headerAccessor) {
-        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        Principal resolvedPrincipal = StompPrincipalResolver.resolve(principal, headerAccessor);
         noticeChatService.leaveSocketRoom(resolvedPrincipal, request);
     }
 
@@ -89,22 +87,7 @@ public class NoticeChatMessageController {
     public void read(@Payload NoticeChatReadRequest request,
                      Principal principal,
                      SimpMessageHeaderAccessor headerAccessor) {
-        Principal resolvedPrincipal = resolvePrincipal(principal, headerAccessor);
+        Principal resolvedPrincipal = StompPrincipalResolver.resolve(principal, headerAccessor);
         noticeChatService.markRoomAsRead(resolvedPrincipal, request);
-    }
-
-    private Principal resolvePrincipal(Principal principal, SimpMessageHeaderAccessor headerAccessor) {
-        if (principal != null && principal.getName() != null && !principal.getName().isBlank() && !"anonymousUser".equals(principal.getName())) {
-            return principal;
-        }
-        Map<String, Object> sessionAttributes = headerAccessor.getSessionAttributes();
-        if (sessionAttributes == null) {
-            return principal;
-        }
-        Object firebaseUid = sessionAttributes.get(StompAuthChannelInterceptor.SESSION_FIREBASE_UID);
-        if (firebaseUid instanceof String uid && !uid.isBlank()) {
-            return new WebSocketPrincipal(uid);
-        }
-        return principal;
     }
 }

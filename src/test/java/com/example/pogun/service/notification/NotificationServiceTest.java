@@ -9,6 +9,7 @@ import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
@@ -281,11 +282,9 @@ class NotificationServiceTest {
                 eq(user), eq("WEB"), eq("device-1"), eq("token-1")
         )).thenReturn(2);
 
-        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(Map.of(
-                "token", "token-1",
-                "platform", "WEB",
-                "deviceId", "device-1"
-        ));
+        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(
+                fcmTokenRequest("token-1", "WEB", "device-1")
+        );
 
         assertThat(response.active()).isTrue();
         verify(userFcmTokenRepository).deactivateActiveTokensForSameDeviceExcludingCurrent(
@@ -307,10 +306,9 @@ class NotificationServiceTest {
             return token;
         });
 
-        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(Map.of(
-                "token", "token-2",
-                "platform", "WEB"
-        ));
+        NotificationFcmTokenResponse response = notificationService.upsertFcmToken(
+                fcmTokenRequest("token-2", "WEB", null)
+        );
 
         assertThat(response.active()).isTrue();
         verify(userFcmTokenRepository, never()).deactivateActiveTokensForSameDeviceExcludingCurrent(
@@ -447,5 +445,13 @@ class NotificationServiceTest {
                 .email(nickname + "@test.dev")
                 .nickname(nickname)
                 .build();
+    }
+
+    private NotificationFcmTokenRequest fcmTokenRequest(String token, String platform, String deviceId) {
+        NotificationFcmTokenRequest request = new NotificationFcmTokenRequest();
+        request.setToken(token);
+        request.setPlatform(platform);
+        request.setDeviceId(deviceId);
+        return request;
     }
 }

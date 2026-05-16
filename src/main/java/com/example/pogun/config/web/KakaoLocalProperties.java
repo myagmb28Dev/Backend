@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.web;
 
 import lombok.Getter;
 import lombok.Setter;

@@ -1,5 +1,6 @@
-package com.example.pogun.config;
+package com.example.pogun.config.noticechat;
 
+import com.example.pogun.config.websocket.StompAuthChannelInterceptor;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.extern.slf4j.Slf4j;

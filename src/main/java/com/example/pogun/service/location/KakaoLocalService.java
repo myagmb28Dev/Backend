@@ -1,6 +1,6 @@
 package com.example.pogun.service.location;
 
-import com.example.pogun.config.KakaoLocalProperties;
+import com.example.pogun.config.web.KakaoLocalProperties;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.location.RegionResponse;
 import org.springframework.http.HttpHeaders;

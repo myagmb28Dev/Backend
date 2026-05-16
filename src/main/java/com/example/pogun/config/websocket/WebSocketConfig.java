@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.websocket;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.config.ChannelRegistration;

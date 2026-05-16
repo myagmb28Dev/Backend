@@ -2382,12 +2382,6 @@ el("imageInput").addEventListener("change", (event) => {
   enqueueSelectedFiles(selected);
   input.value = "";
 });
-el("messageInput").addEventListener("paste", (event) => {
-  const files = extractClipboardFiles(event.clipboardData);
-  if (files.length === 0) return;
-  event.preventDefault();
-  enqueueSelectedFiles(files);
-});
 function extractClipboardFiles(clipboardData) {
   if (!clipboardData) return [];
   const items = [...(clipboardData.items || [])];

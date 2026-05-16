@@ -91,7 +91,7 @@ public class NotificationController {
     @Operation(summary = "FCM 토큰 갱신", description = "사용자의 FCM 토큰을 갱신합니다.")
     public ResponseEntity<ApiResponse<NotificationFcmTokenResponse>> upsertFcmToken(@Valid @RequestBody NotificationFcmTokenRequest request) {
         // 같은 사용자의 여러 디바이스를 구분할 수 있게 token 외에 platform/deviceId도 함께 갱신한다.
-        NotificationFcmTokenResponse data = notificationService.upsertFcmToken(request.toRequestMap());
+        NotificationFcmTokenResponse data = notificationService.upsertFcmToken(request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "FCM 토큰 갱신 성공", data));
     }
 

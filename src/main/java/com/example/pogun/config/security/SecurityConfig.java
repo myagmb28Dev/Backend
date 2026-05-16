@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.security;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;

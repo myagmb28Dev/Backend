@@ -1,6 +1,7 @@
 package com.example.pogun.service.notification;
 
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
+import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
@@ -175,15 +176,15 @@ public class NotificationService {
 
     // FCM token 자체를 기준으로 upsert 해서 같은 기기 재설치나 사용자 재로그인 상황에서도 최신 메타데이터를 유지한다.
     @Transactional
-    public NotificationFcmTokenResponse upsertFcmToken(Map<String, String> request) {
+    public NotificationFcmTokenResponse upsertFcmToken(NotificationFcmTokenRequest request) {
         User user = getCurrentUser();
-        String token = trimToNull(request.get("token"));
+        String token = trimToNull(request == null ? null : request.getToken());
         if (token == null) {
             throw ApiException.badRequest("MISSING_FCM_TOKEN", "FCM token은 필수입니다.");
         }
 
-        String platform = trimToNull(request.getOrDefault("platform", "ANDROID"));
-        String deviceId = trimToNull(request.get("deviceId"));
+        String platform = Objects.requireNonNullElse(trimToNull(request.getPlatform()), "ANDROID");
+        String deviceId = trimToNull(request.getDeviceId());
 
         UserFcmToken fcmToken = userFcmTokenRepository.findByToken(token)
                 .orElseGet(() -> userFcmTokenRepository

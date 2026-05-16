@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.websocket;
 
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;

@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.websocket;
 
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;

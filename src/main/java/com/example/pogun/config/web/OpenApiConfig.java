@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.web;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;

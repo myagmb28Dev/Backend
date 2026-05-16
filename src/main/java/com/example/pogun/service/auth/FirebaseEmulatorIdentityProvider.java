@@ -1,6 +1,6 @@
 package com.example.pogun.service.auth;
 
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

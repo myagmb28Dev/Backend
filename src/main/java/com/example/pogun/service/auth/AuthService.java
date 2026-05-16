@@ -1,7 +1,7 @@
 package com.example.pogun.service.auth;
 
 import com.example.pogun.config.web.RequestHostResolver;
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
@@ -19,6 +19,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.user.LocalTestUserLabel;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
@@ -35,8 +36,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 /**
  * 도메인 비즈니스 로직을 담당하는 AuthService이다.
  */
@@ -46,7 +45,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final Pattern LOCAL_TEST_EMAIL_PATTERN = Pattern.compile("^(?:dm-user|playwright-user)(\\d+)@local\\.dev$", Pattern.CASE_INSENSITIVE);
     private static final String REGISTRATION_COMPLETED = "COMPLETED";
     private static final String REGISTRATION_PENDING_ONBOARDING = "PENDING_ONBOARDING";
     private static final long PENDING_SIGNUP_TTL_SECONDS = 60L * 60L * 24L;
@@ -234,11 +232,9 @@ public class AuthService {
         if (displayName != null && !displayName.isBlank()) {
             return displayName.trim();
         }
-        if (email != null) {
-            Matcher matcher = LOCAL_TEST_EMAIL_PATTERN.matcher(email.trim());
-            if (matcher.matches()) {
-                return "유저" + matcher.group(1);
-            }
+        String localTestLabel = LocalTestUserLabel.nicknameFromEmail(email).orElse(null);
+        if (localTestLabel != null) {
+            return localTestLabel;
         }
         return "User_" + uid.substring(0, Math.min(5, uid.length()));
     }

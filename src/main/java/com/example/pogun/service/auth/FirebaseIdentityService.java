@@ -1,7 +1,7 @@
 package com.example.pogun.service.auth;
 
 import com.google.firebase.auth.FirebaseAuthException;
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

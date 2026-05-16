@@ -10,7 +10,7 @@ import com.example.pogun.dto.auth.SocialUnlinkResponse;
 import com.example.pogun.dto.auth.TokenRefreshRequest;
 import com.example.pogun.dto.auth.TokenRefreshResponse;
 import com.example.pogun.dto.auth.WithdrawResponse;
-import com.example.pogun.config.KakaoLocalProperties;
+import com.example.pogun.config.web.KakaoLocalProperties;
 import com.example.pogun.service.auth.AuthService;
 import com.example.pogun.service.auth.FirebaseTokenRefreshService;
 import io.swagger.v3.oas.annotations.media.Content;

@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
-description = 'Demo project for Spring Boot'
+description = 'Pogun backend API'
 
 java {
 	toolchain {
@@ -56,46 +56,6 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 	jvmArgs '-Xshare:off'
-}
-
-// One-off maintenance: hard delete user by email (Postgres)
-tasks.register('hardDeleteUserByEmail', JavaExec) {
-	group = 'maintenance'
-	description = 'Hard-delete a user and all FK references by email (uses DB_* env vars).'
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.example.pogun.tools.HardDeleteUserByEmail'
-
-	def email = project.findProperty('targetEmail')
-	if (!email) {
-		throw new GradleException("Missing -PtargetEmail (e.g. ./gradlew hardDeleteUserByEmail -PtargetEmail=user@example.com)")
-	}
-	args email.toString()
-}
-
-tasks.register('jdbcDeleteUsersByEmail', JavaExec) {
-	group = 'maintenance'
-	description = 'Hard-delete multiple users by email using JDBC (.env or DB_* env vars).'
-	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.pogun.tools.JdbcDeleteUsersByEmail'
-
-	def emails = project.findProperty('targetEmails')
-	if (!emails) {
-		throw new GradleException("Missing -PtargetEmails (e.g. ./gradlew jdbcDeleteUsersByEmail -PtargetEmails=a@b.com,c@d.com)")
-	}
-	args emails.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
-}
-
-tasks.register('firebaseDeleteUserByEmail', JavaExec) {
-	group = 'maintenance'
-	description = 'Delete a Firebase user by email using service account (FIREBASE_KEY_BASE64 env).'
-	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.pogun.tools.FirebaseDeleteUserByEmail'
-
-	def email = project.findProperty('targetEmail')
-	if (!email) {
-		throw new GradleException("Missing -PtargetEmail (e.g. ./gradlew firebaseDeleteUserByEmail -PtargetEmail=user@example.com)")
-	}
-	args email.toString()
 }
 
 // Ensure Spring Boot creates only the executable bootJar and not the plain jar

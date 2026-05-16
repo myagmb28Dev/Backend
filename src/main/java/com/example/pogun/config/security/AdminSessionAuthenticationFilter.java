@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.security;
 
 import com.example.pogun.entity.admin.AdminSession;
 import com.example.pogun.entity.admin.enums.AdminSessionStage;

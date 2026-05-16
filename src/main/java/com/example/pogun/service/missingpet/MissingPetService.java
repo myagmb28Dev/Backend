@@ -26,6 +26,7 @@ import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.noticechat.NoticeChatService;
+import com.example.pogun.service.user.LocalTestUserLabel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -415,22 +416,8 @@ public class MissingPetService {
         if (author == null) {
             return "알 수 없는 사용자";
         }
-        String testLabel = testUserLabel(author);
+        String testLabel = LocalTestUserLabel.displayNameFromEmail(author.getEmail()).orElse(null);
         return testLabel != null ? testLabel : author.getNickname();
-    }
-
-    private String testUserLabel(User user) {
-        if (user.getEmail() == null) {
-            return null;
-        }
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("^(?:dm-user|playwright-user)(\\d{1,2})(?:[-_].*)?@local\\.dev$", java.util.regex.Pattern.CASE_INSENSITIVE)
-                .matcher(user.getEmail());
-        if (!matcher.matches()) {
-            return null;
-        }
-        int number = Integer.parseInt(matcher.group(1));
-        return number >= 1 && number <= 10 ? "유저 " + number : null;
     }
 
     private void attachImages(UUID ownerId, PetNotice notice, List<MultipartFile> imageFiles, boolean shouldReplaceImages) {

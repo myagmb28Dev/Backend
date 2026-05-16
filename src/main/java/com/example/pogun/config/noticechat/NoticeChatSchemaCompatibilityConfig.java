@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.noticechat;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.firebase;
 
 import com.example.pogun.config.AdminConsoleProperties;
 import com.example.pogun.service.auth.CompositeFirebaseIdentityProvider;

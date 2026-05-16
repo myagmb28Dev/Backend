@@ -1,4 +1,4 @@
-package com.example.pogun.config;
+package com.example.pogun.config.security;
 
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;

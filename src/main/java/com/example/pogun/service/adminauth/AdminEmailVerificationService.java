@@ -1,7 +1,7 @@
 package com.example.pogun.service.adminauth;
 
 import com.example.pogun.config.AdminConsoleProperties;
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

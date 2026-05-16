@@ -1,6 +1,6 @@
 package com.example.pogun.service.admin;
 
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.admin.AdminNotificationSendRequest;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.admin.AdminIntegrationStatus;
@@ -53,6 +53,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -85,6 +86,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AdminConsoleService {
 
@@ -487,6 +489,10 @@ public class AdminConsoleService {
                 }
             } catch (Exception e) {
                 failedCount++;
+                log.warn("admin broadcast notification failed. recipientId={}, actorId={}, reason={}",
+                        recipient.getId(),
+                        actor == null ? null : actor.getId(),
+                        e.getMessage());
             }
         }
 

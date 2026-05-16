@@ -1,6 +1,6 @@
 package com.example.pogun.service.auth;
 
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.TokenRefreshResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import lombok.RequiredArgsConstructor;

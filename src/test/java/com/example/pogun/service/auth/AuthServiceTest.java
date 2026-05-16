@@ -1,6 +1,6 @@
 package com.example.pogun.service.auth;
 
-import com.example.pogun.config.FirebaseAuthProperties;
+import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;

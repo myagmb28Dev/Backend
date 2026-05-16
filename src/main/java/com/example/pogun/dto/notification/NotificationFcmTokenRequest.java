@@ -5,8 +5,6 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 /**
  * API 요청/응답 데이터 전송 객체인 NotificationFcmTokenRequest이다.
  */
@@ -24,18 +22,4 @@ public class NotificationFcmTokenRequest {
 
     @Schema(description = "디바이스 ID", example = "pixel-1")
     private String deviceId;
-
-    public Map<String, String> toRequestMap() {
-        Map<String, String> request = new LinkedHashMap<>();
-        putIfNotNull(request, "token", token);
-        putIfNotNull(request, "platform", platform);
-        putIfNotNull(request, "deviceId", deviceId);
-        return request;
-    }
-
-    private void putIfNotNull(Map<String, String> request, String key, String value) {
-        if (value != null) {
-            request.put(key, value);
-        }
-    }
 }
