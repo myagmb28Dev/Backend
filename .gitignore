@@ -12,6 +12,7 @@ build/
 docs/
 .local/
 firebase-debug.log
+build.log
 .playwright-cli/
 /uploads/
 node_modules/

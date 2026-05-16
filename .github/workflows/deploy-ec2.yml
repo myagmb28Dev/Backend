@@ -16,6 +16,8 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      image_ref: ${{ steps.pushed-image.outputs.image_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -46,21 +48,6 @@ jobs:
         id: image-tag
         run: echo "short_sha=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
-      - name: Install regctl
-        uses: regclient/actions/regctl-installer@main
-
-      - name: Capture previous latest digest
-        id: previous-latest
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-        run: |
-          set -euo pipefail
-          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
-          previous_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
-          echo "digest=${previous_digest}" >> "$GITHUB_OUTPUT"
-          echo "Previous latest digest: ${previous_digest:-<none>}"
-
       - name: Build and push image
         id: build-push
         uses: docker/build-push-action@v7
@@ -71,138 +58,17 @@ jobs:
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ steps.image-tag.outputs.short_sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
           provenance: false
           sbom: false
 
-      - name: Verify latest points to pushed digest
+      - name: Set pushed image ref
+        id: pushed-image
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
-        run: |
-          set -euo pipefail
-
-          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
-          success=0
-          for attempt in {1..8}; do
-            latest_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
-            echo "latest digest verify attempt ${attempt}/8: expected=${PUSHED_DIGEST} actual=${latest_digest:-<none>}"
-            if [ -n "${latest_digest}" ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ]; then
-              success=1
-              break
-            fi
-            sleep 5
-          done
-
-          if [ "$success" -ne 1 ]; then
-            echo "ERROR: latest tag did not converge to pushed digest."
-            exit 1
-          fi
-
-      - name: Delete stale Docker Hub tags
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          KEEP_SHA: sha-${{ steps.image-tag.outputs.short_sha }}
-        run: |
-          set -euo pipefail
-
-          auth_token="$(
-            curl -fsSL \
-              -H "Content-Type: application/json" \
-              -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-              https://hub.docker.com/v2/users/login/ \
-              | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"
-          )"
-
-          next_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100"
-          while [ -n "$next_url" ] && [ "$next_url" != "null" ]; do
-            response="$(curl -fsSL -H "Authorization: JWT ${auth_token}" "$next_url")"
-            echo "$response" \
-              | python3 -c "import json,sys; import os; data=json.load(sys.stdin); keep={'latest', os.environ.get('KEEP_SHA', '')}; [print(item['name']) for item in data.get('results', []) if item.get('name') not in keep]" \
-              | while IFS= read -r tag_name; do
-                  [ -z "$tag_name" ] && continue
-                  echo "Deleting stale Docker Hub tag: $tag_name"
-                  curl -fsSL -X DELETE \
-                    -H "Authorization: JWT ${auth_token}" \
-                    "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags/${tag_name}/" \
-                    >/dev/null
-                done
-            next_url="$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
-          done
-
-      - name: Delete previous latest manifest and referrers
-        if: ${{ steps.previous-latest.outputs.digest != '' && steps.previous-latest.outputs.digest != steps.build-push.outputs.digest }}
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          PREVIOUS_DIGEST: ${{ steps.previous-latest.outputs.digest }}
-        run: |
-          set -euo pipefail
-          stale_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PREVIOUS_DIGEST}"
-          echo "Deleting stale manifest digest: ${stale_ref}"
-          regctl manifest delete --ignore-missing --referrers "$stale_ref"
-
-      - name: Verify latest and sha tags only and stale digest gone
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
-          PREVIOUS_DIGEST: ${{ steps.previous-latest.outputs.digest }}
-          KEEP_SHA: sha-${{ steps.image-tag.outputs.short_sha }}
-        run: |
-          set -euo pipefail
-
-          auth_token="$(
-            curl -fsSL \
-              -H "Content-Type: application/json" \
-              -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-              https://hub.docker.com/v2/users/login/ \
-              | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"
-          )"
-
-          image_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
-          sha_ref="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${KEEP_SHA}"
-          success=0
-          for attempt in {1..8}; do
-            next_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags?page_size=100"
-            latest_count=0
-            sha_count=0
-            non_keep_count=0
-            while [ -n "$next_url" ] && [ "$next_url" != "null" ]; do
-              tags_json="$(curl -fsSL -H "Authorization: JWT ${auth_token}" "$next_url")"
-              latest_count=$((latest_count + $(echo "$tags_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for t in d.get('results', []) if t.get('name') == 'latest'))")))
-              sha_count=$((sha_count + $(echo "$tags_json" | python3 -c "import json,sys; import os; d=json.load(sys.stdin); keep={'latest', os.environ.get('KEEP_SHA', '')}; print(sum(1 for t in d.get('results', []) if t.get('name') == os.environ.get('KEEP_SHA', '')))")))
-              non_keep_count=$((non_keep_count + $(echo "$tags_json" | python3 -c "import json,sys; import os; d=json.load(sys.stdin); keep={'latest', os.environ.get('KEEP_SHA', '')}; print(sum(1 for t in d.get('results', []) if t.get('name') not in keep))")))
-              next_url="$(echo "$tags_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('next') or '')")"
-            done
-
-            latest_digest="$(regctl image digest "$image_ref" 2>/dev/null || true)"
-            sha_digest="$(regctl image digest "$sha_ref" 2>/dev/null || true)"
-            stale_digest_gone=1
-            if [ -n "${PREVIOUS_DIGEST}" ] && [ "${PREVIOUS_DIGEST}" != "${PUSHED_DIGEST}" ]; then
-              if regctl manifest head "docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PREVIOUS_DIGEST}" >/dev/null 2>&1; then
-                stale_digest_gone=0
-              fi
-            fi
-
-            echo "verify attempt ${attempt}/8: latest_count=${latest_count}, sha_count=${sha_count}, non_keep_count=${non_keep_count}, latest_digest=${latest_digest:-<none>}, sha_digest=${sha_digest:-<none>}, stale_digest_gone=${stale_digest_gone}"
-
-            if [ "$latest_count" -eq 1 ] && [ "$sha_count" -eq 1 ] && [ "$non_keep_count" -eq 0 ] && [ "${latest_digest}" = "${PUSHED_DIGEST}" ] && [ "${sha_digest}" = "${PUSHED_DIGEST}" ] && [ "$stale_digest_gone" -eq 1 ]; then
-              success=1
-              break
-            fi
-
-            sleep 5
-          done
-
-          if [ "$success" -ne 1 ]; then
-            echo "ERROR: cleanup verification failed. latest+sha state not reached in retry window."
-            exit 1
-          fi
+        run: echo "image_ref=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PUSHED_DIGEST}" >> "$GITHUB_OUTPUT"
 
   deploy:
     runs-on: ubuntu-latest
@@ -230,16 +96,7 @@ jobs:
             -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "mkdir -p '${{ secrets.EC2_APP_DIR }}'"
-
-          ssh \
-            -o StrictHostKeyChecking=no \
-            -o IdentitiesOnly=yes \
-            -o NumberOfPasswordPrompts=1 \
-            -i ~/.ssh/pawgun_ec2_key \
-            -p "${{ secrets.EC2_PORT || 22 }}" \
-            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "cat > '${{ secrets.EC2_APP_DIR }}/docker-compose.yml'" < docker-compose.yml
+            "mkdir -p '${{ secrets.EC2_APP_DIR }}' && cat > '${{ secrets.EC2_APP_DIR }}/docker-compose.yml'" < docker-compose.yml
 
       - name: Create .env on EC2 from GitHub secrets and deploy
         run: |
@@ -278,7 +135,7 @@ jobs:
           cat > .env <<'ENVEOF'
           SPRING_PROFILES_ACTIVE=prod
           PORT=${{ secrets.PORT }}
-          APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pawgun:latest
+          APP_IMAGE=${{ needs.build-and-push.outputs.image_ref }}
           APP_STARTUP_WARMUP_ENABLED=true
           APP_SCHEMA_SYNC_ENABLED=false
           JAVA_STARTUP_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom
@@ -312,31 +169,35 @@ jobs:
 
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          sudo docker compose pull app
-          sudo docker compose up -d --remove-orphans
+          sudo docker compose pull --quiet app
+          sudo docker compose up -d --remove-orphans redis
+          sudo docker compose up -d --remove-orphans --no-deps app
           sudo docker compose ps
 
-          for attempt in {1..30}; do
-            app_status="\$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
-            app_health="\$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
-
-            if [ "\$app_health" = "healthy" ]; then
-              echo "Application healthcheck passed."
+          health_port="\$(grep -E '^PORT=' .env | cut -d= -f2-)"
+          health_port="\${health_port:-8080}"
+          health_url="http://127.0.0.1:\${health_port}/health"
+          for attempt in {1..60}; do
+            if curl -fsS "\$health_url" >/dev/null 2>&1; then
+              echo "Application health endpoint passed: \$health_url"
               break
             fi
+
+            app_status="\$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
+            app_health="\$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
 
             if [ "\$app_status" = "exited" ] || [ "\$app_status" = "dead" ]; then
               sudo docker compose logs --tail=200 app
               exit 1
             fi
 
-            if [ "\$attempt" -eq 30 ]; then
+            if [ "\$attempt" -eq 60 ]; then
               sudo docker compose logs --tail=200 app
               exit 1
             fi
 
-            echo "Waiting for app healthcheck... status=\$app_status health=\$app_health attempt=\$attempt/30"
-            sleep 5
+            echo "Waiting for app healthcheck... status=\$app_status health=\$app_health attempt=\$attempt/60"
+            sleep 2
           done
 
           sudo docker image prune -f

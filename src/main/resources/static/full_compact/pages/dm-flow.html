@@ -293,11 +293,11 @@ import { refreshFirebaseSession } from "/js/auth-refresh.js";
 
 const BACKEND_BASE = window.location.origin;
 const TYPING_IDLE_MS = 1200;
-const PRESENCE_PING_INTERVAL_MS = 8000;
+const PRESENCE_PING_INTERVAL_MS = 4000;
 const MAX_UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "video/mp4"]);
 const SOCKET_CONNECT_TIMEOUT_MS = 15000;
-const SOCKET_STALE_AFTER_MS = 25000;
+const SOCKET_STALE_AFTER_MS = 9000;
 const SOCKET_RECOVERY_COOLDOWN_MS = 1500;
 const SOCKET_ERROR_TOAST_COOLDOWN_MS = 10000;
 const MESSAGE_ACK_TIMEOUT_MS = 7000;

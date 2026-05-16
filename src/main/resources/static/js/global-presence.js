@@ -4,7 +4,7 @@ const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const ACTIVE_ROLE_KEY = "dm-test-active-role-v1";
 const REFRESH_TOKEN_KEY = "pogun-refresh-token-v1";
 const CLIENT_SESSION_KEY = "pogun-global-presence-client-session-v1";
-const HEARTBEAT_INTERVAL_MS = 8000;
+const HEARTBEAT_INTERVAL_MS = 4000;
 
 let heartbeatTimer = null;
 let inFlight = false;
