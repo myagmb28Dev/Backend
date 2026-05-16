@@ -5,6 +5,7 @@ import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RequiredArgsConstructor
+@Slf4j
 public class FirebaseLookupIdentityProvider implements FirebaseIdentityProvider {
 
     private final FirebaseAuthProperties firebaseAuthProperties;
@@ -44,7 +46,7 @@ public class FirebaseLookupIdentityProvider implements FirebaseIdentityProvider 
                     .bodyToMono(String.class)
                     .block(Duration.ofSeconds(10));
             long endTime = System.currentTimeMillis();
-            System.out.println("[FirebaseLookup] REST call completed in " + (endTime - startTime) + "ms");
+            log.debug("[FirebaseLookup] REST call completed in {}ms", endTime - startTime);
 
             if (responseBody == null || responseBody.isBlank()) {
                 throw new IllegalArgumentException("Firebase lookup 응답이 비어 있습니다.");

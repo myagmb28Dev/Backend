@@ -4,12 +4,14 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 @RequiredArgsConstructor
+@Slf4j
 public class FirebaseAdminIdentityProvider implements FirebaseIdentityProvider {
 
     private final FirebaseAuth firebaseAuth;
@@ -19,7 +21,7 @@ public class FirebaseAdminIdentityProvider implements FirebaseIdentityProvider {
         long startTime = System.currentTimeMillis();
         FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken, checkRevoked);
         long endTime = System.currentTimeMillis();
-        System.out.println("[FirebaseAdmin] verifyIdToken completed in " + (endTime - startTime) + "ms");
+        log.debug("[FirebaseAdmin] verifyIdToken completed in {}ms", endTime - startTime);
         String provider = extractProvider(decodedToken);
         List<FirebaseIdentityService.ProviderIdentity> providers = resolveProviders(decodedToken);
         String displayName = decodedToken.getName();
