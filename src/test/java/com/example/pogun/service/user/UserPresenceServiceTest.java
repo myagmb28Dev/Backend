@@ -94,7 +94,7 @@ class UserPresenceServiceTest {
         UserPresenceService service = new UserPresenceService(userRepository, store);
         User user = user("quick-offline-user");
 
-        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(30));
+        store.putGlobalSession(user.getFirebaseUid(), "client-1", Instant.now().minusSeconds(20));
 
         UserPresenceService.PresenceSnapshot snapshot = service.snapshot(user);
 

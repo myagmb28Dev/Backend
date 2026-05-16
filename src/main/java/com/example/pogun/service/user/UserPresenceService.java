@@ -22,9 +22,9 @@ public class UserPresenceService {
 
     private static final Duration TOUCH_THROTTLE = Duration.ofSeconds(15);
     // Realtime-priority: faster offline detection.
-    private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(24);
+    private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(16);
     // DM/socket freshness stays shorter than global presence.
-    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(18);
+    private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(12);
     private static final String AUTH_GLOBAL_SESSION_ID = "auth";
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
