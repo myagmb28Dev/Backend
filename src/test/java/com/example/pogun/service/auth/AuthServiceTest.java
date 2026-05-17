@@ -7,6 +7,7 @@ import com.example.pogun.dto.auth.OnboardingCompleteRequest;
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -93,7 +94,10 @@ class AuthServiceTest {
                 "New User",
                 "https://cdn.example.com/profile.png",
                 "google.com",
-                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "new-user@example.com")),
+                List.of(
+                        new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "new-user@example.com"),
+                        new FirebaseIdentityService.ProviderIdentity("email", "new-user@example.com", "new-user@example.com")
+                ),
                 java.util.Map.of()
         );
         when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
@@ -114,6 +118,81 @@ class AuthServiceTest {
         assertThat(response.provider()).isEqualTo("GOOGLE");
         assertThat(response.linkedProviders()).containsExactly("GOOGLE");
         verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void loginOrSignUp_createsPendingSignupForNewAppleIdentity() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "apple-firebase-uid",
+                "new-user@privaterelay.appleid.com",
+                "Apple User",
+                null,
+                "apple.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("apple.com", "apple-sub", "new-user@privaterelay.appleid.com")),
+                java.util.Map.of()
+        );
+        when(firebaseIdentityService.verifyIdToken("apple-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("apple-firebase-uid")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("new-user@privaterelay.appleid.com")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("apple-firebase-uid")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.save(any(PendingSocialSignup.class))).thenAnswer(invocation -> {
+            PendingSocialSignup pending = invocation.getArgument(0);
+            pending.setId(UUID.fromString("33333333-3333-3333-3333-333333333333"));
+            return pending;
+        });
+
+        AuthResponse response = authService.loginOrSignUp("apple-token", httpServletRequest);
+
+        assertThat(response.registrationStatus()).isEqualTo("PENDING_ONBOARDING");
+        assertThat(response.provider()).isEqualTo("APPLE");
+        assertThat(response.linkedProviders()).containsExactly("APPLE");
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void loginOrSignUp_unlinksEmailProviderWhenSocialProviderExists() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "firebase-uid",
+                "existing-user@example.com",
+                "Existing User",
+                "https://cdn.example.com/profile.png",
+                "google.com",
+                List.of(
+                        new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "existing-user@example.com"),
+                        new FirebaseIdentityService.ProviderIdentity("email", "existing-user@example.com", "existing-user@example.com")
+                ),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("existing-user@example.com")
+                .nickname("기존 유저")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        UserSocialAccount emailAccount = UserSocialAccount.builder()
+                .id(UUID.randomUUID())
+                .user(existing)
+                .provider("EMAIL")
+                .providerEmail("existing-user@example.com")
+                .linked(true)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndProvider(existing, "GOOGLE")).thenReturn(Optional.empty());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(existing))
+                .thenReturn(List.of(emailAccount), List.of());
+
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
+
+        assertThat(response.provider()).isEqualTo("GOOGLE");
+        assertThat(response.linkedProviders()).containsExactly("GOOGLE");
+        assertThat(emailAccount.getLinked()).isFalse();
+        verify(userSocialAccountRepository).save(emailAccount);
+        verify(userSocialAccountRepository, never()).findByUserAndProvider(existing, "EMAIL");
     }
 
     @Test
@@ -231,7 +310,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginAdmin_allowsExistingAdminUserWithEmailProvider() throws Exception {
+    void loginAdmin_allowsExistingAdminUserWithFirebaseProvider() throws Exception {
         FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
                 "admin-uid",
                 "admin@example.com",
@@ -253,7 +332,6 @@ class AuthServiceTest {
         when(firebaseIdentityService.verifyIdToken("admin-token")).thenReturn(identity);
         when(userRepository.findByFirebaseUid("admin-uid")).thenReturn(Optional.of(admin));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
         when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
 
         AuthResponse response = authService.loginAdmin("admin-token", httpServletRequest);
@@ -261,7 +339,7 @@ class AuthServiceTest {
         assertThat(response.id()).isEqualTo(admin.getId());
         assertThat(response.role()).isEqualTo("ADMIN");
         assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
-        assertThat(response.provider()).isEqualTo("EMAIL");
+        assertThat(response.provider()).isEqualTo("FIREBASE");
         verify(userPresenceService).touchFromAuthenticationSafely("admin-uid", "unknown-host");
     }
 

@@ -34,6 +34,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminAuditService;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
+import com.example.pogun.service.auth.FirebaseProviderNormalizer;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserInfo;
@@ -307,25 +308,14 @@ public class AdminService {
                 }
                 String providerId = info.getProviderId();
                 if (providerId != null && !providerId.isBlank() && !"firebase".equalsIgnoreCase(providerId)) {
-                    return normalizeProviderId(providerId);
+                    String normalizedProvider = FirebaseProviderNormalizer.normalize(providerId);
+                    if (FirebaseProviderNormalizer.isExternalProvider(normalizedProvider)) {
+                        return normalizedProvider;
+                    }
                 }
             }
         }
-        return "GOOGLE";
-    }
-
-    private String normalizeProviderId(String providerId) {
-        String resolved = providerId == null ? "firebase" : providerId;
-        return switch (resolved.toLowerCase(Locale.ROOT)) {
-            case "google.com" -> "GOOGLE";
-            case "apple.com" -> "APPLE";
-            case "facebook.com" -> "FACEBOOK";
-            case "github.com" -> "GITHUB";
-            case "password" -> "EMAIL";
-            case "phone" -> "PHONE";
-            case "google", "apple", "facebook", "github", "email", "firebase" -> resolved.toUpperCase(Locale.ROOT);
-            default -> resolved.toUpperCase(Locale.ROOT).replace('.', '_');
-        };
+        return FirebaseProviderNormalizer.FIREBASE;
     }
 
     private String truncate(String value, int maxLength) {

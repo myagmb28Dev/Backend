@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,7 +72,7 @@ class AdminAuthServiceTest {
     private AdminAuthService adminAuthService;
 
     @Test
-    void loginWithGoogleToken_requiresEmailVerificationForRoleOnlyAdmin() throws Exception {
+    void loginWithFirebaseToken_requiresEmailVerificationForRoleOnlyAdmin() throws Exception {
         User admin = User.builder()
                 .id(UUID.randomUUID())
                 .firebaseUid("firebase-uid")
@@ -97,7 +98,7 @@ class AdminAuthServiceTest {
         when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(admin));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        AdminLoginResponse response = adminAuthService.loginWithGoogleToken("id-token", httpServletRequest);
+        AdminLoginResponse response = adminAuthService.loginWithFirebaseToken("id-token", httpServletRequest);
 
         assertThat(response.nextStep()).isEqualTo("EMAIL_VERIFICATION_REQUIRED");
         assertThat(response.requiresPassKey()).isFalse();
@@ -109,7 +110,60 @@ class AdminAuthServiceTest {
     }
 
     @Test
-    void loginWithGoogleToken_doesNotSkipFirstVerificationMailWhenFirebaseAlreadyVerified() throws Exception {
+    void loginWithFirebaseToken_acceptsAppleProviderForAdminLogin() throws Exception {
+        User admin = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("apple-firebase-uid")
+                .email("admin@privaterelay.appleid.com")
+                .nickname("admin")
+                .profileImageUrl("https://example.com/admin.png")
+                .role(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .adminEmailVerificationRequired(false)
+                .adminEmailVerifiedAt(null)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("apple-token", true))
+                .thenReturn(new FirebaseIdentityService.FirebaseIdentity(
+                        "apple-firebase-uid",
+                        "admin@privaterelay.appleid.com",
+                        "Apple Admin",
+                        null,
+                        "apple.com",
+                        List.of(new FirebaseIdentityService.ProviderIdentity("apple.com", "apple-sub", "admin@privaterelay.appleid.com")),
+                        Map.of()
+                ));
+        when(userRepository.findByFirebaseUid("apple-firebase-uid")).thenReturn(Optional.of(admin));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AdminLoginResponse response = adminAuthService.loginWithFirebaseToken("apple-token", httpServletRequest);
+
+        assertThat(response.nextStep()).isEqualTo("EMAIL_VERIFICATION_REQUIRED");
+        assertThat(response.requiresPassKey()).isFalse();
+        verify(firebaseAuth).updateUser(any(UserRecord.UpdateRequest.class));
+        verify(adminEmailVerificationService).sendVerificationEmail("apple-token", httpServletRequest);
+    }
+
+    @Test
+    void loginWithFirebaseToken_rejectsEmailOnlyProviderForAdminLogin() throws Exception {
+        when(firebaseIdentityService.verifyIdToken("email-token", true))
+                .thenReturn(new FirebaseIdentityService.FirebaseIdentity(
+                        "firebase-uid",
+                        "admin@example.com",
+                        "Admin",
+                        null,
+                        "password",
+                        List.of(new FirebaseIdentityService.ProviderIdentity("password", "email-uid", "admin@example.com")),
+                        Map.of()
+                ));
+
+        assertThatThrownBy(() -> adminAuthService.loginWithFirebaseToken("email-token", httpServletRequest))
+                .hasMessageContaining("관리자 로그인은 Google 또는 Apple 소셜 로그인만 허용됩니다.");
+        verify(userRepository, never()).findByFirebaseUid(any());
+    }
+
+    @Test
+    void loginWithFirebaseToken_doesNotSkipFirstVerificationMailWhenFirebaseAlreadyVerified() throws Exception {
         User admin = User.builder()
                 .id(UUID.randomUUID())
                 .firebaseUid("firebase-uid")
@@ -136,7 +190,7 @@ class AdminAuthServiceTest {
         when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(admin));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        AdminLoginResponse response = adminAuthService.loginWithGoogleToken("id-token", httpServletRequest);
+        AdminLoginResponse response = adminAuthService.loginWithFirebaseToken("id-token", httpServletRequest);
 
         assertThat(response.nextStep()).isEqualTo("EMAIL_VERIFICATION_REQUIRED");
         assertThat(response.requiresPassKey()).isFalse();
@@ -148,7 +202,7 @@ class AdminAuthServiceTest {
     }
 
     @Test
-    void loginWithGoogleToken_allowsPasskeyStageOnlyAfterSentMailAndFirebaseVerified() throws Exception {
+    void loginWithFirebaseToken_allowsPasskeyStageOnlyAfterSentMailAndFirebaseVerified() throws Exception {
         User admin = User.builder()
                 .id(UUID.randomUUID())
                 .firebaseUid("firebase-uid")
@@ -189,7 +243,7 @@ class AdminAuthServiceTest {
         when(adminSessionTokenService.issue(admin, AdminSessionStage.PASSKEY_ENROLL, 900L))
                 .thenReturn(new AdminSessionTokenService.IssuedSession("session-token", session));
 
-        AdminLoginResponse response = adminAuthService.loginWithGoogleToken("id-token", httpServletRequest);
+        AdminLoginResponse response = adminAuthService.loginWithFirebaseToken("id-token", httpServletRequest);
 
         assertThat(admin.isAdminEmailVerificationRequired()).isFalse();
         assertThat(admin.getAdminEmailVerifiedAt()).isNotNull();

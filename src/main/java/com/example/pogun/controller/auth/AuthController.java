@@ -71,7 +71,7 @@ public class AuthController {
     }
 
     @PostMapping("/admin/login")
-    @Operation(summary = "관리자 로그인", description = "Firebase 이메일/비밀번호 로그인으로 발급된 ID Token을 검증하고 기존 관리자 계정만 로그인시킵니다.")
+    @Operation(summary = "관리자 로그인", description = "Firebase ID Token을 검증하고 기존 관리자 계정만 로그인시킵니다. 대표 관리자 콘솔은 /api/admin/auth/login의 PassKey 흐름을 사용합니다.")
     public ResponseEntity<ApiResponse<AuthResponse>> adminSignIn(@Valid @RequestBody LoginRequest request,
                                                                  HttpServletRequest httpRequest) {
         AuthResponse data = authService.loginAdmin(request.getFirebaseIdToken(), httpRequest);
@@ -225,7 +225,7 @@ public class AuthController {
     }
 
     @DeleteMapping("/link/{provider}")
-    @Operation(summary = "소셜 계정 연동 해제", description = "지정한 소셜 제공자와의 연동을 해제합니다. 예: GOOGLE")
+    @Operation(summary = "소셜 계정 연동 해제", description = "지정한 소셜 제공자와의 연동을 해제합니다. 예: GOOGLE, APPLE")
     public ResponseEntity<ApiResponse<SocialUnlinkResponse>> unlinkSocial(@PathVariable String provider) {
         // provider 문자열은 서비스에서 정규화하고, 마지막 연동 수단인지도 함께 검증한다.
         SocialUnlinkResponse data = authService.unlinkSocial(provider);

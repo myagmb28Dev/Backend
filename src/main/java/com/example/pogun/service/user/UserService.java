@@ -20,6 +20,7 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
+import com.example.pogun.service.auth.FirebaseProviderNormalizer;
 import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.storage.S3ImageStorageService;
@@ -157,7 +158,7 @@ public class UserService {
                 user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
                 user.getRegion() != null ? user.getRegion() : "",
                 buildRegionResponse(user),
-                user.getAuthProvider() != null ? user.getAuthProvider() : "GOOGLE",
+                FirebaseProviderNormalizer.normalize(user.getAuthProvider()),
                 getLinkedProviders(user),
                 user.getRole().name(),
                 user.getStatus().name(),
@@ -185,14 +186,12 @@ public class UserService {
     private List<String> getLinkedProviders(User user) {
         List<String> linkedProviders = userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user).stream()
                 .map(UserSocialAccount::getProvider)
+                .filter(FirebaseProviderNormalizer::isExternalProvider)
                 .toList();
         if (!linkedProviders.isEmpty()) {
             return linkedProviders;
         }
-        if (user.getAuthProvider() != null && !user.getAuthProvider().isBlank()) {
-            return List.of(user.getAuthProvider());
-        }
-        return List.of();
+        return List.of(FirebaseProviderNormalizer.normalize(user.getAuthProvider()));
     }
 
     private UserPetNoticeSummaryResponse toPetNoticeSummary(PetNotice notice) {

@@ -32,14 +32,14 @@ public class AdminAuthController {
     private final AdminAuthService adminAuthService;
 
     @PostMapping("/login")
-    @Operation(summary = "관리자 Google 로그인", description = "Firebase Google ID 토큰으로 관리자 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
+    @Operation(summary = "관리자 소셜 로그인", description = "Firebase Google/Apple ID 토큰으로 관리자 로그인 후 PassKey 단계 또는 세션을 반환합니다.")
     public ResponseEntity<ApiResponse<AdminLoginResponse>> login(@RequestBody AdminLoginRequest request, HttpServletRequest httpRequest) {
         AdminLoginResponse data;
         try {
             if (request.getFirebaseIdToken() == null || request.getFirebaseIdToken().isBlank()) {
                 throw ApiException.badRequest("FIREBASE_ID_TOKEN_REQUIRED", "firebaseIdToken은 필수입니다.");
             }
-            data = adminAuthService.loginWithGoogleToken(request.getFirebaseIdToken(), httpRequest);
+            data = adminAuthService.loginWithFirebaseToken(request.getFirebaseIdToken(), httpRequest);
         } catch (DataAccessException e) {
             throw ApiException.internal("ADMIN_DB_UNAVAILABLE", "DB 연결이 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");
         } catch (ApiException e) {

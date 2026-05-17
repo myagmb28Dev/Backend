@@ -33,9 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 /**
  * 도메인 비즈니스 로직을 담당하는 AuthService이다.
  */
@@ -72,7 +72,7 @@ public class AuthService {
             
             String uid = identity.uid();
             String email = identity.email();
-            String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE");
+            String normalizedProvider = FirebaseProviderNormalizer.resolvePrimaryProvider(identity, "FIREBASE");
             String name = identity.displayName();
             String picture = identity.photoUrl();
             String resolvedNickname = resolveNickname(name, email, uid);
@@ -180,7 +180,7 @@ public class AuthService {
             FirebaseIdentityService.FirebaseIdentity identity = firebaseIdentityService.verifyIdToken(idToken);
             String uid = identity.uid();
             String email = identity.email();
-            String normalizedProvider = normalizeProviderId(identity.signInProvider() != null ? identity.signInProvider() : "password");
+            String normalizedProvider = FirebaseProviderNormalizer.resolvePrimaryProvider(identity, FirebaseProviderNormalizer.FIREBASE);
             String resolvedNickname = resolveNickname(identity.displayName(), email, uid);
 
             User user = userRepository.findByFirebaseUid(uid)
@@ -301,7 +301,10 @@ public class AuthService {
     public SocialUnlinkResponse unlinkSocial(String provider) {
         User user = getCurrentUser();
         String currentIdToken = resolveCurrentIdToken();
-        String normalizedProvider = normalizeProviderId(provider);
+        String normalizedProvider = FirebaseProviderNormalizer.normalize(provider);
+        if (!FirebaseProviderNormalizer.isExternalProvider(normalizedProvider)) {
+            throw ApiException.badRequest("UNSUPPORTED_SOCIAL_PROVIDER", "소셜 제공자만 연동 해제할 수 있습니다.");
+        }
         log.info("소셜 계정 연결 해제 요청: userId={}, provider={}", user.getId(), normalizedProvider);
 
         List<UserSocialAccount> linkedAccounts = userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user);
@@ -355,32 +358,26 @@ public class AuthService {
 
     // 단일 authProvider 필드와 별도로 다중 소셜 연동 테이블을 현재 Firebase 상태에 맞춰 갱신한다.
     private void syncProviders(User user, FirebaseIdentityService.FirebaseIdentity identity) {
-        if (identity.providers() == null || identity.providers().isEmpty()) {
-            String provider = identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE";
-            syncSingleProvider(user, normalizeProviderId(provider), user.getFirebaseUid(), user.getEmail());
-            return;
-        }
-
-        List<String> syncedProviders = new ArrayList<>();
-        for (FirebaseIdentityService.ProviderIdentity provider : identity.providers()) {
-            String providerId = provider.providerId();
-            if (providerId == null || providerId.isBlank() || "firebase".equalsIgnoreCase(providerId)) {
+        List<String> syncedProviders = FirebaseProviderNormalizer.resolveLinkedProviders(
+                identity,
+                identity.signInProvider() != null ? identity.signInProvider() : "FIREBASE"
+        );
+        for (String normalizedProvider : syncedProviders) {
+            if (!FirebaseProviderNormalizer.isExternalProvider(normalizedProvider)) {
                 continue;
             }
-
-            String normalizedProvider = normalizeProviderId(providerId);
-            syncedProviders.add(normalizedProvider);
+            FirebaseIdentityService.ProviderIdentity provider = findProviderIdentity(identity, normalizedProvider);
             upsertSocialAccount(
                     user,
                     normalizedProvider,
-                    provider.uid(),
-                    provider.email() != null ? provider.email() : user.getEmail()
+                    provider != null && provider.uid() != null ? provider.uid() : user.getFirebaseUid(),
+                    provider != null && provider.email() != null ? provider.email() : user.getEmail()
             );
         }
-
-        if (syncedProviders.isEmpty()) {
-            syncSingleProvider(user, "FIREBASE", user.getFirebaseUid(), user.getEmail());
-        }
+        Set<String> syncedExternalProviders = Set.copyOf(syncedProviders.stream()
+                .filter(FirebaseProviderNormalizer::isExternalProvider)
+                .toList());
+        unlinkStaleProviders(user, syncedExternalProviders);
     }
 
     private PendingSocialSignup upsertPendingSignup(
@@ -389,7 +386,7 @@ public class AuthService {
             String resolvedNickname,
             String picture
     ) {
-        List<String> linkedProviders = resolveLinkedProviders(identity, normalizedProvider);
+        List<String> linkedProviders = FirebaseProviderNormalizer.resolveLinkedProviders(identity, normalizedProvider);
         PendingSocialSignup pending = pendingSocialSignupRepository.findByFirebaseUid(identity.uid())
                 .orElseGet(() -> PendingSocialSignup.builder()
                         .firebaseUid(identity.uid())
@@ -404,22 +401,6 @@ public class AuthService {
         return pendingSocialSignupRepository.save(pending);
     }
 
-    private List<String> resolveLinkedProviders(FirebaseIdentityService.FirebaseIdentity identity, String fallbackProvider) {
-        if (identity.providers() == null || identity.providers().isEmpty()) {
-            return List.of(fallbackProvider);
-        }
-
-        List<String> providers = identity.providers().stream()
-                .map(FirebaseIdentityService.ProviderIdentity::providerId)
-                .filter(providerId -> providerId != null && !providerId.isBlank())
-                .filter(providerId -> !"firebase".equalsIgnoreCase(providerId))
-                .map(this::normalizeProviderId)
-                .distinct()
-                .toList();
-
-        return providers.isEmpty() ? List.of(fallbackProvider) : providers;
-    }
-
     private List<String> parseLinkedProviders(String linkedProviders) {
         if (linkedProviders == null || linkedProviders.isBlank()) {
             return List.of();
@@ -429,10 +410,6 @@ public class AuthService {
                 .filter(provider -> !provider.isBlank())
                 .distinct()
                 .toList();
-    }
-
-    private void syncSingleProvider(User user, String provider, String providerUserId, String providerEmail) {
-        upsertSocialAccount(user, provider, providerUserId, providerEmail);
     }
 
     private void upsertSocialAccount(User user, String provider, String providerUserId, String providerEmail) {
@@ -449,6 +426,26 @@ public class AuthService {
         userSocialAccountRepository.save(account);
     }
 
+    private FirebaseIdentityService.ProviderIdentity findProviderIdentity(FirebaseIdentityService.FirebaseIdentity identity, String normalizedProvider) {
+        if (identity == null || identity.providers() == null) {
+            return null;
+        }
+        return identity.providers().stream()
+                .filter(provider -> provider != null && provider.providerId() != null)
+                .filter(provider -> FirebaseProviderNormalizer.normalize(provider.providerId()).equals(normalizedProvider))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void unlinkStaleProviders(User user, Set<String> syncedProviders) {
+        userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user).stream()
+                .filter(account -> !syncedProviders.contains(account.getProvider()))
+                .forEach(account -> {
+                    account.setLinked(false);
+                    userSocialAccountRepository.save(account);
+                });
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         return new AuthResponse(
                 user.getId(),
@@ -457,7 +454,7 @@ public class AuthService {
                 user.getEmail(),
                 user.getNickname(),
                 user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "",
-                user.getAuthProvider(),
+                FirebaseProviderNormalizer.normalize(user.getAuthProvider()),
                 getLinkedProviders(user),
                 user.getRole().name(),
                 REGISTRATION_COMPLETED,
@@ -499,27 +496,12 @@ public class AuthService {
     private List<String> getLinkedProviders(User user) {
         List<String> linkedProviders = userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user).stream()
                 .map(UserSocialAccount::getProvider)
+                .filter(FirebaseProviderNormalizer::isExternalProvider)
                 .toList();
         if (!linkedProviders.isEmpty()) {
             return linkedProviders;
         }
-        if (user.getAuthProvider() != null && !user.getAuthProvider().isBlank()) {
-            return List.of(user.getAuthProvider());
-        }
-        return List.of();
-    }
-
-    private String normalizeProviderId(String providerId) {
-        return switch (providerId.toLowerCase()) {
-            case "google.com" -> "GOOGLE";
-            case "apple.com" -> "APPLE";
-            case "facebook.com" -> "FACEBOOK";
-            case "github.com" -> "GITHUB";
-            case "password" -> "EMAIL";
-            case "phone" -> "PHONE";
-            case "google", "apple", "facebook", "github", "email", "firebase" -> providerId.toUpperCase();
-            default -> providerId.toUpperCase().replace('.', '_');
-        };
+        return List.of(FirebaseProviderNormalizer.normalize(user.getAuthProvider()));
     }
 
     private void touchPresenceSafely(String firebaseUid, String sessionScopeHost) {

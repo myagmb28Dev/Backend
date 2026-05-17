@@ -6,7 +6,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-@Schema(description = "관리자 Google 로그인 요청")
+@Schema(description = "관리자 소셜 로그인 요청")
 public class AdminLoginRequest {
 
     private String firebaseIdToken;
