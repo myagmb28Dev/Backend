@@ -2,6 +2,7 @@ package com.example.pogun.service.notification;
 
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
+import com.example.pogun.dto.notification.NotificationDeviceDeleteResponse;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
@@ -230,6 +231,23 @@ public class NotificationService {
             );
         }
         return toDeviceResponse(saved);
+    }
+
+    @Transactional
+    public NotificationDeviceDeleteResponse deleteDevice(UUID tokenId) {
+        User user = getCurrentUser();
+        UserFcmToken token = userFcmTokenRepository.findByIdAndUser(tokenId, user)
+                .orElseThrow(() -> ApiException.notFound("DEVICE_TOKEN_NOT_FOUND", "기기 토큰을 찾을 수 없습니다."));
+        String platform = trimToNull(token.getPlatform());
+        String deviceId = trimToNull(token.getDeviceId());
+        int deletedCount;
+        if (platform != null && deviceId != null) {
+            deletedCount = userFcmTokenRepository.deleteByUserAndPlatformAndDeviceId(user, platform, deviceId);
+        } else {
+            userFcmTokenRepository.delete(token);
+            deletedCount = 1;
+        }
+        return new NotificationDeviceDeleteResponse(token.getId(), platform, deviceId, deletedCount);
     }
 
     @Transactional

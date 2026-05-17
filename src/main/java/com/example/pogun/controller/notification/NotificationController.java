@@ -1,6 +1,7 @@
 package com.example.pogun.controller.notification;
 
 import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.dto.notification.NotificationDeviceDeleteResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
@@ -17,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -114,5 +116,12 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<NotificationDeviceResponse>> unmuteDevice(@PathVariable UUID tokenId) {
         NotificationDeviceResponse data = notificationService.setDeviceActive(tokenId, true);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기기 알림 켜기 성공", data));
+    }
+
+    @DeleteMapping("/devices/{tokenId}")
+    @Operation(summary = "기기 FCM 토큰 삭제", description = "현재 로그인 사용자의 특정 기기 FCM 토큰을 삭제합니다. 같은 platform/deviceId의 과거 토큰도 함께 삭제합니다.")
+    public ResponseEntity<ApiResponse<NotificationDeviceDeleteResponse>> deleteDevice(@PathVariable UUID tokenId) {
+        NotificationDeviceDeleteResponse data = notificationService.deleteDevice(tokenId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "기기 FCM 토큰 삭제 성공", data));
     }
 }

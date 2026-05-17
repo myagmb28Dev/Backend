@@ -45,6 +45,19 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             delete from UserFcmToken t
+             where t.user = :user
+               and t.platform = :platform
+               and t.deviceId = :deviceId
+            """)
+    int deleteByUserAndPlatformAndDeviceId(
+            @Param("user") User user,
+            @Param("platform") String platform,
+            @Param("deviceId") String deviceId
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            delete from UserFcmToken t
              where t.active = false
                and t.updatedAt < :cutoff
             """)

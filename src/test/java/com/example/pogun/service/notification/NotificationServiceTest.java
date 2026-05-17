@@ -8,6 +8,7 @@ import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+import com.example.pogun.dto.notification.NotificationDeviceDeleteResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
@@ -378,6 +379,60 @@ class NotificationServiceTest {
         verify(userFcmTokenRepository, never()).deactivateActiveTokensForSameDeviceExcludingCurrent(
                 any(), any(), any(), any()
         );
+    }
+
+    @Test
+    void deleteDevice_removesAllTokensForSamePlatformAndDevice() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        UUID tokenId = UUID.randomUUID();
+        UserFcmToken token = UserFcmToken.builder()
+                .id(tokenId)
+                .user(user)
+                .token("token-1")
+                .platform("WEB")
+                .deviceId("device-1")
+                .active(true)
+                .build();
+        when(userFcmTokenRepository.findByIdAndUser(tokenId, user)).thenReturn(Optional.of(token));
+        when(userFcmTokenRepository.deleteByUserAndPlatformAndDeviceId(user, "WEB", "device-1")).thenReturn(3);
+
+        NotificationDeviceDeleteResponse response = notificationService.deleteDevice(tokenId);
+
+        assertThat(response.id()).isEqualTo(tokenId);
+        assertThat(response.platform()).isEqualTo("WEB");
+        assertThat(response.deviceId()).isEqualTo("device-1");
+        assertThat(response.deletedCount()).isEqualTo(3);
+        verify(userFcmTokenRepository).deleteByUserAndPlatformAndDeviceId(user, "WEB", "device-1");
+        verify(userFcmTokenRepository, never()).delete(any(UserFcmToken.class));
+    }
+
+    @Test
+    void deleteDevice_removesOnlyTokenWhenDeviceIdMissing() {
+        User user = user("owner");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user.getFirebaseUid(), null)
+        );
+        when(userRepository.findByFirebaseUid(user.getFirebaseUid())).thenReturn(Optional.of(user));
+        UUID tokenId = UUID.randomUUID();
+        UserFcmToken token = UserFcmToken.builder()
+                .id(tokenId)
+                .user(user)
+                .token("token-1")
+                .platform("WEB")
+                .deviceId(null)
+                .active(true)
+                .build();
+        when(userFcmTokenRepository.findByIdAndUser(tokenId, user)).thenReturn(Optional.of(token));
+
+        NotificationDeviceDeleteResponse response = notificationService.deleteDevice(tokenId);
+
+        assertThat(response.deletedCount()).isEqualTo(1);
+        verify(userFcmTokenRepository).delete(token);
+        verify(userFcmTokenRepository, never()).deleteByUserAndPlatformAndDeviceId(any(), any(), any());
     }
 
     @Test
