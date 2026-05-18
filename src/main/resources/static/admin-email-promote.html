@@ -241,6 +241,48 @@ async function loadFirebaseAuth() {
   return auth;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isAppleTransientPopupError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  return (
+    code === "auth/internal-error" ||
+    code === "auth/network-request-failed" ||
+    message.includes("/appleauth/") ||
+    message.includes("503") ||
+    message.includes("Service Temporarily Unavailable")
+  );
+}
+
+async function signInWithPopupStable(provider, providerLabel, isApple) {
+  const maxAttempts = isApple ? 2 : 1;
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await firebaseAuthFns.signInWithPopup(auth, provider);
+    } catch (error) {
+      lastError = error;
+      const code = String(error?.code || "");
+      if (
+        code === "auth/popup-blocked" ||
+        code === "auth/cancelled-popup-request" ||
+        code === "auth/popup-closed-by-user"
+      ) {
+        throw error;
+      }
+      if (!isApple || !isAppleTransientPopupError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      setStatus(`${providerLabel} 로그인 서버 지연 감지. 팝업 로그인을 자동 재시도합니다... (${attempt}/${maxAttempts})`);
+      await sleep(900);
+    }
+  }
+  throw lastError || new Error(`${providerLabel} 로그인 실패`);
+}
+
 function normalizeProviderId(providerId) {
   const raw = String(providerId || "").trim().toLowerCase();
   if (!raw) return "FIREBASE";
@@ -615,28 +657,7 @@ async function startAdminSocialLogin(providerType) {
     } else {
       provider.setCustomParameters({ prompt: "select_account" });
     }
-    let result = null;
-    try {
-      result = await firebaseAuthFns.signInWithPopup(auth, provider);
-    } catch (error) {
-      const code = String(error?.code || "");
-      const message = String(error?.message || "");
-      const shouldRedirectFallback =
-        code === "auth/popup-blocked" ||
-        code === "auth/cancelled-popup-request" ||
-        (isApple && (
-          code === "auth/internal-error" ||
-          code === "auth/network-request-failed" ||
-          message.includes("/appleauth/") ||
-          message.includes("503")
-        ));
-      if (shouldRedirectFallback) {
-        setStatus(`${providerLabel} 팝업 로그인 실패로 리다이렉트 방식으로 재시도합니다...`);
-        await firebaseAuthFns.signInWithRedirect(auth, provider);
-        return;
-      }
-      throw error;
-    }
+    const result = await signInWithPopupStable(provider, providerLabel, isApple);
     if (!result?.user) throw new Error("소셜 로그인 결과에 사용자가 없습니다.");
 
     const adminUserSession = await syncAdminTabFirebaseSession(result.user);
