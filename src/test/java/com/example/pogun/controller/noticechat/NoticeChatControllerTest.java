@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -100,7 +101,7 @@ class NoticeChatControllerTest {
     void sendImages_returnsCreatedResponse() throws Exception {
         UUID roomId = UUID.randomUUID();
         MockMultipartFile file = new MockMultipartFile("images", "sample.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{1, 2, 3});
-        when(noticeChatService.sendImages(eq(roomId.toString()), eq("reply-id"), eq("이미지와 함께 보낸 글"), any(List.class))).thenReturn(messageResponse(roomId));
+        when(noticeChatService.sendImages(eq(roomId.toString()), eq("reply-id"), eq("이미지와 함께 보낸 글"), anyList())).thenReturn(messageResponse(roomId));
 
         mockMvc.perform(multipart("/api/chat/rooms/{roomId}/messages/images", roomId)
                         .file(file)

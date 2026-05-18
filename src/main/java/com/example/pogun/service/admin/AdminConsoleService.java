@@ -1,6 +1,7 @@
 package com.example.pogun.service.admin;
 
 import com.example.pogun.config.firebase.FirebaseAuthProperties;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.example.pogun.dto.admin.AdminNotificationSendRequest;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.admin.AdminIntegrationStatus;
@@ -17,7 +18,6 @@ import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
-import com.example.pogun.entity.notification.Notification;
 import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
@@ -37,7 +37,6 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityPostReactionRepository;
 import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
-import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.report.ReportRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminAuditService;
@@ -73,7 +72,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -90,6 +88,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminConsoleService {
 
+    private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP_TYPE = new TypeReference<>() {};
     private static final Set<ReportStatus> ACTIVE_REPORT_STATUSES = Set.of(ReportStatus.RECEIVED, ReportStatus.REVIEWING);
     private static final String USER_APP_DOMAIN = "paw.gbsw.hs.kr";
 
@@ -100,7 +99,6 @@ public class AdminConsoleService {
     private final CommunityPostVoteRepository communityPostVoteRepository;
     private final CommunityCommentRepository communityCommentRepository;
     private final ReportRepository reportRepository;
-    private final NotificationRepository notificationRepository;
     private final AdminNotificationDispatchRepository adminNotificationDispatchRepository;
     private final AdminIntegrationStatusRepository adminIntegrationStatusRepository;
     private final AdminReferenceDataRepository adminReferenceDataRepository;
@@ -1137,13 +1135,6 @@ public class AdminConsoleService {
         return false;
     }
 
-    private boolean between(Instant value, Instant from, Instant to) {
-        if (value == null) {
-            return false;
-        }
-        return !value.isBefore(from) && value.isBefore(to);
-    }
-
     private Instant resolveFrom(String fromValue) {
         ZoneId zoneId = ZoneId.systemDefault();
         return blank(fromValue)
@@ -1171,15 +1162,6 @@ public class AdminConsoleService {
         return start ? date.atStartOfDay(zoneId).toInstant() : date.plusDays(1).atStartOfDay(zoneId).toInstant();
     }
 
-    private Comparator<User> userComparator(String sortBy, String sortOrder) {
-        Comparator<User> comparator = switch (blank(sortBy) ? "createdAt" : sortBy.trim()) {
-            case "email" -> Comparator.comparing(User::getEmail, Comparator.nullsLast(String::compareToIgnoreCase));
-            case "lastLoginAt", "lastActiveAt" -> Comparator.comparing(User::getLastActiveAt, Comparator.nullsLast(Instant::compareTo));
-            default -> Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Instant::compareTo));
-        };
-        return "asc".equalsIgnoreCase(sortOrder) ? comparator : comparator.reversed();
-    }
-
     private String resolveUserSortProperty(String sortBy) {
         return switch (blank(sortBy) ? "createdAt" : sortBy.trim()) {
             case "email" -> "email";
@@ -1204,15 +1186,6 @@ public class AdminConsoleService {
             default -> Comparator.comparing(CommunityPost::getCreatedAt, Comparator.nullsLast(Instant::compareTo));
         };
         return "asc".equalsIgnoreCase(sortOrder) ? comparator : comparator.reversed();
-    }
-
-    private boolean matchesUserQuery(User user, String query) {
-        if (blank(query)) {
-            return true;
-        }
-        String normalized = query.trim().toLowerCase(Locale.ROOT);
-        return safe(user.getEmail()).toLowerCase(Locale.ROOT).contains(normalized)
-                || safe(user.getNickname()).toLowerCase(Locale.ROOT).contains(normalized);
     }
 
     private boolean matchesNoticeQuery(PetNotice notice, String query) {
@@ -1542,7 +1515,7 @@ public class AdminConsoleService {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(value, Map.class);
+            return objectMapper.readValue(value, STRING_OBJECT_MAP_TYPE);
         } catch (JsonProcessingException e) {
             return Map.of();
         }
@@ -1567,7 +1540,7 @@ public class AdminConsoleService {
         if (value == null) {
             return Map.of();
         }
-        return objectMapper.convertValue(value, Map.class);
+        return objectMapper.convertValue(value, STRING_OBJECT_MAP_TYPE);
     }
 
     private String writeJson(Object value) {

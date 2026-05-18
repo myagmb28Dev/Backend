@@ -342,11 +342,9 @@ public class UserPresenceService {
         if (sessions.isEmpty()) {
             return;
         }
-        boolean removedAny = false;
         for (Map.Entry<String, Instant> entry : sessions.entrySet()) {
             if (Duration.between(entry.getValue(), now).compareTo(WEBSOCKET_SESSION_STALE_AFTER) > 0) {
                 presenceSessionStore.removeSession(firebaseUid, entry.getKey());
-                removedAny = true;
             }
         }
         // WebSocket freshness is scoped to DM/socket participation. It must not force global offline.

@@ -42,7 +42,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
@@ -475,9 +477,22 @@ public class AdminController {
         Map<String, Object> detail = adminConsoleService.integrationDetail(serviceId);
         Object logs = detail.get("logs");
         List<Map<String, Object>> rows = logs instanceof List<?> list
-                ? list.stream().filter(Map.class::isInstance).map(item -> (Map<String, Object>) item).limit(Math.max(1, limit)).toList()
+                ? list.stream()
+                .map(this::toStringObjectMap)
+                .filter(Objects::nonNull)
+                .limit(Math.max(1, limit))
+                .toList()
                 : List.of();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "서비스 로그 조회 성공", rows));
+    }
+
+    private Map<String, Object> toStringObjectMap(Object item) {
+        if (!(item instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Map<String, Object> converted = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> converted.put(String.valueOf(key), value));
+        return converted;
     }
 
     @GetMapping("/audit-logs")

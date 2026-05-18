@@ -58,6 +58,10 @@ tasks.named('test') {
 	jvmArgs '-Xshare:off'
 }
 
+tasks.withType(JavaCompile).configureEach {
+	options.compilerArgs += '-parameters'
+}
+
 // Ensure Spring Boot creates only the executable bootJar and not the plain jar
 bootJar {
 	enabled = true

@@ -76,7 +76,6 @@ public class FirebaseAdminIdentityProvider implements FirebaseIdentityProvider {
         return providers;
     }
 
-    @SuppressWarnings("unchecked")
     private String extractProvider(FirebaseToken decodedToken) {
         Object firebaseClaim = decodedToken.getClaims().get("firebase");
         if (firebaseClaim instanceof java.util.Map<?, ?> firebaseMap) {

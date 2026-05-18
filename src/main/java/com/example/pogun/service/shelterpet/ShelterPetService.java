@@ -22,7 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.time.Duration;
@@ -212,31 +211,12 @@ public class ShelterPetService {
         }
     }
 
-    private ShelterPet getOrCreateShelterPet(String id) {
-        return shelterPetRepository.findById(id)
-                .orElseGet(() -> {
-                    ShelterPublicApiClient.ShelterPublicApiAnimal external = shelterPublicApiClient.fetchShelterPet(id);
-                    ShelterPet shelterPet = ShelterPet.builder()
-                            .id(id)
-                            .source(external.source())
-                            .region(extractRegion(external))
-                            .breed(firstNonBlank(external.kindName(), external.kindFullName(), "미상"))
-                            .status(firstNonBlank(external.processState(), "UNKNOWN"))
-                            .title(buildDefaultTitle(external))
-                            .description(buildDefaultDescription(external))
-                            .contactPhone(external.careTel())
-                            .images(new ArrayList<>(external.imageUrls()))
-                            .build();
-                    return shelterPetRepository.save(shelterPet);
-                });
-    }
-
     private String resolveTitle(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
         return firstNonBlank(local == null ? null : local.getTitle(), buildDefaultTitle(external));
     }
 
     private String resolveDescription(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {
-        return firstNonBlank(local == null ? null : local.getDescription(), external.specialMark());
+        return firstNonBlank(local == null ? null : local.getDescription(), buildDefaultDescription(external));
     }
 
     private String resolveRegionLabel(ShelterPet local, ShelterPublicApiClient.ShelterPublicApiAnimal external) {

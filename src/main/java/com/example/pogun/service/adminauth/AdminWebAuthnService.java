@@ -104,7 +104,7 @@ public class AdminWebAuthnService {
                 throw new AssertionFailedException("PassKey 검증에 실패했습니다.");
             }
             return new AssertionFinishPayload(
-                    result.getCredentialId().getBase64Url(),
+                    result.getCredential().getCredentialId().getBase64Url(),
                     result.getSignatureCount(),
                     context.rpId()
             );

@@ -34,7 +34,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 /**
  * 도메인 비즈니스 로직을 담당하는 AuthService이다.
  */
@@ -47,6 +49,7 @@ public class AuthService {
     private static final String REGISTRATION_COMPLETED = "COMPLETED";
     private static final String REGISTRATION_PENDING_ONBOARDING = "PENDING_ONBOARDING";
     private static final long PENDING_SIGNUP_TTL_SECONDS = 60L * 60L * 24L;
+    private static final Pattern HANGUL_PATTERN = Pattern.compile(".*\\p{IsHangul}.*");
 
     private final FirebaseAuth firebaseAuth;
     private final FirebaseAuthProperties firebaseAuthProperties;
@@ -61,7 +64,6 @@ public class AuthService {
     // Firebase 토큰을 검증한 뒤 로컬 사용자와 연동 provider 스냅샷을 함께 동기화한다.
     @Transactional
     public AuthResponse loginOrSignUp(String idToken, HttpServletRequest httpRequest) {
-        long loginStart = System.currentTimeMillis();
         log.info("[LOGIN] loginOrSignUp started, token_length={}", idToken.length());
         try {
             long verifyStart = System.currentTimeMillis();
@@ -72,14 +74,13 @@ public class AuthService {
             String uid = identity.uid();
             String email = identity.email();
             String normalizedProvider = FirebaseProviderNormalizer.resolvePrimaryProvider(identity, "FIREBASE");
-            String name = identity.displayName();
             String picture = identity.photoUrl();
-            String resolvedNickname = resolveNickname(name, email, uid);
+            String resolvedNickname = resolveNickname(identity, email, uid);
 
             User user = userRepository.findByFirebaseUid(uid)
                     .map(existingUser -> {
                         existingUser.setEmail(email);
-                        existingUser.setNickname(resolvedNickname);
+                        existingUser.setNickname(resolveNicknameForExistingUser(existingUser.getNickname(), resolvedNickname));
                         existingUser.setProfileImageUrl(picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setLastActiveAt(Instant.now());
@@ -90,7 +91,7 @@ public class AuthService {
                             .map(existingByEmail -> {
                                 // 에뮬레이터/소셜 재연동 등으로 UID가 바뀐 경우 기존 계정에 새 UID를 연결한다.
                                 existingByEmail.setFirebaseUid(uid);
-                                existingByEmail.setNickname(resolvedNickname);
+                                existingByEmail.setNickname(resolveNicknameForExistingUser(existingByEmail.getNickname(), resolvedNickname));
                                 existingByEmail.setProfileImageUrl(picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
                                 existingByEmail.setLastActiveAt(Instant.now());
@@ -180,7 +181,7 @@ public class AuthService {
             String uid = identity.uid();
             String email = identity.email();
             String normalizedProvider = FirebaseProviderNormalizer.resolvePrimaryProvider(identity, FirebaseProviderNormalizer.FIREBASE);
-            String resolvedNickname = resolveNickname(identity.displayName(), email, uid);
+            String resolvedNickname = resolveNickname(identity, email, uid);
 
             User user = userRepository.findByFirebaseUid(uid)
                     .orElseGet(() -> userRepository.findByEmail(email)
@@ -227,11 +228,98 @@ public class AuthService {
         }
     }
 
-    private String resolveNickname(String displayName, String email, String uid) {
+    private String resolveNickname(FirebaseIdentityService.FirebaseIdentity identity, String email, String uid) {
+        String displayName = resolveDisplayName(identity, email);
         if (displayName != null && !displayName.isBlank()) {
             return FirebaseDisplayNameNormalizer.normalize(displayName);
         }
         return "User_" + uid.substring(0, Math.min(5, uid.length()));
+    }
+
+    private String resolveNicknameForExistingUser(String currentNickname, String incomingNickname) {
+        if (incomingNickname == null || incomingNickname.isBlank()) {
+            return currentNickname;
+        }
+        if (currentNickname == null || currentNickname.isBlank()) {
+            return incomingNickname;
+        }
+        if (isFallbackNickname(incomingNickname)) {
+            return currentNickname;
+        }
+        if (containsHangul(currentNickname) && !containsHangul(incomingNickname)) {
+            return currentNickname;
+        }
+        return incomingNickname;
+    }
+
+    private String resolveDisplayName(FirebaseIdentityService.FirebaseIdentity identity, String email) {
+        if (identity == null) {
+            return null;
+        }
+        String normalizedDisplayName = normalizeNameCandidate(identity.displayName());
+        String normalizedClaimName = normalizeNameCandidate(claimAsString(identity.claims(), "name"));
+        String normalizedClaimGivenName = normalizeNameCandidate(claimAsString(identity.claims(), "given_name"));
+        String normalizedClaimFamilyName = normalizeNameCandidate(claimAsString(identity.claims(), "family_name"));
+
+        String nameFromClaims = composeClaimName(normalizedClaimGivenName, normalizedClaimFamilyName);
+        if (normalizedClaimName != null && !normalizedClaimName.isBlank()) {
+            nameFromClaims = normalizedClaimName;
+        }
+
+        if (looksLikeEmailAlias(normalizedDisplayName, email) && nameFromClaims != null && !nameFromClaims.isBlank()) {
+            return nameFromClaims;
+        }
+        return normalizedDisplayName != null && !normalizedDisplayName.isBlank() ? normalizedDisplayName : nameFromClaims;
+    }
+
+    private String composeClaimName(String givenName, String familyName) {
+        if (givenName == null || givenName.isBlank()) {
+            return familyName;
+        }
+        if (familyName == null || familyName.isBlank()) {
+            return givenName;
+        }
+        return givenName + " " + familyName;
+    }
+
+    private String claimAsString(Map<String, Object> claims, String key) {
+        if (claims == null || key == null || key.isBlank()) {
+            return null;
+        }
+        Object value = claims.get(key);
+        if (!(value instanceof String stringValue)) {
+            return null;
+        }
+        return stringValue;
+    }
+
+    private String normalizeNameCandidate(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim().replaceAll("\\s+", " ");
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private boolean looksLikeEmailAlias(String displayName, String email) {
+        if (displayName == null || displayName.isBlank() || email == null || email.isBlank()) {
+            return false;
+        }
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 0) {
+            return false;
+        }
+        String localPart = email.substring(0, atIndex).toLowerCase();
+        String normalizedDisplayName = displayName.toLowerCase().replace(" ", "");
+        return !localPart.isBlank() && normalizedDisplayName.equals(localPart);
+    }
+
+    private boolean isFallbackNickname(String nickname) {
+        return nickname != null && nickname.startsWith("User_");
+    }
+
+    private boolean containsHangul(String value) {
+        return value != null && HANGUL_PATTERN.matcher(value).matches();
     }
 
     private User getCurrentUser() {

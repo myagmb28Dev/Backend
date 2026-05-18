@@ -73,7 +73,6 @@ public class FirebaseEmulatorIdentityProvider implements FirebaseIdentityProvide
         return new FirebaseIdentityService.FirebaseIdentity(uid, email, displayName, photoUrl, provider, providers, payload);
     }
 
-    @SuppressWarnings("unchecked")
     private String extractProvider(Object firebaseClaim) {
         if (firebaseClaim instanceof Map<?, ?> firebaseMap) {
             Object signInProvider = firebaseMap.get("sign_in_provider");

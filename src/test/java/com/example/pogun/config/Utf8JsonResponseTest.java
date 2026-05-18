@@ -84,7 +84,7 @@ class Utf8JsonResponseTest {
         }
 
         @GetMapping("/test/missing-param")
-        ApiResponse<String> missing(@RequestParam String value) {
+        ApiResponse<String> missing(@RequestParam("value") String value) {
             return ApiResponse.success(HttpStatus.OK, "unused", value);
         }
     }

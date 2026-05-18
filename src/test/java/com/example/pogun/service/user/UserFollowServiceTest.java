@@ -19,12 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -85,7 +85,7 @@ class UserFollowServiceTest {
                 any(String.class),
                 eq(NotificationPriority.NORMAL),
                 eq("followed-me:" + follower.getId() + ":" + following.getId()),
-                any(Map.class)
+                anyMap()
         );
     }
 

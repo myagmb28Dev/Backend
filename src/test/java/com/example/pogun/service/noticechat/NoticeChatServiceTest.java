@@ -50,6 +50,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
@@ -401,7 +402,7 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
                 .thenReturn(List.of(
                         variant(s3Url("uploads/notice-chat/messages/test/one.webp")),
                         variant(s3Url("uploads/notice-chat/messages/test/two.webp"))
@@ -413,7 +414,7 @@ class NoticeChatServiceTest {
 
         assertThat(response.messageType()).isEqualTo("IMAGE");
         assertThat(response.message()).isEqualTo("이미지와 함께 보낸 글");
-        verify(s3ImageStorageService).storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class));
+        verify(s3ImageStorageService).storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList());
     }
 
     @Test
@@ -434,7 +435,7 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
                 .thenReturn(List.of(variant(s3Url("uploads/notice-chat/messages/test/one.webp"))));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
@@ -498,7 +499,7 @@ class NoticeChatServiceTest {
 
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), any(List.class)))
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
                 .thenReturn(List.of(new StoredImageVariant(
                         s3Url("uploads/notice-chat/messages/test/video.mp4"),
                         s3Url("uploads/notice-chat/messages/test/video.mp4"),
