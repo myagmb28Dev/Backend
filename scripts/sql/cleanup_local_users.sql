@@ -137,6 +137,20 @@ WHERE notice_id IN (SELECT id FROM target_notices);
 DELETE FROM pet_notices
 WHERE id IN (SELECT id FROM target_notices);
 
+-- Admin FK order guard:
+-- admin_auth_challenges.session_id -> admin_sessions.id
+-- so delete challenges before sessions to avoid FK violations.
+DELETE FROM admin_auth_challenges
+WHERE user_id IN (SELECT id FROM target_users)
+   OR session_id IN (
+     SELECT id
+     FROM admin_sessions
+     WHERE user_id IN (SELECT id FROM target_users)
+   );
+
+DELETE FROM admin_sessions
+WHERE user_id IN (SELECT id FROM target_users);
+
 DO $$
 DECLARE r record;
 BEGIN

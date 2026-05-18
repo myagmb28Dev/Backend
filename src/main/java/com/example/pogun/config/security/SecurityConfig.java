@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .requestMatchers(
                         "/Full_Compact.html",
                         "/full_compact/**",
+                        "/admin-email-promote.html",
                         "/js/**"
                 );
     }
@@ -53,6 +54,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/**/*.html")
                         .permitAll()
                         .requestMatchers("/Full_Compact.html")
+                        .permitAll()
+                        .requestMatchers("/admin-email-promote.html")
                         .permitAll()
                         .requestMatchers("/full_compact/**")
                         .permitAll()

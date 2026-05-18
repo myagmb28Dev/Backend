@@ -21,6 +21,7 @@ import com.example.pogun.repository.admin.AdminAuthChallengeRepository;
 import com.example.pogun.repository.admin.AdminPasskeyRepository;
 import com.example.pogun.repository.admin.AdminSessionRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.auth.FirebaseDisplayNameNormalizer;
 import com.example.pogun.service.auth.FirebaseIdentityService;
 import com.example.pogun.service.auth.FirebaseProviderNormalizer;
 import com.google.firebase.auth.FirebaseAuth;
@@ -503,7 +504,7 @@ public class AdminAuthService {
         boolean changed = false;
         // Always update nickname if Firebase provider gives a displayName different from current.
         if (displayName != null && !displayName.isBlank()) {
-            String trimmed = displayName.trim();
+            String trimmed = FirebaseDisplayNameNormalizer.normalize(displayName);
             if (!trimmed.equals(currentNickname)) {
                 admin.setNickname(trimmed);
                 changed = true;
@@ -605,7 +606,9 @@ public class AdminAuthService {
         try {
             firebaseAuth.updateUser(new UserRecord.UpdateRequest(firebaseUid).setEmailVerified(false));
         } catch (FirebaseAuthException e) {
-            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
+            log.warn("관리자 이메일 재인증 준비 실패. 로그인 흐름은 계속 진행합니다. firebaseUid={}, reason={}",
+                    firebaseUid,
+                    e.getMessage());
         }
     }
 
@@ -753,6 +756,7 @@ public class AdminAuthService {
                         && passkey.getRpId().equalsIgnoreCase(targetRpId)
         );
     }
+
 
     private void invalidatePendingChallenges(AdminSession session, AdminAuthChallengeType type) {
         List<AdminAuthChallenge> pending = adminAuthChallengeRepository.findBySessionAndTypeAndUsedAtIsNull(session, type);

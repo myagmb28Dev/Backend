@@ -19,7 +19,6 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
-import com.example.pogun.service.user.LocalTestUserLabel;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
@@ -230,11 +229,7 @@ public class AuthService {
 
     private String resolveNickname(String displayName, String email, String uid) {
         if (displayName != null && !displayName.isBlank()) {
-            return displayName.trim();
-        }
-        String localTestLabel = LocalTestUserLabel.nicknameFromEmail(email).orElse(null);
-        if (localTestLabel != null) {
-            return localTestLabel;
+            return FirebaseDisplayNameNormalizer.normalize(displayName);
         }
         return "User_" + uid.substring(0, Math.min(5, uid.length()));
     }

@@ -26,7 +26,6 @@ import com.example.pogun.repository.bookmark.NoticeBookmarkRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.noticechat.NoticeChatService;
-import com.example.pogun.service.user.LocalTestUserLabel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -416,8 +415,7 @@ public class MissingPetService {
         if (author == null) {
             return "알 수 없는 사용자";
         }
-        String testLabel = LocalTestUserLabel.displayNameFromEmail(author.getEmail()).orElse(null);
-        return testLabel != null ? testLabel : author.getNickname();
+        return author.getNickname();
     }
 
     private void attachImages(UUID ownerId, PetNotice notice, List<MultipartFile> imageFiles, boolean shouldReplaceImages) {

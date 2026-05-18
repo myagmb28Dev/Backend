@@ -204,6 +204,7 @@ function setStatus(message, tone = "") { const node = el("status"); node.textCon
 function setMapStatus(message, tone = "") { const node = el("mapStatus"); node.textContent = message; node.className = `map-status${tone ? ` ${tone}` : ""}`; }
 function setSelectedRegionName(message) { el("selectedRegionName").textContent = message; }
 
+
 function withTimeout(promise, timeoutMs, label) {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -225,7 +226,6 @@ function renderSession() {
     : pendingUser
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
-  el("googleLoginButton").style.display = "";
   el("googleLoginButton").disabled = loginInProgress || Boolean(activeRole || pendingOnboardingRole);
   el("appleLoginButton").disabled = loginInProgress || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
@@ -295,6 +295,11 @@ function restoreSession() {
   try {
     const parsed = loadStoredSession(REAL_SESSION_KEY);
     if (!parsed) return null;
+    const parsedEmail = String(parsed.email || "").toLowerCase();
+    if (parsedEmail.endsWith("@local.dev")) {
+      clearSession();
+      return null;
+    }
     currentSession = parsed;
     users[REAL_ROLE] = {
       label: resolveSessionLabel(parsed),
@@ -546,13 +551,10 @@ async function startSocialLogin(providerType) {
   }
 }
 
-async function startGoogleLogin() {
-  return startSocialLogin("google");
-}
-
 async function startAppleLogin() {
   return startSocialLogin("apple");
 }
+
 
 async function handleFirebaseUser(user, forceRefresh = false, options = {}) {
   const shouldNavigate = options.navigate !== false;
@@ -782,7 +784,7 @@ function run(handler) {
 }
 
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
-el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+el("googleLoginButton").addEventListener("click", run(() => startSocialLogin("google")));
 el("appleLoginButton").addEventListener("click", run(startAppleLogin));
 el("refreshLoginButton").addEventListener("click", run(async () => {
   const button = el("refreshLoginButton");

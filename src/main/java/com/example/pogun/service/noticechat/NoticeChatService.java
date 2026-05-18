@@ -40,7 +40,6 @@ import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
-import com.example.pogun.service.user.LocalTestUserLabel;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -1224,10 +1223,6 @@ public class NoticeChatService {
         }
         if (user.getStatus() == UserStatus.BANNED) {
             return "이용 제한 사용자";
-        }
-        String testLabel = LocalTestUserLabel.displayNameFromEmail(user.getEmail()).orElse(null);
-        if (testLabel != null) {
-            return testLabel;
         }
         return user.getNickname();
     }

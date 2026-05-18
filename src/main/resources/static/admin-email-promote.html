@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pogun Admin Promote</title>
+  <style>
+    :root {
+      --bg:#0f0b14;
+      --card:#171220;
+      --line:#2d2540;
+      --ink:#f5f3ff;
+      --muted:#a59bb9;
+      --accent:#8b5cf6;
+      --good:#34d399;
+      --bad:#f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI","Malgun Gothic",sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    main {
+      width: min(980px, calc(100% - 28px));
+      margin: 20px auto;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    h1, h2, p { margin: 0; }
+    .muted { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .status {
+      min-height: 40px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #1f1930;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .status.good { background: rgba(31,138,76,.12); color: var(--good); }
+    .status.bad { background: rgba(180,35,24,.10); color: var(--bad); }
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      background: #130f1d;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+    }
+    button {
+      border: 1px solid #6d46c6;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+    }
+    button.secondary {
+      background: #1f1930;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #0d0d12;
+      border: 1px solid #292b36;
+      border-radius: 10px;
+      padding: 12px;
+      color: #c8c7d4;
+      font-size: 12px;
+      max-height: 360px;
+      overflow: auto;
+    }
+  </style>
+  <link rel="stylesheet" href="/full_compact/admin-theme.css">
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div>
+      <strong>Admin Promote</strong>
+      <h1>이메일 관리자 승격</h1>
+      <p class="muted">이메일 입력 후 승격 버튼만 누르면 됩니다. 승격 호출에서 `ADMIN_STEP_UP_REQUIRED`가 오면 PassKey step-up을 자동 수행한 뒤 승격을 재시도합니다.</p>
+    </div>
+    <div id="notificationBellMount"></div>
+  </section>
+
+  <section class="card">
+    <div id="status" class="status">준비 중</div>
+    <p id="accountHint" class="muted">세션 확인 중입니다.</p>
+    <label>
+      승격 대상 이메일
+      <input id="targetEmail" type="email" placeholder="target@example.com" value="">
+    </label>
+    <div class="actions">
+      <button id="promoteButton" type="button">이메일 승격</button>
+    </div>
+    <p class="muted">요구 권한: `ROLE_ADMIN_CONSOLE` + `ADMIN_PROMOTE`</p>
+  </section>
+
+  <section class="card">
+    <h2>응답 로그</h2>
+    <pre id="log">{}</pre>
+  </section>
+</main>
+
+<script type="module">
+import {
+  getStoredSession,
+  mountNotificationBell,
+  refreshNotificationBell
+} from "/js/notification-web.js";
+
+const ADMIN_TOKEN_KEY = "pogun-admin-console-token-v2";
+const BACKEND_BASE = window.location.origin;
+
+const el = (id) => document.getElementById(id);
+
+function setStatus(message, tone = "") {
+  const node = el("status");
+  node.textContent = message;
+  node.className = `status${tone ? ` ${tone}` : ""}`;
+}
+
+function writeLog(value) {
+  try {
+    el("log").textContent = JSON.stringify(value, null, 2);
+  } catch {
+    el("log").textContent = String(value);
+  }
+}
+
+function getUserSession() {
+  const session = getStoredSession();
+  if (!session?.firebaseIdToken) {
+    throw new Error("login-flow에서 먼저 로그인하세요.");
+  }
+  return session;
+}
+
+function updateAccountHint() {
+  const session = getStoredSession();
+  if (!session?.firebaseIdToken) {
+    el("accountHint").textContent = "login-flow 세션 없음";
+    return;
+  }
+  const email = String(session.email || "").toLowerCase();
+  if (email.endsWith("@local.dev")) {
+    try { window.localStorage.removeItem("pogun-real-firebase-session-v1"); } catch {}
+    try { window.localStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
+    el("accountHint").textContent = "로컬 테스트 세션이 정리되었습니다. Google/Apple로 다시 로그인하세요.";
+    return;
+  }
+  const role = session.role || "-";
+  const visibleEmail = session.email || "-";
+  const nickname = session.nickname || "사용자";
+  el("accountHint").textContent = `${nickname} · ${visibleEmail} · role=${role}`;
+}
+
+function getAdminToken() {
+  return (window.localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
+}
+
+function setAdminToken(token) {
+  if (!token) return;
+  window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+async function parseResponse(response) {
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text };
+  }
+  writeLog({ status: response.status, body });
+  return body;
+}
+
+async function adminApi(path, options = {}) {
+  const token = getAdminToken();
+  if (!token) throw new Error("관리자 세션이 없습니다. login-flow 로그인 후 다시 시도하세요.");
+  const headers = new Headers(options.headers || {});
+  headers.set("Content-Type", "application/json");
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`${BACKEND_BASE}${path}`, { ...options, headers });
+  const body = await parseResponse(response);
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `HTTP ${response.status}`);
+    error.code = body?.error?.code || null;
+    error.httpStatus = response.status;
+    throw error;
+  }
+  return body?.data ?? body;
+}
+
+function base64UrlToBuffer(value) {
+  const base64 = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function bufferToBase64Url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeAssertionOptions(publicKey) {
+  const next = structuredClone(publicKey);
+  next.challenge = base64UrlToBuffer(next.challenge);
+  next.allowCredentials = (next.allowCredentials || []).map((credential) => ({
+    ...credential,
+    id: base64UrlToBuffer(credential.id)
+  }));
+  return next;
+}
+
+function decodeCreationOptions(publicKey) {
+  const next = structuredClone(publicKey);
+  next.challenge = base64UrlToBuffer(next.challenge);
+  if (next.user?.id) next.user = { ...next.user, id: base64UrlToBuffer(next.user.id) };
+  next.excludeCredentials = (next.excludeCredentials || []).map((credential) => ({
+    ...credential,
+    id: base64UrlToBuffer(credential.id)
+  }));
+  return next;
+}
+
+function encodeAssertionCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+      authenticatorData: bufferToBase64Url(credential.response.authenticatorData),
+      signature: bufferToBase64Url(credential.response.signature),
+      userHandle: credential.response.userHandle ? bufferToBase64Url(credential.response.userHandle) : null
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() || {},
+    authenticatorAttachment: credential.authenticatorAttachment || null
+  };
+}
+
+function encodeAttestationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+      attestationObject: bufferToBase64Url(credential.response.attestationObject),
+      transports: credential.response.getTransports?.() || []
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() || {},
+    authenticatorAttachment: credential.authenticatorAttachment || null
+  };
+}
+
+async function loginWithFirebaseIdToken(firebaseIdToken) {
+  const response = await fetch(`${BACKEND_BASE}/api/admin/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ firebaseIdToken })
+  });
+  const body = await parseResponse(response);
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `HTTP ${response.status}`);
+    error.code = body?.error?.code || null;
+    error.httpStatus = response.status;
+    throw error;
+  }
+  return body?.data ?? body;
+}
+
+async function registerPasskey(session) {
+  const token = session?.accessToken;
+  if (!token) throw new Error("PassKey 등록용 관리자 세션 토큰이 없습니다.");
+
+  const optionsRes = await fetch(`${BACKEND_BASE}/api/admin/auth/passkeys/register/options`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: "{}"
+  });
+  const optionsBody = await parseResponse(optionsRes);
+  if (!optionsRes.ok) throw new Error(optionsBody?.error?.message || optionsBody?.message || "PassKey 등록 옵션 실패");
+  const options = optionsBody?.data;
+
+  const credential = await navigator.credentials.create({ publicKey: decodeCreationOptions(options.publicKey) });
+  if (!credential) throw new Error("PassKey 등록 credential이 없습니다.");
+
+  const verifyRes = await fetch(`${BACKEND_BASE}/api/admin/auth/passkeys/register/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      challengeId: options.challengeId,
+      credential: encodeAttestationCredential(credential)
+    })
+  });
+  const verifyBody = await parseResponse(verifyRes);
+  if (!verifyRes.ok) throw new Error(verifyBody?.error?.message || verifyBody?.message || "PassKey 등록 검증 실패");
+  const data = verifyBody?.data ?? verifyBody;
+  if (data?.accessToken) setAdminToken(data.accessToken);
+}
+
+async function verifyMfa(session, passkey) {
+  const token = session?.accessToken;
+  if (!token) throw new Error("PassKey 인증용 관리자 세션 토큰이 없습니다.");
+  const options = passkey;
+  if (!options?.publicKey || !options?.challengeId) {
+    throw new Error("PassKey MFA 옵션이 없습니다.");
+  }
+
+  const credential = await navigator.credentials.get({ publicKey: decodeAssertionOptions(options.publicKey) });
+  if (!credential) throw new Error("PassKey credential이 없습니다.");
+
+  const verifyRes = await fetch(`${BACKEND_BASE}/api/admin/auth/mfa/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      challengeId: options.challengeId,
+      credential: encodeAssertionCredential(credential)
+    })
+  });
+  const verifyBody = await parseResponse(verifyRes);
+  if (!verifyRes.ok) throw new Error(verifyBody?.error?.message || verifyBody?.message || "PassKey MFA 검증 실패");
+  const data = verifyBody?.data ?? verifyBody;
+  if (data?.accessToken) setAdminToken(data.accessToken);
+}
+
+async function ensureAdminSession() {
+  const userSession = getUserSession();
+
+  const existing = getAdminToken();
+  if (existing) {
+    try {
+      await adminApi("/api/admin/auth/session", { method: "GET" });
+      return existing;
+    } catch {
+      window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+  }
+
+  setStatus("관리자 로그인 협상 중...");
+  const loginData = await loginWithFirebaseIdToken(userSession.firebaseIdToken);
+  const nextStep = loginData?.nextStep;
+
+  if (nextStep === "EMAIL_VERIFICATION_REQUIRED") {
+    throw new Error("관리자 이메일 인증이 필요합니다. 메일 인증 후 다시 시도하세요.");
+  }
+  if (nextStep === "PASSKEY_REGISTRATION_REQUIRED") {
+    setStatus("PassKey 등록 진행 중...");
+    await registerPasskey(loginData.session);
+  } else if (nextStep === "PASSKEY_REQUIRED") {
+    setStatus("PassKey 인증 진행 중...");
+    await verifyMfa(loginData.session, loginData.passkey);
+  } else if (loginData?.session?.accessToken) {
+    setAdminToken(loginData.session.accessToken);
+  }
+
+  const token = getAdminToken();
+  if (!token) {
+    throw new Error(`관리자 세션 발급 실패: ${nextStep || "UNKNOWN"}`);
+  }
+  await adminApi("/api/admin/auth/session", { method: "GET" });
+  return token;
+}
+
+async function verifyStepup() {
+  await ensureAdminSession();
+  setStatus("PassKey step-up 자동 진행 중...");
+  const options = await adminApi("/api/admin/auth/stepup/options", { method: "POST", body: "{}" });
+  const credential = await navigator.credentials.get({ publicKey: decodeAssertionOptions(options.publicKey) });
+  if (!credential) throw new Error("PassKey credential이 없습니다.");
+  await adminApi("/api/admin/auth/stepup/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      challengeId: options.challengeId,
+      credential: encodeAssertionCredential(credential)
+    })
+  });
+}
+
+async function promoteEmailWithAutoStepup() {
+  const email = el("targetEmail").value.trim();
+  if (!email) throw new Error("승격 대상 이메일을 입력하세요.");
+  setStatus("승격 요청 전 관리자 세션 확인 중...");
+  await ensureAdminSession();
+  setStatus("이메일 승격 요청 중...");
+  try {
+    await adminApi("/api/admin/users/promote/email", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    return;
+  } catch (error) {
+    if (error?.code !== "ADMIN_STEP_UP_REQUIRED") throw error;
+  }
+
+  setStatus("ADMIN_STEP_UP_REQUIRED 감지. PassKey step-up 자동 수행 중...");
+  await verifyStepup();
+  setStatus("step-up 완료. 이메일 승격 재시도 중...");
+  await adminApi("/api/admin/users/promote/email", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+function run(task, successMessage) {
+  return async () => {
+    try {
+      await task();
+      if (successMessage) setStatus(successMessage, "good");
+      await refreshNotificationBell("notificationBellMount").catch(() => {});
+    } catch (error) {
+      setStatus(error.message || String(error), "bad");
+      console.error(error);
+    }
+  };
+}
+
+async function bootstrap() {
+  updateAccountHint();
+  await mountNotificationBell("notificationBellMount");
+  setStatus("준비 완료");
+}
+
+el("promoteButton").addEventListener("click", run(promoteEmailWithAutoStepup, "이메일 승격 요청 완료"));
+
+bootstrap().catch((error) => {
+  setStatus(error.message || String(error), "bad");
+  console.error(error);
+});
+</script>
+</body>
+</html>

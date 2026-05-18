@@ -321,7 +321,10 @@ public class AdminConsoleService {
         try {
             firebaseAuth.updateUser(new UserRecord.UpdateRequest(user.getFirebaseUid()).setEmailVerified(false));
         } catch (FirebaseAuthException e) {
-            throw ApiException.internal("ADMIN_EMAIL_REVERIFY_PREPARE_FAILED", "관리자 이메일 재인증 준비에 실패했습니다.");
+            log.warn("관리자 이메일 재인증 준비 실패. 승격은 유지됩니다. userId={}, firebaseUid={}, reason={}",
+                    user.getId(),
+                    user.getFirebaseUid(),
+                    e.getMessage());
         }
     }
 
