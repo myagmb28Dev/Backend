@@ -531,9 +531,10 @@ public class AdminAuthService {
     }
 
     private AdminAuthChallenge getChallenge(AdminSession session, UUID challengeId, AdminAuthChallengeType type) {
+        Instant now = Instant.now();
         return adminAuthChallengeRepository.findByIdAndSessionAndType(challengeId, session, type)
                 .filter(challenge -> challenge.getUsedAt() == null)
-                .filter(challenge -> challenge.getExpiresAt() != null && challenge.getExpiresAt().isAfter(Instant.now()))
+                .filter(challenge -> challenge.getExpiresAt() != null && challenge.getExpiresAt().isAfter(now))
                 .orElseThrow(() -> ApiException.forbidden("PASSKEY_CHALLENGE_INVALID", "유효한 PassKey 챌린지를 찾을 수 없습니다."));
     }
 
