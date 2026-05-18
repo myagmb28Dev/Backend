@@ -13,6 +13,7 @@ public interface PendingSocialSignupRepository extends JpaRepository<PendingSoci
     Optional<PendingSocialSignup> findByFirebaseUid(String firebaseUid);
 
     void deleteByFirebaseUid(String firebaseUid);
+    long deleteByEmailIgnoreCase(String email);
 
     long deleteByExpiresAtBefore(Instant now);
 }

@@ -18,6 +18,7 @@ import com.example.pogun.service.location.KakaoLocalService;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.UserRecord;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -302,6 +304,37 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginOrSignUp_usesFirebaseDisplayNameWhenAppleIdentityHasNoNameClaims() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "apple-no-name-uid",
+                "myagmb28s@gmail.com",
+                null,
+                null,
+                "apple.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("apple.com", "apple-sub", "myagmb28s@gmail.com")),
+                java.util.Map.of()
+        );
+        UserRecord firebaseUser = mock(UserRecord.class);
+        when(firebaseUser.getDisplayName()).thenReturn("장준혁");
+
+        when(firebaseIdentityService.verifyIdToken("apple-token")).thenReturn(identity);
+        when(firebaseAuth.getUser("apple-no-name-uid")).thenReturn(firebaseUser);
+        when(userRepository.findByFirebaseUid("apple-no-name-uid")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("myagmb28s@gmail.com")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("apple-no-name-uid")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.save(any(PendingSocialSignup.class))).thenAnswer(invocation -> {
+            PendingSocialSignup pending = invocation.getArgument(0);
+            pending.setId(UUID.fromString("55555555-5555-5555-5555-555555555555"));
+            return pending;
+        });
+
+        AuthResponse response = authService.loginOrSignUp("apple-token", httpServletRequest);
+
+        assertThat(response.registrationStatus()).isEqualTo("PENDING_ONBOARDING");
+        assertThat(response.nickname()).isEqualTo("장준혁");
+    }
+
+    @Test
     void completeOnboarding_createsActiveUserFromPendingSignup() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")
@@ -352,7 +385,7 @@ class AuthServiceTest {
         assertThat(userCaptor.getValue().getRegion()).isEqualTo("경기도 성남시 분당구 삼평동");
         assertThat(userCaptor.getValue().getRegion2DepthName()).isEqualTo("성남시 분당구");
         verify(userPresenceService).touchFromAuthenticationSafely("firebase-uid", null);
-        verify(pendingSocialSignupRepository).delete(pending);
+        verify(pendingSocialSignupRepository).deleteByEmailIgnoreCase("new-user@example.com");
     }
 
     @Test

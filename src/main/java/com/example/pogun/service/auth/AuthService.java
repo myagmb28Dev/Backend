@@ -22,6 +22,7 @@ import com.example.pogun.service.noticechat.NoticeChatService;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -168,7 +169,8 @@ public class AuthService {
             upsertSocialAccount(saved, provider, saved.getFirebaseUid(), saved.getEmail());
         }
 
-        pendingSocialSignupRepository.delete(pending);
+        // Remove any stale pending rows sharing the same email (different Firebase UIDs).
+        pendingSocialSignupRepository.deleteByEmailIgnoreCase(pending.getEmail());
         touchAndPublishPresenceSafely(saved.getFirebaseUid(), null);
         log.info("온보딩 완료 및 정식 회원 생성: userId={}, firebaseUid={}", saved.getId(), saved.getFirebaseUid());
         return buildAuthResponse(saved);
@@ -230,10 +232,29 @@ public class AuthService {
 
     private String resolveNickname(FirebaseIdentityService.FirebaseIdentity identity, String email, String uid) {
         String displayName = resolveDisplayName(identity, email);
+        if (displayName == null || displayName.isBlank()) {
+            displayName = resolveDisplayNameFromFirebase(uid);
+        }
         if (displayName != null && !displayName.isBlank()) {
             return FirebaseDisplayNameNormalizer.normalize(displayName);
         }
         return "User_" + uid.substring(0, Math.min(5, uid.length()));
+    }
+
+    private String resolveDisplayNameFromFirebase(String firebaseUid) {
+        if (firebaseUid == null || firebaseUid.isBlank()) {
+            return null;
+        }
+        try {
+            UserRecord firebaseUser = firebaseAuth.getUser(firebaseUid);
+            if (firebaseUser == null) {
+                return null;
+            }
+            return normalizeNameCandidate(firebaseUser.getDisplayName());
+        } catch (FirebaseAuthException e) {
+            log.debug("Firebase displayName lookup failed. firebaseUid={}, reason={}", firebaseUid, e.getMessage());
+            return null;
+        }
     }
 
     private String resolveNicknameForExistingUser(String currentNickname, String incomingNickname) {

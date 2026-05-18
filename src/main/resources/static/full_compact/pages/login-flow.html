@@ -547,6 +547,80 @@ async function signInWithPopupStable(provider, providerLabel, isApple) {
   throw lastError || new Error(`${providerLabel} 로그인 실패`);
 }
 
+function parseJsonObject(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringValue(value) {
+  return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function composeNameFromObject(value) {
+  if (!value || typeof value !== "object") return "";
+  const direct = stringValue(value.name) || stringValue(value.displayName) || stringValue(value.fullName);
+  if (direct) return direct;
+  const given = stringValue(value.givenName) || stringValue(value.given_name) || stringValue(value.firstName);
+  const family = stringValue(value.familyName) || stringValue(value.family_name) || stringValue(value.lastName);
+  return [given, family].filter(Boolean).join(" ");
+}
+
+function normalizeDisplayName(name) {
+  const trimmed = stringValue(name);
+  if (!trimmed) return "";
+  const parts = trimmed.split(" ");
+  const isHangul = (part) => /^[\uAC00-\uD7A3]+$/.test(part);
+  if (parts.length < 2 || !parts.every(isHangul)) return trimmed;
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (first.length === 1) return parts.join("");
+  if (last.length === 1) return `${last}${parts.slice(0, -1).join("")}`;
+  return trimmed;
+}
+
+function extractAppleDisplayName(result) {
+  if (!result) return "";
+  const additionalInfo = firebaseAuthFns?.getAdditionalUserInfo
+    ? firebaseAuthFns.getAdditionalUserInfo(result)
+    : null;
+  const profile = additionalInfo?.profile || {};
+  const tokenResponse = result._tokenResponse || {};
+  const rawUserInfo = parseJsonObject(tokenResponse.rawUserInfo);
+  const candidates = [
+    result.user?.displayName,
+    profile,
+    profile.name,
+    profile.fullName,
+    tokenResponse.displayName,
+    tokenResponse.fullName,
+    rawUserInfo,
+    rawUserInfo?.name,
+    rawUserInfo?.fullName
+  ];
+
+  for (const candidate of candidates) {
+    const resolved = typeof candidate === "object" ? composeNameFromObject(candidate) : stringValue(candidate);
+    const normalized = normalizeDisplayName(resolved);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+async function persistAppleDisplayName(result) {
+  if (!result?.user || !firebaseAuthFns?.updateProfile) return;
+  const displayName = extractAppleDisplayName(result);
+  if (!displayName || result.user.displayName === displayName) return;
+  await firebaseAuthFns.updateProfile(result.user, { displayName });
+  if (typeof result.user.reload === "function") {
+    await result.user.reload();
+  }
+}
+
 async function startSocialLogin(providerType) {
   const isApple = providerType === "apple";
   const providerLabel = isApple ? "Apple" : "Google";
@@ -571,6 +645,9 @@ async function startSocialLogin(providerType) {
     }
     const result = await signInWithPopupStable(provider, providerLabel, isApple);
     if (!result?.user) throw new Error("Firebase 로그인 결과에 사용자가 없습니다.");
+    if (isApple) {
+      await persistAppleDisplayName(result);
+    }
     await handleFirebaseUser(result.user, true);
   } catch (error) {
     if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
@@ -864,6 +941,9 @@ run(async () => {
   try {
     const result = await firebaseAuthFns.getRedirectResult(auth);
     if (result?.user) {
+      if (normalizeProviderId(providerFromFirebaseUser(result.user)) === "APPLE") {
+        await persistAppleDisplayName(result);
+      }
       await handleFirebaseUser(result.user, true);
       return;
     }
@@ -873,6 +953,10 @@ run(async () => {
   }
   firebaseAuthFns.onAuthStateChanged(auth, (user) => {
     authStateInitialized = true;
+    if (appleLoginInProgress && user) {
+      firebaseUser = user;
+      return;
+    }
     handleFirebaseUser(user).catch((error) => {
       console.error(error);
       setStatus(error.message || String(error), "bad");
