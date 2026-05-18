@@ -92,6 +92,7 @@
       <p id="accountHint" class="muted">로그인해주세요.</p>
       <div class="actions">
         <button id="googleLoginButton" type="button">Google로 로그인</button>
+        <button id="appleLoginButton" type="button" class="secondary">Apple로 로그인</button>
         <button id="googleLogoutButton" type="button" class="secondary">로그아웃</button>
         <button id="refreshLoginButton" type="button" class="secondary small">Refresh</button>
       </div>
@@ -165,7 +166,12 @@ import { clearRefreshToken, refreshFirebaseSession, setRefreshToken } from "/js/
     const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 const redirectPath = (query.get("redirect") || "").trim();
 const REAL_ROLE = "google";
-const DEFAULT_USER_LABEL = "Google 사용자";
+const DEFAULT_USER_LABEL = "소셜 사용자";
+const PROVIDER_LABELS = {
+  GOOGLE: "Google 사용자",
+  APPLE: "Apple 사용자",
+  FIREBASE: "Firebase 사용자"
+};
 const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
 let auth = null;
 let firebaseUser = null;
@@ -184,6 +190,7 @@ let authStateInitialized = false;
 let sessionResyncPromise = null;
 let firebaseUserSyncPromise = null;
 let googleLoginInProgress = false;
+let appleLoginInProgress = false;
 const FIREBASE_TOKEN_CHECK_TIMEOUT_MS = 15000;
 const BACKEND_LOGIN_TIMEOUT_MS = 60000;
 const BACKEND_SYNC_DEBOUNCE_MS = 12000;
@@ -212,13 +219,15 @@ function withTimeout(promise, timeoutMs, label) {
 function renderSession() {
   const user = activeRole ? users[activeRole] : null;
   const pendingUser = pendingOnboardingRole ? users[pendingOnboardingRole] : null;
+  const loginInProgress = googleLoginInProgress || appleLoginInProgress;
   el("accountHint").textContent = user
     ? `${user.label} 로그인됨 · ${user.email}${user.userId ? ` · ${user.userId}` : ""}`
     : pendingUser
       ? `${pendingUser.label} 온보딩 대기 중 · ${pendingUser.email}`
       : "로그인해주세요.";
   el("googleLoginButton").style.display = "";
-  el("googleLoginButton").disabled = googleLoginInProgress || Boolean(activeRole || pendingOnboardingRole);
+  el("googleLoginButton").disabled = loginInProgress || Boolean(activeRole || pendingOnboardingRole);
+  el("appleLoginButton").disabled = loginInProgress || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = !currentSession;
   el("refreshLoginButton").disabled = Boolean(sessionResyncPromise);
   el("onboardingPanel").classList.toggle("visible", Boolean(pendingOnboardingRole));
@@ -227,6 +236,7 @@ function renderSession() {
 
 function setLoginButtonsBusy(isBusy) {
   el("googleLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
+  el("appleLoginButton").disabled = isBusy || Boolean(activeRole || pendingOnboardingRole);
   el("googleLogoutButton").disabled = isBusy || !currentSession;
   el("refreshLoginButton").disabled = false;
 }
@@ -287,7 +297,7 @@ function restoreSession() {
     if (!parsed) return null;
     currentSession = parsed;
     users[REAL_ROLE] = {
-      label: parsed.nickname || parsed.email || DEFAULT_USER_LABEL,
+      label: resolveSessionLabel(parsed),
       email: parsed.email || "",
       token: parsed.firebaseIdToken,
       userId: parsed.userId || null,
@@ -305,7 +315,28 @@ function restoreSession() {
   }
 }
 
+function normalizeProviderId(providerId) {
+  const raw = String(providerId || "").trim().toLowerCase();
+  if (!raw) return "FIREBASE";
+  if (raw === "google.com" || raw === "google") return "GOOGLE";
+  if (raw === "apple.com" || raw === "apple") return "APPLE";
+  if (raw === "password" || raw === "email" || raw === "firebase") return "FIREBASE";
+  return raw.toUpperCase().replace(/\./g, "_");
+}
+
+function providerFromFirebaseUser(user = {}) {
+  const providerData = Array.isArray(user.providerData) ? user.providerData : [];
+  const provider = providerData.find((item) => item?.providerId)?.providerId;
+  return normalizeProviderId(provider);
+}
+
+function resolveSessionLabel(session = {}) {
+  if (session.nickname && session.nickname !== session.email) return session.nickname;
+  return PROVIDER_LABELS[normalizeProviderId(session.provider)] || session.email || DEFAULT_USER_LABEL;
+}
+
 function buildSession(token, data, fallbackUser = {}) {
+  const provider = normalizeProviderId(data.provider || providerFromFirebaseUser(fallbackUser));
   return {
     firebaseIdToken: token,
     refreshToken: fallbackUser.refreshToken || "",
@@ -313,6 +344,7 @@ function buildSession(token, data, fallbackUser = {}) {
     email: data.email || fallbackUser.email || "",
     nickname: data.nickname || fallbackUser.displayName || data.email || fallbackUser.email || DEFAULT_USER_LABEL,
     profileImageUrl: data.profileImageUrl || fallbackUser.photoURL || "",
+    provider,
     userId: data.id || null,
     registrationStatus: data.registrationStatus || null
   };
@@ -410,7 +442,7 @@ async function syncBackendLogin(token, fallbackUser = {}, options = {}) {
   const session = buildSession(token, data, fallbackUser);
   saveSession(session);
   users[REAL_ROLE] = {
-    label: session.nickname || session.email || DEFAULT_USER_LABEL,
+    label: resolveSessionLabel(session),
     email: session.email,
     token,
     userId: session.userId,
@@ -468,19 +500,29 @@ async function loadFirebaseAuth() {
   return auth;
 }
 
-async function startGoogleLogin() {
-  if (googleLoginInProgress) {
-    setStatus("이미 Google 로그인 진행 중입니다. 팝업을 완료하거나 닫은 뒤 다시 시도하세요.", "bad");
+async function startSocialLogin(providerType) {
+  const isApple = providerType === "apple";
+  const providerLabel = isApple ? "Apple" : "Google";
+  if (googleLoginInProgress || appleLoginInProgress) {
+    setStatus(`이미 ${providerLabel} 로그인 진행 중입니다. 팝업을 완료하거나 닫은 뒤 다시 시도하세요.`, "bad");
     return;
   }
-  googleLoginInProgress = true;
+  if (isApple) appleLoginInProgress = true;
+  else googleLoginInProgress = true;
   setLoginButtonsBusy(true);
   if (!auth) await loadFirebaseAuth();
   try {
-    setStatus("Google 로그인 창을 여는 중입니다...");
-    const provider = new firebaseAuthFns.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    const popupProbe = window.open("", "pogun-google-login-probe", "popup=yes,width=520,height=720");
+    setStatus(`${providerLabel} 로그인 창을 여는 중입니다...`);
+    const provider = isApple
+      ? new firebaseAuthFns.OAuthProvider("apple.com")
+      : new firebaseAuthFns.GoogleAuthProvider();
+    if (isApple) {
+      provider.addScope("email");
+      provider.addScope("name");
+    } else {
+      provider.setCustomParameters({ prompt: "select_account" });
+    }
+    const popupProbe = window.open("", `pogun-${providerType}-login-probe`, "popup=yes,width=520,height=720");
     if (!popupProbe) {
       throw new Error("브라우저가 로그인 팝업을 차단했습니다. 주소창 또는 브라우저 설정에서 팝업을 허용한 뒤 다시 시도하세요.");
     }
@@ -493,14 +535,23 @@ async function startGoogleLogin() {
       throw new Error("브라우저가 로그인 팝업을 차단했습니다. 팝업 허용 후 다시 시도하세요.");
     }
     if (error?.code === "auth/popup-closed-by-user") {
-      throw new Error("Google 로그인 창이 닫혔습니다. 다시 시도하세요.");
+      throw new Error(`${providerLabel} 로그인 창이 닫혔습니다. 다시 시도하세요.`);
     }
     throw error;
   } finally {
-    googleLoginInProgress = false;
+    if (isApple) appleLoginInProgress = false;
+    else googleLoginInProgress = false;
     setLoginButtonsBusy(false);
     renderSession();
   }
+}
+
+async function startGoogleLogin() {
+  return startSocialLogin("google");
+}
+
+async function startAppleLogin() {
+  return startSocialLogin("apple");
 }
 
 async function handleFirebaseUser(user, forceRefresh = false, options = {}) {
@@ -732,6 +783,7 @@ function run(handler) {
 
 el("completeOnboardingButton").addEventListener("click", run(completeOnboarding));
 el("googleLoginButton").addEventListener("click", run(startGoogleLogin));
+el("appleLoginButton").addEventListener("click", run(startAppleLogin));
 el("refreshLoginButton").addEventListener("click", run(async () => {
   const button = el("refreshLoginButton");
   if (button.disabled) return;
