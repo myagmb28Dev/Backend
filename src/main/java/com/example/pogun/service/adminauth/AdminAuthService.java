@@ -14,6 +14,7 @@ import com.example.pogun.entity.admin.AdminSession;
 import com.example.pogun.entity.admin.enums.AdminAuthChallengeType;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.admin.enums.AdminSessionStage;
+import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -24,6 +25,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.auth.FirebaseDisplayNameNormalizer;
 import com.example.pogun.service.auth.FirebaseIdentityService;
 import com.example.pogun.service.auth.FirebaseProviderNormalizer;
+import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
@@ -55,6 +57,7 @@ public class AdminAuthService {
     private final FirebaseAuth firebaseAuth;
     private final FirebaseIdentityService firebaseIdentityService;
     private final UserRepository userRepository;
+    private final UserSocialAccountRepository userSocialAccountRepository;
     private final AdminPasskeyRepository adminPasskeyRepository;
     private final AdminAuthChallengeRepository adminAuthChallengeRepository;
     private final AdminSessionRepository adminSessionRepository;
@@ -86,6 +89,7 @@ public class AdminAuthService {
 
         User admin = resolveAdminUser(firebaseUid, email);
         admin = syncAdminProfileIfMissing(admin, identity, firebaseUid);
+        syncExternalProviders(admin, identity);
 
         if (!admin.isAdminEmailVerificationRequired() && admin.getAdminEmailVerifiedAt() == null) {
             admin.setAdminEmailVerificationRequired(true);
@@ -518,6 +522,52 @@ public class AdminAuthService {
             return admin;
         }
         return userRepository.save(admin);
+    }
+
+    private void syncExternalProviders(User user, FirebaseIdentityService.FirebaseIdentity identity) {
+        List<String> providers = FirebaseProviderNormalizer.resolveLinkedProviders(
+                identity,
+                identity != null ? identity.signInProvider() : FirebaseProviderNormalizer.FIREBASE
+        );
+        for (String provider : providers) {
+            if (!FirebaseProviderNormalizer.isExternalProvider(provider)) {
+                continue;
+            }
+            FirebaseIdentityService.ProviderIdentity providerIdentity = findProviderIdentity(identity, provider);
+            upsertSocialAccount(
+                    user,
+                    provider,
+                    providerIdentity != null && providerIdentity.uid() != null ? providerIdentity.uid() : user.getFirebaseUid(),
+                    providerIdentity != null && providerIdentity.email() != null ? providerIdentity.email() : user.getEmail()
+            );
+        }
+    }
+
+    private FirebaseIdentityService.ProviderIdentity findProviderIdentity(
+            FirebaseIdentityService.FirebaseIdentity identity,
+            String normalizedProvider
+    ) {
+        if (identity == null || identity.providers() == null) {
+            return null;
+        }
+        return identity.providers().stream()
+                .filter(provider -> provider != null && provider.providerId() != null)
+                .filter(provider -> FirebaseProviderNormalizer.normalize(provider.providerId()).equals(normalizedProvider))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void upsertSocialAccount(User user, String provider, String providerUserId, String providerEmail) {
+        UserSocialAccount account = userSocialAccountRepository.findByUserAndProvider(user, provider)
+                .orElseGet(() -> UserSocialAccount.builder()
+                        .user(user)
+                        .provider(provider)
+                        .build());
+        account.setProviderUserId(providerUserId);
+        account.setProviderEmail(providerEmail);
+        account.setLinked(true);
+        account.setLastLinkedAt(Instant.now());
+        userSocialAccountRepository.save(account);
     }
 
     private AdminSession requireCurrentSessionStage(AdminSessionStage stage) {

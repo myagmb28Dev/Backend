@@ -6,15 +6,18 @@ import com.example.pogun.entity.admin.AdminSession;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.admin.enums.AdminSessionStage;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.admin.AdminAuthChallengeRepository;
 import com.example.pogun.repository.admin.AdminPasskeyRepository;
 import com.example.pogun.repository.admin.AdminSessionRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.repository.user.UserSocialAccountRepository;
 import com.example.pogun.service.auth.FirebaseIdentityService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.UserRecord;
+import org.junit.jupiter.api.BeforeEach;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +35,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +50,8 @@ class AdminAuthServiceTest {
     private FirebaseIdentityService firebaseIdentityService;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private UserSocialAccountRepository userSocialAccountRepository;
     @Mock
     private AdminPasskeyRepository adminPasskeyRepository;
     @Mock
@@ -70,6 +77,12 @@ class AdminAuthServiceTest {
 
     @InjectMocks
     private AdminAuthService adminAuthService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(userSocialAccountRepository.findByUserAndProvider(any(User.class), anyString())).thenReturn(Optional.empty());
+        lenient().when(userSocialAccountRepository.save(any(UserSocialAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    }
 
     @Test
     void loginWithFirebaseToken_requiresEmailVerificationForRoleOnlyAdmin() throws Exception {
