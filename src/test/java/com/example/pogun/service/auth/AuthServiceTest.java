@@ -265,6 +265,43 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginOrSignUp_keepsPendingNicknameWhenIncomingIsFallback() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "apple-pending-uid",
+                "apple-pending@privaterelay.appleid.com",
+                "User_knPnU",
+                null,
+                "apple.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("apple.com", "apple-sub", "apple-pending@privaterelay.appleid.com")),
+                java.util.Map.of()
+        );
+        PendingSocialSignup pending = PendingSocialSignup.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("apple-pending-uid")
+                .email("apple-pending@privaterelay.appleid.com")
+                .nickname("장준혁")
+                .profileImageUrl(null)
+                .provider("APPLE")
+                .linkedProviders("APPLE")
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("apple-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("apple-pending-uid")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("apple-pending@privaterelay.appleid.com")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("apple-pending-uid")).thenReturn(Optional.of(pending));
+        when(pendingSocialSignupRepository.save(any(PendingSocialSignup.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AuthResponse response = authService.loginOrSignUp("apple-token", httpServletRequest);
+
+        assertThat(response.registrationStatus()).isEqualTo("PENDING_ONBOARDING");
+        assertThat(response.nickname()).isEqualTo("장준혁");
+        ArgumentCaptor<PendingSocialSignup> pendingCaptor = ArgumentCaptor.forClass(PendingSocialSignup.class);
+        verify(pendingSocialSignupRepository).save(pendingCaptor.capture());
+        assertThat(pendingCaptor.getValue().getNickname()).isEqualTo("장준혁");
+    }
+
+    @Test
     void completeOnboarding_createsActiveUserFromPendingSignup() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")

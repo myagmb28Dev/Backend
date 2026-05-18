@@ -202,7 +202,7 @@ public class AuthService {
             }
 
             user.setEmail(email);
-            user.setNickname(resolvedNickname);
+            user.setNickname(resolveNicknameForExistingUser(user.getNickname(), resolvedNickname));
             user.setProfileImageUrl(identity.photoUrl());
             user.setAuthProvider(normalizedProvider);
             user.setLastActiveAt(Instant.now());
@@ -476,7 +476,7 @@ public class AuthService {
                         .build());
 
         pending.setEmail(identity.email());
-        pending.setNickname(resolvedNickname);
+        pending.setNickname(resolveNicknameForExistingUser(pending.getNickname(), resolvedNickname));
         pending.setProfileImageUrl(picture);
         pending.setProvider(normalizedProvider);
         pending.setLinkedProviders(String.join(",", linkedProviders));
