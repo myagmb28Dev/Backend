@@ -615,14 +615,28 @@ async function startAdminSocialLogin(providerType) {
     } else {
       provider.setCustomParameters({ prompt: "select_account" });
     }
-
-    const popupProbe = window.open("", `pogun-admin-${providerType}-login-probe`, "popup=yes,width=520,height=720");
-    if (!popupProbe) {
-      throw new Error("브라우저가 로그인 팝업을 차단했습니다. 팝업 허용 후 다시 시도하세요.");
+    let result = null;
+    try {
+      result = await firebaseAuthFns.signInWithPopup(auth, provider);
+    } catch (error) {
+      const code = String(error?.code || "");
+      const message = String(error?.message || "");
+      const shouldRedirectFallback =
+        code === "auth/popup-blocked" ||
+        code === "auth/cancelled-popup-request" ||
+        (isApple && (
+          code === "auth/internal-error" ||
+          code === "auth/network-request-failed" ||
+          message.includes("/appleauth/") ||
+          message.includes("503")
+        ));
+      if (shouldRedirectFallback) {
+        setStatus(`${providerLabel} 팝업 로그인 실패로 리다이렉트 방식으로 재시도합니다...`);
+        await firebaseAuthFns.signInWithRedirect(auth, provider);
+        return;
+      }
+      throw error;
     }
-    popupProbe.close();
-
-    const result = await firebaseAuthFns.signInWithPopup(auth, provider);
     if (!result?.user) throw new Error("소셜 로그인 결과에 사용자가 없습니다.");
 
     const adminUserSession = await syncAdminTabFirebaseSession(result.user);
@@ -639,6 +653,9 @@ async function startAdminSocialLogin(providerType) {
     }
     if (error?.code === "auth/popup-closed-by-user") {
       throw new Error(`${providerLabel} 로그인 창이 닫혔습니다. 다시 시도하세요.`);
+    }
+    if (isApple && (String(error?.message || "").includes("/appleauth/") || String(error?.message || "").includes("503"))) {
+      throw new Error("Apple 로그인 서버가 일시적으로 응답하지 않았습니다(503). 잠시 후 다시 시도하세요.");
     }
     throw error;
   } finally {
@@ -731,6 +748,24 @@ async function bootstrap() {
   updateAccountHint();
   await mountNotificationBell("notificationBellMount");
   renderSocialButtons();
+  try {
+    await loadFirebaseAuth();
+    const redirectResult = await firebaseAuthFns.getRedirectResult(auth);
+    if (redirectResult?.user) {
+      const providerType = normalizeProviderId(redirectResult.user.providerData?.[0]?.providerId || "");
+      const providerLabel = providerType === "APPLE" ? "Apple" : "Google";
+      const adminUserSession = await syncAdminTabFirebaseSession(redirectResult.user);
+      setStatus(`${providerLabel} 로그인 성공. 관리자 인증 흐름 진행 중...`);
+      const loginData = await loginWithFirebaseIdToken(adminUserSession.firebaseIdToken);
+      const flowResult = await consumeAdminLoginResponse(loginData, { allowEmailRequired: true });
+      if (flowResult?.emailVerificationRequired) return;
+      setStatus("관리자 인증 성공", "good");
+      return;
+    }
+  } catch (error) {
+    setStatus(error.message || String(error), "bad");
+    return;
+  }
   if (adminVerifyDone && getAdminFirebaseSession()?.firebaseIdToken) {
     setStatus("이메일 인증 리다이렉트 감지. 관리자 인증을 이어서 확인 중...");
     try {

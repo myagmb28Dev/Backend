@@ -527,12 +527,28 @@ async function startSocialLogin(providerType) {
     } else {
       provider.setCustomParameters({ prompt: "select_account" });
     }
-    const popupProbe = window.open("", `pogun-${providerType}-login-probe`, "popup=yes,width=520,height=720");
-    if (!popupProbe) {
-      throw new Error("브라우저가 로그인 팝업을 차단했습니다. 주소창 또는 브라우저 설정에서 팝업을 허용한 뒤 다시 시도하세요.");
+    let result = null;
+    try {
+      result = await firebaseAuthFns.signInWithPopup(auth, provider);
+    } catch (error) {
+      const code = String(error?.code || "");
+      const message = String(error?.message || "");
+      const shouldRedirectFallback =
+        code === "auth/popup-blocked" ||
+        code === "auth/cancelled-popup-request" ||
+        (isApple && (
+          code === "auth/internal-error" ||
+          code === "auth/network-request-failed" ||
+          message.includes("/appleauth/") ||
+          message.includes("503")
+        ));
+      if (shouldRedirectFallback) {
+        setStatus(`${providerLabel} 팝업 로그인 실패로 리다이렉트 방식으로 재시도합니다...`);
+        await firebaseAuthFns.signInWithRedirect(auth, provider);
+        return;
+      }
+      throw error;
     }
-    popupProbe.close();
-    const result = await firebaseAuthFns.signInWithPopup(auth, provider);
     if (!result?.user) throw new Error("Firebase 로그인 결과에 사용자가 없습니다.");
     await handleFirebaseUser(result.user, true);
   } catch (error) {
@@ -541,6 +557,9 @@ async function startSocialLogin(providerType) {
     }
     if (error?.code === "auth/popup-closed-by-user") {
       throw new Error(`${providerLabel} 로그인 창이 닫혔습니다. 다시 시도하세요.`);
+    }
+    if (isApple && (String(error?.message || "").includes("/appleauth/") || String(error?.message || "").includes("503"))) {
+      throw new Error("Apple 로그인 서버가 일시적으로 응답하지 않았습니다(503). 잠시 후 다시 시도하세요.");
     }
     throw error;
   } finally {
