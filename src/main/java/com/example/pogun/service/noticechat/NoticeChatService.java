@@ -667,13 +667,14 @@ public class NoticeChatService {
         NoticeChatMessageType lastMessageType = resolveLastMessageType(room);
         NoticeChatRoomParticipantState currentState = ensureParticipantState(room, currentUser);
         UserPresenceService.PresenceSnapshot opponentPresence = userPresenceService.snapshot(opponent);
+        String opponentProfileImageUrl = trimToNull(opponent.getProfileImageUrl());
         String noticeThumbnailUrl = resolveNoticeThumbnailUrl(room.getNotice());
         String displayRoomName = trimToNull(currentState.getCustomRoomName()) != null
                 ? currentState.getCustomRoomName().trim()
                 : room.getNotice().getTitle() + " · " + displayUserName(opponent);
         String displayThumbnailUrl = trimToNull(currentState.getCustomThumbnailUrl()) != null
                 ? currentState.getCustomThumbnailUrl().trim()
-                : noticeThumbnailUrl;
+                : (opponentProfileImageUrl != null ? opponentProfileImageUrl : noticeThumbnailUrl);
         return new NoticeChatRoomResponse(
                 room.getId(),
                 room.getNotice().getId(),
@@ -685,6 +686,7 @@ public class NoticeChatService {
                 room.getCreatedAt(),
                 opponent.getId(),
                 displayUserName(opponent),
+                opponentProfileImageUrl,
                 noticeChatMessageRepository.countUnreadByWatermark(room, currentUser, currentState.getLastReadRoomSequence()),
                 currentState.getNotificationEnabled(),
                 currentState.getFavorite(),
@@ -719,6 +721,7 @@ public class NoticeChatService {
                 message.getRoom().getId(),
                 message.getSenderUser().getId(),
                 displayUserName(message.getSenderUser()),
+                trimToNull(message.getSenderUser().getProfileImageUrl()),
                 message.getMessage(),
                 messageType.name(),
                 message.getImages().stream()

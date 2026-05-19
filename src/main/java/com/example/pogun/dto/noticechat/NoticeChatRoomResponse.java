@@ -20,6 +20,7 @@ public record NoticeChatRoomResponse(
         @Schema(description = "생성 시각") Instant createdAt,
         @Schema(description = "상대방 사용자 ID") UUID opponentUserId,
         @Schema(description = "상대방 닉네임") String opponentNickname,
+        @Schema(description = "상대방 프로필 이미지 URL") String opponentProfileImageUrl,
         @Schema(description = "안 읽은 메시지 수") long unreadCount,
         @Schema(description = "알림 사용 여부") Boolean notificationEnabled,
         @Schema(description = "즐겨찾기 여부") Boolean favorite,

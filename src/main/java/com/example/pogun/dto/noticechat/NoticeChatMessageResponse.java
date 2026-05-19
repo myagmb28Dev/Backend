@@ -15,6 +15,7 @@ public record NoticeChatMessageResponse(
         @Schema(description = "채팅방 ID") UUID roomId,
         @Schema(description = "발신자 사용자 ID") UUID senderUserId,
         @Schema(description = "발신자 닉네임") String senderNickname,
+        @Schema(description = "발신자 프로필 이미지 URL") String senderProfileImageUrl,
         @Schema(description = "메시지 내용") String message,
         @Schema(description = "메시지 유형") String messageType,
         @Schema(description = "첨부 이미지 목록") List<NoticeChatMessageImageResponse> images,

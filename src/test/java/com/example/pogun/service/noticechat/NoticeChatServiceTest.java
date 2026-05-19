@@ -575,6 +575,24 @@ class NoticeChatServiceTest {
     }
 
     @Test
+    void getRoom_usesOpponentProfileAsDisplayThumbnailWhenNoCustomAndNoNoticeImage() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        openNotice.setImages(List.of());
+        author.setProfileImageUrl("https://cdn.example.com/profile/opponent.webp");
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.countUnreadByWatermark(room, currentUser, 0L)).thenReturn(0L);
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)).thenReturn(Optional.empty());
+
+        var response = noticeChatService.getRoom(roomId.toString());
+
+        assertThat(response.opponentProfileImageUrl()).isEqualTo("https://cdn.example.com/profile/opponent.webp");
+        assertThat(response.displayThumbnailUrl()).isEqualTo("https://cdn.example.com/profile/opponent.webp");
+    }
+
+    @Test
     void getMessages_updatesReadWatermarkWithoutBulkUpdate() {
         UUID roomId = UUID.randomUUID();
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
@@ -600,6 +618,34 @@ class NoticeChatServiceTest {
         assertThat(response.messages().get(0).roomSequence()).isEqualTo(7L);
         verify(participantStateRepository).save(any(NoticeChatRoomParticipantState.class));
         verify(noticeChatReadReceiptRepository).save(any());
+    }
+
+    @Test
+    void getMessages_includesSenderProfileImageUrl() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        author.setProfileImageUrl("https://cdn.example.com/profile/author.webp");
+        NoticeChatMessage message = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(author)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("프로필 이미지 포함 테스트")
+                .roomSequence(1L)
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.findVisiblePage(eq(room), eq(null), eq(PageRequest.of(0, 51)))).thenReturn(List.of(message));
+        when(noticeChatReadReceiptRepository.findByRoomAndReader(room, currentUser)).thenReturn(Optional.empty());
+
+        var response = noticeChatService.getMessages(roomId.toString(), null, null);
+
+        assertThat(response.messages()).hasSize(1);
+        assertThat(response.messages().get(0).senderProfileImageUrl())
+                .isEqualTo("https://cdn.example.com/profile/author.webp");
     }
 
     @Test
