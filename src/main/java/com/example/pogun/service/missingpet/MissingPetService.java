@@ -87,11 +87,12 @@ public class MissingPetService {
         int normalizedPage = normalizePage(page);
         int normalizedSize = normalizeSize(size);
         UUID requestedAuthorId = mineOnly ? getCurrentUser().getId() : null;
+        String effectiveRegion = resolveEffectiveRegion(region);
         String cacheKey = String.join(":",
                 "public-list",
                 "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
                 normalizeCacheValue(query),
-                normalizeCacheValue(region),
+                normalizeCacheValue(effectiveRegion),
                 normalizeCacheValue(breed),
                 normalizeCacheValue(status),
                 normalizeCacheValue(from),
@@ -106,7 +107,7 @@ public class MissingPetService {
                 cacheKey,
                 Duration.ofSeconds(aiSourceCacheTtlSeconds),
                 MissingPetListResponse.class,
-                () -> getMissingPetListUncached(query, region, breed, status, from, to, mineOnly, sort, normalizedPage, normalizedSize, requestedAuthorId)
+                () -> getMissingPetListUncached(query, effectiveRegion, breed, status, from, to, mineOnly, sort, normalizedPage, normalizedSize, requestedAuthorId)
         );
     }
 
@@ -404,9 +405,58 @@ public class MissingPetService {
     }
 
     private User getCurrentUser() {
-        String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String firebaseUid = getCurrentFirebaseUidOrNull();
+        if (firebaseUid == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "인증이 필요합니다.");
+        }
         return userRepository.findByFirebaseUid(firebaseUid)
                 .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+    }
+
+    private String getCurrentFirebaseUidOrNull() {
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
+            return null;
+        }
+        String firebaseUid = SecurityContextHolder.getContext().getAuthentication().getName();
+        if (firebaseUid == null || firebaseUid.isBlank() || "anonymousUser".equalsIgnoreCase(firebaseUid)) {
+            return null;
+        }
+        return firebaseUid;
+    }
+
+    private User findCurrentUserOrNull() {
+        String firebaseUid = getCurrentFirebaseUidOrNull();
+        if (firebaseUid == null) {
+            return null;
+        }
+        return userRepository.findByFirebaseUid(firebaseUid).orElse(null);
+    }
+
+    private String resolveEffectiveRegion(String requestedRegion) {
+        String explicitRegion = blankToNull(requestedRegion);
+        if (explicitRegion != null) {
+            return explicitRegion;
+        }
+        User currentUser = findCurrentUserOrNull();
+        if (currentUser == null) {
+            return null;
+        }
+        return firstNonBlank(
+                blankToNull(currentUser.getRegionAddressName()),
+                blankToNull(currentUser.getRegion()),
+                blankToNull(currentUser.getRegion3DepthName()),
+                blankToNull(currentUser.getRegion2DepthName()),
+                blankToNull(currentUser.getRegion1DepthName())
+        );
+    }
+
+    private String firstNonBlank(String... candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private PetNotice getNotice(String missingPetId) {
