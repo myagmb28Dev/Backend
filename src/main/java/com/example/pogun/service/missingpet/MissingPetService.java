@@ -87,7 +87,7 @@ public class MissingPetService {
         int normalizedPage = normalizePage(page);
         int normalizedSize = normalizeSize(size);
         UUID requestedAuthorId = mineOnly ? getCurrentUser().getId() : null;
-        String effectiveRegion = resolveEffectiveRegion(region);
+        String effectiveRegion = resolveEffectiveRegion(region, mineOnly);
         String cacheKey = String.join(":",
                 "public-list",
                 "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
@@ -432,10 +432,14 @@ public class MissingPetService {
         return userRepository.findByFirebaseUid(firebaseUid).orElse(null);
     }
 
-    private String resolveEffectiveRegion(String requestedRegion) {
+    private String resolveEffectiveRegion(String requestedRegion, boolean mineOnly) {
         String explicitRegion = blankToNull(requestedRegion);
         if (explicitRegion != null) {
             return explicitRegion;
+        }
+        // mineOnly=true는 작성자 기준 조회가 핵심이므로, 지역 기본값을 자동 주입하지 않는다.
+        if (mineOnly) {
+            return null;
         }
         User currentUser = findCurrentUserOrNull();
         if (currentUser == null) {
