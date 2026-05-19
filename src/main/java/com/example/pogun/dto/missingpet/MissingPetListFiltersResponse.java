@@ -7,11 +7,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "실종 공고 목록 필터 응답")
 public record MissingPetListFiltersResponse(
+        String query,
         String region,
         String breed,
         String status,
         String from,
         String to,
+        boolean mineOnly,
         String sort,
         int page,
         int size

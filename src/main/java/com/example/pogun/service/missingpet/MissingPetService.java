@@ -27,6 +27,10 @@ import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.noticechat.NoticeChatService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,7 +44,6 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -63,40 +66,87 @@ public class MissingPetService {
     private final NoticeChatService noticeChatService;
     private final AiSourceCacheService aiSourceCacheService;
 
-    private static final String AI_CACHE_NAMESPACE = "missing-pets";
+    private static final String CACHE_NAMESPACE = "missing-pets";
 
     @Value("${app.ai-source-cache.ttl-seconds:60}")
     private long aiSourceCacheTtlSeconds;
 
     @Transactional(readOnly = true)
-    public MissingPetListResponse getMissingPetList(String region, String breed, String status, String from, String to, String sort, int page, int size) {
-        String requestedRegion = normalizeTextFilter(region);
-        String requestedBreed = normalizeTextFilter(breed);
+    public MissingPetListResponse getMissingPetList(
+            String query,
+            String region,
+            String breed,
+            String status,
+            String from,
+            String to,
+            boolean mineOnly,
+            String sort,
+            int page,
+            int size
+    ) {
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
+        UUID requestedAuthorId = mineOnly ? getCurrentUser().getId() : null;
+        String cacheKey = String.join(":",
+                "public-list",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizeCacheValue(query),
+                normalizeCacheValue(region),
+                normalizeCacheValue(breed),
+                normalizeCacheValue(status),
+                normalizeCacheValue(from),
+                normalizeCacheValue(to),
+                String.valueOf(mineOnly),
+                normalizeCacheValue(requestedAuthorId == null ? null : requestedAuthorId.toString()),
+                normalizeCacheValue(sort),
+                String.valueOf(normalizedPage),
+                String.valueOf(normalizedSize)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(aiSourceCacheTtlSeconds),
+                MissingPetListResponse.class,
+                () -> getMissingPetListUncached(query, region, breed, status, from, to, mineOnly, sort, normalizedPage, normalizedSize, requestedAuthorId)
+        );
+    }
+
+    private MissingPetListResponse getMissingPetListUncached(
+            String query,
+            String region,
+            String breed,
+            String status,
+            String from,
+            String to,
+            boolean mineOnly,
+            String sort,
+            int normalizedPage,
+            int normalizedSize,
+            UUID requestedAuthorId
+    ) {
+        String requestedQuery = normalizeLikeFilter(query);
+        String requestedRegion = normalizeLikeFilter(region);
+        String requestedBreed = normalizeLikeFilter(breed);
         PetNoticeStatus requestedStatus = parseStatus(status);
         Instant requestedFrom = parseInstant(from);
         Instant requestedTo = parseInstant(to);
-        int normalizedPage = normalizePage(page);
-        int normalizedSize = normalizeSize(size);
+        Pageable pageable = PageRequest.of(normalizedPage, normalizedSize, resolveSort(sort));
 
-        List<PetNotice> filteredNotices = petNoticeRepository.findNotices(
+        Page<PetNotice> noticePage = petNoticeRepository.searchNotices(
                 requestedStatus,
                 requestedFrom,
-                requestedTo
-        ).stream()
-                .filter(notice -> containsIgnoreCase(notice.getMissingRegion(), requestedRegion))
-                .filter(notice -> containsIgnoreCase(notice.getBreed(), requestedBreed))
-                .toList();
-        List<PetNotice> sortedNotices = sortNotices(filteredNotices, sort);
-
-        int fromIndex = Math.min(normalizedPage * normalizedSize, sortedNotices.size());
-        int toIndex = Math.min(fromIndex + normalizedSize, sortedNotices.size());
-        List<PetNotice> pageItems = sortedNotices.subList(fromIndex, toIndex);
+                requestedTo,
+                requestedRegion,
+                requestedBreed,
+                requestedQuery,
+                requestedAuthorId,
+                pageable
+        );
 
         return new MissingPetListResponse(
-                new MissingPetListFiltersResponse(region, breed, status, from, to, sort, normalizedPage, normalizedSize),
-                sortedNotices.size(),
-                (int) Math.ceil((double) sortedNotices.size() / normalizedSize),
-                pageItems.stream().map(this::toNoticeSummary).toList()
+                new MissingPetListFiltersResponse(query, region, breed, status, from, to, mineOnly, sort, normalizedPage, normalizedSize),
+                safeInt(noticePage.getTotalElements()),
+                noticePage.getTotalPages(),
+                noticePage.getContent().stream().map(this::toNoticeSummary).toList()
         );
     }
 
@@ -142,7 +192,7 @@ public class MissingPetService {
         );
         MissingPetDetailResponse response = toNoticeDetail(saved);
         afterCommitOrNow(() -> {
-            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
         });
         return response;
@@ -150,6 +200,20 @@ public class MissingPetService {
 
     @Transactional(readOnly = true)
     public MissingPetDetailResponse getMissingPetDetail(String missingPetId) {
+        String cacheKey = String.join(":",
+                "public-detail",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizeCacheValue(missingPetId)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(aiSourceCacheTtlSeconds),
+                MissingPetDetailResponse.class,
+                () -> getMissingPetDetailUncached(missingPetId)
+        );
+    }
+
+    private MissingPetDetailResponse getMissingPetDetailUncached(String missingPetId) {
         PetNotice notice = getVisibleNotice(missingPetId);
         return toNoticeDetail(notice);
     }
@@ -182,7 +246,7 @@ public class MissingPetService {
         MissingPetDetailResponse response = toNoticeDetail(saved);
         UUID savedNoticeId = saved.getId();
         afterCommitOrNow(() -> {
-            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
             noticeChatService.syncNoticeRooms(savedNoticeId);
         });
@@ -212,7 +276,7 @@ public class MissingPetService {
         MissingPetDetailResponse response = toNoticeDetail(saved);
         UUID savedNoticeId = saved.getId();
         afterCommitOrNow(() -> {
-            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", response);
             noticeChatService.syncNoticeRooms(savedNoticeId);
         });
@@ -227,7 +291,7 @@ public class MissingPetService {
         noticeBookmarkRepository.deleteByNotice(notice);
         petNoticeRepository.delete(notice);
         afterCommitOrNow(() -> {
-            aiSourceCacheService.bumpVersion(AI_CACHE_NAMESPACE);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
             simpMessagingTemplate.convertAndSend("/topic/missing-pets", (Object) Map.of(
                 "type", "NOTICE_DELETED",
                 "noticeId", noticeId.toString()
@@ -240,15 +304,17 @@ public class MissingPetService {
         PetNotice notice = getVisibleNotice(missingPetId);
         notice.setViewCount(notice.getViewCount() + 1);
         PetNotice saved = petNoticeRepository.save(notice);
+        afterCommitOrNow(() -> aiSourceCacheService.bumpVersion(CACHE_NAMESPACE));
         return new MissingPetViewResponse(saved.getId(), saved.getViewCount());
     }
 
     @Transactional(readOnly = true)
-    public MissingPetListResponse getAiSourceList(String apiKey, String region, String breed, String status, String from, String to, String sort, int page, int size) {
+    public MissingPetListResponse getAiSourceList(String apiKey, String query, String region, String breed, String status, String from, String to, String sort, int page, int size) {
         aiService.verifyAiApiKey(apiKey);
         String cacheKey = String.join(":",
-            "list",
-            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            "ai-list",
+            "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+            normalizeCacheValue(query),
             normalizeCacheValue(region),
             normalizeCacheValue(breed),
             normalizeCacheValue(status),
@@ -262,7 +328,19 @@ public class MissingPetService {
             cacheKey,
             Duration.ofSeconds(aiSourceCacheTtlSeconds),
             MissingPetListResponse.class,
-            () -> getMissingPetList(region, breed, status, from, to, sort, page, size)
+            () -> getMissingPetListUncached(
+                    query,
+                    region,
+                    breed,
+                    status,
+                    from,
+                    to,
+                    false,
+                    sort,
+                    normalizePage(page),
+                    normalizeSize(size),
+                    null
+            )
         );
     }
 
@@ -270,15 +348,15 @@ public class MissingPetService {
     public MissingPetDetailResponse getAiSourceDetail(String apiKey, String missingPetId) {
         aiService.verifyAiApiKey(apiKey);
         String cacheKey = String.join(":",
-            "detail",
-            "v" + aiSourceCacheService.currentVersion(AI_CACHE_NAMESPACE),
+            "ai-detail",
+            "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
             normalizeCacheValue(missingPetId)
         );
         return aiSourceCacheService.getOrLoad(
             cacheKey,
             Duration.ofSeconds(aiSourceCacheTtlSeconds),
             MissingPetDetailResponse.class,
-            () -> getMissingPetDetail(missingPetId)
+            () -> getMissingPetDetailUncached(missingPetId)
         );
     }
 
@@ -438,24 +516,54 @@ public class MissingPetService {
         }
     }
 
-    // urgent 정렬은 아직 기획 고정값이 아니라 OPEN/실종시점/사례금 기반 점수로 계산한다.
-    private List<PetNotice> sortNotices(List<PetNotice> notices, String sort) {
-        Comparator<PetNotice> comparator;
-        String normalizedSort = sort == null || sort.isBlank() ? "latest" : sort.trim().toLowerCase();
+    private Sort resolveSort(String sort) {
+        if (sort == null || sort.isBlank()) {
+            return Sort.by(Sort.Order.desc("createdAt"));
+        }
+        String normalizedSort = sort.trim().toLowerCase(Locale.ROOT);
 
-        comparator = switch (normalizedSort) {
-            case "view", "views", "popular", "viewcount" ->
-                    Comparator.comparing(PetNotice::getViewCount, Comparator.nullsLast(Long::compareTo)).reversed()
-                            .thenComparing(PetNotice::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed();
-            case "urgent", "emergency" ->
-                    Comparator.comparing(this::urgencyScore, Comparator.reverseOrder())
-                            .thenComparing(PetNotice::getMissingDate, Comparator.nullsLast(Instant::compareTo)).reversed()
-                            .thenComparing(PetNotice::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed();
-            default ->
-                    Comparator.comparing(PetNotice::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed();
+        if (!normalizedSort.contains(",")) {
+            return switch (normalizedSort) {
+                case "view", "views", "popular", "viewcount" ->
+                        Sort.by(Sort.Order.desc("viewCount"), Sort.Order.desc("createdAt"));
+                case "urgent", "emergency" ->
+                        Sort.by(Sort.Order.desc("missingDate"), Sort.Order.desc("rewardAmount"), Sort.Order.desc("createdAt"));
+                case "latest", "new", "newest" ->
+                        Sort.by(Sort.Order.desc("createdAt"));
+                default ->
+                        Sort.by(Sort.Order.desc("createdAt"));
+            };
+        }
+
+        String[] raw = normalizedSort.split(",", 2);
+        String sortField = mapSortField(raw[0]);
+        Sort.Direction direction = parseSortDirection(raw.length > 1 ? raw[1] : "desc");
+        return Sort.by(new Sort.Order(direction, sortField));
+    }
+
+    private String mapSortField(String rawField) {
+        if (rawField == null) {
+            return "createdAt";
+        }
+        return switch (rawField.trim().toLowerCase(Locale.ROOT)) {
+            case "createdat", "created_at", "latest", "new" -> "createdAt";
+            case "view", "views", "viewcount", "popular" -> "viewCount";
+            case "missingdate", "missing_date" -> "missingDate";
+            case "status" -> "status";
+            case "breed" -> "breed";
+            default -> "createdAt";
         };
+    }
 
-        return notices.stream().sorted(comparator).toList();
+    private Sort.Direction parseSortDirection(String rawDirection) {
+        if (rawDirection == null || rawDirection.isBlank()) {
+            return Sort.Direction.DESC;
+        }
+        try {
+            return Sort.Direction.fromString(rawDirection.trim());
+        } catch (IllegalArgumentException ignored) {
+            return Sort.Direction.DESC;
+        }
     }
 
     private PetNoticeStatus parseStatus(String status) {
@@ -545,14 +653,9 @@ public class MissingPetService {
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
-    private boolean containsIgnoreCase(String value, String keyword) {
-        if (keyword == null) {
-            return true;
-        }
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        return value.toLowerCase(Locale.ROOT).contains(keyword);
+    private String normalizeLikeFilter(String value) {
+        String normalized = normalizeTextFilter(value);
+        return normalized == null ? "" : normalized;
     }
 
     private int normalizePage(int page) {
@@ -572,6 +675,16 @@ public class MissingPetService {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? "_" : normalized;
+    }
+
+    private int safeInt(long value) {
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (value < Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        return (int) value;
     }
 
     private UUID parseUuid(String value) {

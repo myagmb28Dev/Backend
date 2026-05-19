@@ -3,6 +3,8 @@ package com.example.pogun.repository.missingpet;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,11 +27,24 @@ public interface PetNoticeRepository extends JpaRepository<PetNotice, UUID> {
               AND (:status IS NULL OR n.status = :status)
               AND n.missingDate >= COALESCE(:from, n.missingDate)
               AND n.missingDate <= COALESCE(:to, n.missingDate)
+              AND (:region = '' OR lower(n.missingRegion) LIKE concat('%', :region, '%'))
+              AND (:breed = '' OR (n.breed IS NOT NULL AND lower(n.breed) LIKE concat('%', :breed, '%')))
+              AND (:query = ''
+                   OR lower(n.title) LIKE concat('%', :query, '%')
+                   OR (n.description IS NOT NULL AND lower(n.description) LIKE concat('%', :query, '%'))
+                   OR lower(n.missingRegion) LIKE concat('%', :query, '%')
+                   OR (n.breed IS NOT NULL AND lower(n.breed) LIKE concat('%', :query, '%')))
+              AND (:authorId IS NULL OR n.author.id = :authorId)
             """)
-    List<PetNotice> findNotices(
+    Page<PetNotice> searchNotices(
             @Param("status") PetNoticeStatus status,
             @Param("from") Instant from,
-            @Param("to") Instant to
+            @Param("to") Instant to,
+            @Param("region") String region,
+            @Param("breed") String breed,
+            @Param("query") String query,
+            @Param("authorId") UUID authorId,
+            Pageable pageable
     );
 
     long countByHiddenTrue();

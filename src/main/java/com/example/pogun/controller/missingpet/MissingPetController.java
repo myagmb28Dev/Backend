@@ -46,17 +46,19 @@ public class MissingPetController {
     @GetMapping
     @Operation(summary = "실종 동물 공고 목록 조회", description = "사용자가 작성한 실종 동물 공고 목록을 조회합니다.")
     public ResponseEntity<ApiResponse<MissingPetListResponse>> list(
+            @RequestParam(required = false) String query,
             @RequestParam(required = false) String region,
             @RequestParam(required = false) String breed,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
+            @RequestParam(required = false, defaultValue = "false") boolean mineOnly,
             @RequestParam(required = false, defaultValue = "createdAt,desc") String sort,
             @RequestParam(required = false, defaultValue = "0") int page,
             @RequestParam(required = false, defaultValue = "20") int size
     ) {
         // 목록 API는 필터와 정렬을 그대로 전달하고, 서비스가 최종 조회 규칙과 페이지 응답을 만든다.
-        MissingPetListResponse result = missingPetService.getMissingPetList(region, breed, status, from, to, sort, page, size);
+        MissingPetListResponse result = missingPetService.getMissingPetList(query, region, breed, status, from, to, mineOnly, sort, page, size);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 동물 공고 목록 조회 성공", result));
     }
 
@@ -65,6 +67,7 @@ public class MissingPetController {
     public ResponseEntity<ApiResponse<MissingPetListResponse>> aiSourceList(
             @Parameter(name = "X-AI-API-KEY", description = "AI 서버 인증용 API 키 헤더", required = true, example = "your-ai-api-key")
             @RequestHeader(name = "X-AI-API-KEY", required = false) String apiKey,
+            @RequestParam(required = false) String query,
             @RequestParam(required = false) String region,
             @RequestParam(required = false) String breed,
             @RequestParam(required = false) String status,
@@ -74,7 +77,7 @@ public class MissingPetController {
             @RequestParam(required = false, defaultValue = "0") int page,
             @RequestParam(required = false, defaultValue = "20") int size
     ) {
-        MissingPetListResponse result = missingPetService.getAiSourceList(apiKey, region, breed, status, from, to, sort, page, size);
+        MissingPetListResponse result = missingPetService.getAiSourceList(apiKey, query, region, breed, status, from, to, sort, page, size);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 동물 공고 AI 목록 조회 성공", result));
     }
 

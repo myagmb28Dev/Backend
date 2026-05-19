@@ -40,7 +40,7 @@ public class StartupWarmupRunner implements ApplicationRunner {
                     () -> communityService.getPostList("LATEST", null, null, null, 0, 1)
             );
             CompletableFuture<Void> missingPetWarmup = CompletableFuture.runAsync(
-                    () -> missingPetService.getMissingPetList(null, null, null, null, null, "createdAt,desc", 0, 1)
+                    () -> missingPetService.getMissingPetList(null, null, null, null, null, null, false, "createdAt,desc", 0, 1)
             );
             CompletableFuture.allOf(communityWarmup, missingPetWarmup).join();
         } catch (Exception e) {

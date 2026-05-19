@@ -597,10 +597,12 @@ async function loadNoticeList(page = noticeListPage) {
   const params = new URLSearchParams();
   const queryText = el("listQuery").value.trim();
   const status = el("listStatus").value;
+  const mineOnly = el("listMineOnly").value === "true";
   const size = String(el("listSize").value || "20");
   noticeListPage = Math.max(Number(page) || 0, 0);
   if (queryText) params.set("query", queryText);
   if (status) params.set("status", status);
+  if (mineOnly) params.set("mineOnly", "true");
   params.set("size", size);
   params.set("page", String(noticeListPage));
 
@@ -612,10 +614,8 @@ async function loadNoticeList(page = noticeListPage) {
   noticeListTotalPages = Number(data.totalPages || 0);
   noticeListTotalElements = Number(data.totalElements || 0);
   const rawItems = Array.isArray(data.content) ? data.content : (Array.isArray(data.items) ? data.items : []);
-  const mineOnly = el("listMineOnly").value === "true";
-  const items = mineOnly ? rawItems.filter((item) => isOwnerNotice(item)) : rawItems;
-  renderNoticeList(items);
-  setStatus(`공고 목록 ${items.length}건 조회 완료`, "good");
+  renderNoticeList(rawItems);
+  setStatus(`공고 목록 ${rawItems.length}건 조회 완료`, "good");
 }
 
 async function loadNoticeListFromFirstPage() {

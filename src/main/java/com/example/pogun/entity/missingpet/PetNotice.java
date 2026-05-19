@@ -46,6 +46,7 @@ import java.util.List;
         @Index(name = "idx_pet_notices_missing_region", columnList = "missing_region"),
         @Index(name = "idx_pet_notices_created_at", columnList = "created_at"),
         @Index(name = "idx_pet_notices_status_updated_at", columnList = "status,updated_at"),
+        @Index(name = "idx_pet_notices_hidden_status_missing_date_created_at", columnList = "is_hidden,status,missing_date,created_at"),
         @Index(name = "idx_pet_notices_hidden", columnList = "is_hidden"),
         @Index(name = "idx_pet_notices_author_created_at", columnList = "author_id,created_at")
 })
