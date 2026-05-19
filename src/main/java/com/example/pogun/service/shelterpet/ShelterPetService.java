@@ -355,6 +355,13 @@ public class ShelterPetService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    private boolean isAllRegionSentinel(String region) {
+        if (!StringUtils.hasText(region)) {
+            return false;
+        }
+        return "*".equals(region) || "all".equalsIgnoreCase(region);
+    }
+
     private User findCurrentUserOrNull() {
         if (SecurityContextHolder.getContext().getAuthentication() == null) {
             return null;
@@ -368,6 +375,9 @@ public class ShelterPetService {
 
     private String resolveEffectiveRegion(String requestedRegion) {
         String explicitRegion = blankToNull(requestedRegion);
+        if (isAllRegionSentinel(explicitRegion)) {
+            return null;
+        }
         if (explicitRegion != null) {
             return explicitRegion;
         }

@@ -434,6 +434,9 @@ public class MissingPetService {
 
     private String resolveEffectiveRegion(String requestedRegion, boolean mineOnly) {
         String explicitRegion = blankToNull(requestedRegion);
+        if (isAllRegionSentinel(explicitRegion)) {
+            return null;
+        }
         if (explicitRegion != null) {
             return explicitRegion;
         }
@@ -700,6 +703,13 @@ public class MissingPetService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean isAllRegionSentinel(String region) {
+        if (region == null) {
+            return false;
+        }
+        return "*".equals(region) || "all".equalsIgnoreCase(region);
     }
 
     private String normalizeTextFilter(String value) {
