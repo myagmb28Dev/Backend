@@ -21,7 +21,7 @@ export function createDmApi({ request, rawRequest, baseUrl }) {
       });
     },
     getMissingPets() {
-      return call("/api/missing-pets?page=0&size=50");
+      return call("/api/missing-pets?page=0&size=50&region=*");
     },
     getOwnMissingPets() {
       return call("/api/missing-pets?page=0&size=50&mineOnly=true");
