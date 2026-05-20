@@ -37,10 +37,12 @@ import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.community.CommunityPostVoteRepository;
 import com.example.pogun.repository.user.UserFollowRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.service.cache.AiSourceCacheService;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -50,6 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -68,6 +71,7 @@ public class CommunityService {
     private static final String SORT_POPULAR = "POPULAR";
     private static final List<String> ALLOWED_CATEGORIES = List.of("FREE", "QUESTION", "TIP", "REVIEW", "NOTICE");
     private static final List<String> ALLOWED_REACTIONS = List.of("LIKE");
+    private static final String CACHE_NAMESPACE = "community-posts";
 
     private final CommunityPostRepository communityPostRepository;
     private final CommunityCommentRepository communityCommentRepository;
@@ -77,6 +81,10 @@ public class CommunityService {
     private final UserRepository userRepository;
     private final UserFollowRepository userFollowRepository;
     private final NotificationService notificationService;
+    private final AiSourceCacheService aiSourceCacheService;
+
+    @Value("${app.ai-source-cache.ttl-seconds:60}")
+    private long cacheTtlSeconds;
 
     private User getCurrentUser() {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -92,6 +100,26 @@ public class CommunityService {
         String normalizedQuery = normalizeSearchFilter(q);
         validatePageAndSize(page, size);
 
+        String cacheKey = String.join(":",
+                "public-list",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizedType,
+                normalizedCategory,
+                normalizedTag,
+                normalizedQuery,
+                String.valueOf(page),
+                String.valueOf(size)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(cacheTtlSeconds),
+                CommunityPostListResponse.class,
+                () -> getPostListUncached(normalizedType, normalizedCategory, normalizedTag, normalizedQuery, page, size)
+        );
+    }
+
+    private CommunityPostListResponse getPostListUncached(String normalizedType, String normalizedCategory, String normalizedTag, String normalizedQuery, int page, int size) {
+
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
         if (SORT_POPULAR.equals(normalizedType)) {
             sort = Sort.by(Sort.Order.desc("viewCount"), Sort.Order.desc("likeCount"), Sort.Order.desc("createdAt"));
@@ -102,6 +130,63 @@ public class CommunityService {
                 normalizedCategory,
                 normalizedTag,
                 normalizedQuery,
+                PageRequest.of(page, size, sort)
+        );
+
+        List<CommunityPostSummaryResponse> items = postPage.getContent().stream()
+                .map(post -> new CommunityPostSummaryResponse(
+                        post.getId(),
+                        post.getTitle(),
+                        resolveThumbnailImageUrl(post),
+                        post.getCategory(),
+                        List.copyOf(post.getTags()),
+                        post.getAuthor().getNickname(),
+                        post.getViewCount(),
+                        post.getLikeCount(),
+                        post.getCreatedAt()
+                ))
+                .toList();
+
+        return new CommunityPostListResponse(postPage.getTotalElements(), postPage.getTotalPages(), items);
+    }
+
+    @Transactional(readOnly = true)
+    public CommunityPostListResponse searchPosts(String query, String category, String type, int page, int size) {
+        String normalizedQuery = normalizeSearchFilter(query);
+        if (normalizedQuery.isBlank()) {
+            throw ApiException.badRequest("MISSING_SEARCH_QUERY", "검색어는 필수입니다.");
+        }
+        String normalizedType = normalizeSortType(type);
+        String normalizedCategory = normalizeCategoryFilter(category);
+        validatePageAndSize(page, size);
+
+        String cacheKey = String.join(":",
+                "search",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizedType,
+                normalizedCategory,
+                normalizedQuery,
+                String.valueOf(page),
+                String.valueOf(size)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(cacheTtlSeconds),
+                CommunityPostListResponse.class,
+                () -> searchPostsUncached(normalizedQuery, normalizedCategory, normalizedType, page, size)
+        );
+    }
+
+    private CommunityPostListResponse searchPostsUncached(String query, String category, String type, int page, int size) {
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        if (SORT_POPULAR.equals(type)) {
+            sort = Sort.by(Sort.Order.desc("viewCount"), Sort.Order.desc("likeCount"), Sort.Order.desc("createdAt"));
+        }
+
+        Page<CommunityPost> postPage = communityPostRepository.searchPosts(
+                CommunityPostStatus.ACTIVE,
+                category,
+                query,
                 PageRequest.of(page, size, sort)
         );
 
@@ -147,6 +232,7 @@ public class CommunityService {
 
         CommunityPost saved = communityPostRepository.save(post);
         notifyCommunityPostCreated(saved, author);
+        aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
         return new CommunityPostCreateResponse(saved.getId(), saved.getTitle(), saved.getCategory(), List.copyOf(saved.getTags()));
     }
 
@@ -204,6 +290,7 @@ public class CommunityService {
 
         attachImages(post.getAuthor().getId(), post, imageFiles, imageFiles != null && !imageFiles.isEmpty());
 
+        aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
         return new CommunityPostUpdateResponse(post.getId(), true, post.getCategory(), List.copyOf(post.getTags()));
     }
 
@@ -219,6 +306,7 @@ public class CommunityService {
         post.setStatus(CommunityPostStatus.DELETED);
         softDeleteCommentsForPost(post);
         communityPostRepository.save(post);
+        aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
         return new CommunityPostDeleteResponse(post.getId(), true);
     }
 
@@ -320,6 +408,7 @@ public class CommunityService {
         long likeCountDelta = resolveLikeCountDelta(previousReaction, reaction);
         if (likeCountDelta != 0L) {
             communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
         }
         if (likeCountDelta > 0) {
             notifyPostLiked(post, user);
@@ -341,6 +430,7 @@ public class CommunityService {
         long likeCountDelta = resolveLikeCountDelta(postReaction.getReactionType(), "NONE");
         if (likeCountDelta != 0L) {
             communityPostRepository.adjustLikeCount(post.getId(), likeCountDelta);
+            aiSourceCacheService.bumpVersion(CACHE_NAMESPACE);
         }
         communityPostReactionRepository.delete(postReaction);
         return new CommunityReactionResponse(post.getId(), "NONE", "좋아요 취소 처리 성공");

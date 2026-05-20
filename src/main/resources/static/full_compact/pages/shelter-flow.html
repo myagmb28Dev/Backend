@@ -25,6 +25,7 @@
     button.secondary { background:#1f1930; color:var(--ink); border:1px solid var(--line); }
     .layout { display:grid; grid-template-columns:340px minmax(0,1fr); gap:14px; }
     .stack { display:grid; gap:12px; }
+    .search-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; margin-top:10px; }
     .filters-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
     label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:800; }
     select,input { width:100%; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#130f1d; color:var(--ink); font:inherit; }
@@ -47,7 +48,7 @@
     .empty { padding:22px; border:1px dashed #3a3a40; border-radius:14px; text-align:center; color:var(--muted); }
     pre { margin:0; white-space:pre-wrap; word-break:break-word; color:var(--muted); font-family:inherit; line-height:1.6; }
     @media (max-width:940px){ .layout,.detail-grid,.summary-grid,.filters-grid{grid-template-columns:1fr;} .hero,.section-head,.split{display:grid;} .status{min-width:0;} }
-    @media (max-width:640px){ html,body{width:100%;max-width:100%;overflow-x:hidden;} main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;} .card,.hero{padding:14px;border-radius:12px;box-shadow:0 10px 24px rgba(0,0,0,.28);} .nav-links,.actions,.quick-links{display:grid;grid-template-columns:1fr;gap:7px;} .nav-link,button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;} .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));} }
+    @media (max-width:640px){ html,body{width:100%;max-width:100%;overflow-x:hidden;} main{width:100%;max-width:100%;margin:0;padding:10px;gap:10px;} .card,.hero{padding:14px;border-radius:12px;box-shadow:0 10px 24px rgba(0,0,0,.28);} .nav-links,.actions,.quick-links,.search-row{display:grid;grid-template-columns:1fr;gap:7px;} .nav-link,button{width:100%;min-height:42px;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.25;} .detail-images{grid-template-columns:repeat(2,minmax(0,1fr));} }
   </style>
   <link rel="stylesheet" href="/full_compact/admin-theme.css">
 </head>
@@ -79,6 +80,10 @@
     <aside class="stack">
       <section class="card">
         <h2>조회 조건</h2>
+        <div class="search-row">
+          <label>검색<input id="searchQueryInput" type="text" placeholder="제목/특징 검색"></label>
+          <button id="searchKeywordButton" class="secondary">검색</button>
+        </div>
         <div class="filters-grid" style="margin-top:10px">
           <label>시도 코드
             <input id="regionInput" type="text" placeholder="예: 6110000">
@@ -126,9 +131,9 @@
 
       <section class="card">
         <h2>필터 안내</h2>
-        <p class="muted" style="margin-top:8px">보조 조회 API 없이 `/api/shelter` 하나로 서버 필터링과 페이지네이션을 모두 검증합니다.</p>
+        <p class="muted" style="margin-top:8px">검색어가 있으면 `/api/shelter/search`, 없으면 `/api/shelter`로 서버 필터링과 페이지네이션을 검증합니다.</p>
         <div class="summary-box" id="referenceSummaryBox" style="margin-top:10px">
-          region, breed, status, sort, page, size 값을 그대로 `/api/shelter`에 전달합니다.
+          query는 제목/특징 검색으로 전달하고, region, breed, status, sort, page, size 값을 함께 전달합니다.
         </div>
       </section>
     </aside>
@@ -299,12 +304,14 @@ async function login() {
 
 function buildListQuery() {
   const params = new URLSearchParams();
-  const region = el("regionInput").value.trim();
-  const breed = el("breedInput").value.trim();
-  const status = el("statusSelect").value;
+  const searchQuery = el("searchQueryInput").value.trim();
+  const region = searchQuery ? "" : el("regionInput").value.trim();
+  const breed = searchQuery ? "" : el("breedInput").value.trim();
+  const status = searchQuery ? "" : el("statusSelect").value;
   const sort = el("sortSelect").value;
   const page = String(Math.max(0, Number(el("pageInput").value || 0)));
   const size = el("sizeSelect").value;
+  if (searchQuery) params.set("query", searchQuery);
   if (region) params.set("region", region);
   if (breed) params.set("breed", breed);
   if (status) params.set("status", status);
@@ -316,6 +323,7 @@ function buildListQuery() {
 
 function renderActiveFilters(filters = {}) {
   const labels = [];
+  if (filters.query) labels.push(`검색어 ${escapeHtml(filters.query)}`);
   if (filters.region) labels.push(`시도코드 ${escapeHtml(filters.region)}`);
   if (filters.breed) labels.push(`품종코드 ${escapeHtml(filters.breed)}`);
   if (filters.status) labels.push(`상태 ${escapeHtml(filters.status)}`);
@@ -388,11 +396,17 @@ function renderList() {
 
 async function searchShelters(forceFirst = true) {
   setStatus("보호 공고 목록 조회 중...");
-  const response = await authApi(`/api/shelter?${buildListQuery()}`);
+  const params = buildListQuery();
+  const endpoint = el("searchQueryInput").value.trim() ? "/api/shelter/search" : "/api/shelter";
+  const response = await authApi(`${endpoint}?${params}`);
   if (response.status !== 200) throw new Error(`공고 조회 실패: ${JSON.stringify(response.body)}`);
   const data = response.body?.data || {};
   state.list = data.items || [];
-  renderActiveFilters({ ...(data.filters || {}), totalElements: data.totalElements });
+  renderActiveFilters({
+    ...(data.filters || {}),
+    query: el("searchQueryInput").value.trim(),
+    totalElements: data.totalElements
+  });
   renderList();
   el("listMeta").textContent = `${data.source || "SOURCE"} · ${state.list.length}/${data.totalElements ?? state.list.length}건`;
 
@@ -496,6 +510,7 @@ async function loadDetail(id) {
 }
 
 function resetFilters() {
+  el("searchQueryInput").value = "";
   el("regionInput").value = "";
   el("upKindSelect").value = "417000";
   el("breedInput").value = "";
@@ -503,7 +518,7 @@ function resetFilters() {
   el("sortSelect").value = "LATEST";
   el("sizeSelect").value = "20";
   el("pageInput").value = "0";
-  el("referenceSummaryBox").textContent = "region, breed, status, sort, page, size 값을 그대로 `/api/shelter`에 전달한다.";
+  el("referenceSummaryBox").textContent = "query는 제목/특징 검색으로 전달하고, region, breed, status, sort, page, size 값을 함께 전달한다.";
 }
 
 function run(handler) {
@@ -530,6 +545,7 @@ window.addEventListener("focus", () => refreshNotificationBell("notificationBell
 window.addEventListener("notification-web:message", () => refreshNotificationBell("notificationBellMount").catch(() => {}));
 
 el("searchButton").addEventListener("click", run(() => searchShelters(true)));
+el("searchKeywordButton").addEventListener("click", run(() => searchShelters(true)));
 el("resetButton").addEventListener("click", run(async () => {
   resetFilters();
   renderActiveFilters({});

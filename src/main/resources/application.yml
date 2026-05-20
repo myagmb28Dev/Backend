@@ -43,7 +43,7 @@ spring:
 
 app:
   schema-sync:
-    enabled: ${APP_SCHEMA_SYNC_ENABLED:false}
+    enabled: ${APP_SCHEMA_SYNC_ENABLED:true}
   startup-warmup:
     enabled: ${APP_STARTUP_WARMUP_ENABLED:true}
   storage:

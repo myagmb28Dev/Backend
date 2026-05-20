@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NoticeChatSchemaCompatibilityConfig {
 
     private final JdbcTemplate jdbcTemplate;
-    @Value("${app.schema-sync.enabled:false}")
+    @Value("${app.schema-sync.enabled:true}")
     private boolean schemaSyncEnabled;
 
     @Bean

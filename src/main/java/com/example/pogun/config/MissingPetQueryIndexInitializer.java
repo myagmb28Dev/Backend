@@ -15,7 +15,7 @@ public class MissingPetQueryIndexInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @Value("${app.schema-sync.enabled:false}")
+    @Value("${app.schema-sync.enabled:true}")
     private boolean schemaSyncEnabled;
 
     @Override
@@ -58,6 +58,18 @@ public class MissingPetQueryIndexInitializer implements ApplicationRunner {
                     """
                             create index if not exists idx_pet_notices_missing_region_trgm
                             on pet_notices using gin (lower(missing_region) gin_trgm_ops)
+                            """
+            );
+            jdbcTemplate.execute(
+                    """
+                            create index if not exists idx_pet_notices_title_trgm
+                            on pet_notices using gin (lower(title) gin_trgm_ops)
+                            """
+            );
+            jdbcTemplate.execute(
+                    """
+                            create index if not exists idx_pet_notices_description_trgm
+                            on pet_notices using gin (lower(description) gin_trgm_ops)
                             """
             );
             jdbcTemplate.execute(

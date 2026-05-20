@@ -164,12 +164,18 @@ function renderPostList(items) {
 
 async function loadList(page) {
   if (!activeRole) return;
-  const q = encodeURIComponent(el("qInput").value.trim());
+  const rawQuery = el("qInput").value.trim();
+  if (rawQuery) {
+    el("categoryInput").value = "";
+  }
+  const q = encodeURIComponent(rawQuery);
   const type = encodeURIComponent(el("typeInput").value);
-  const category = encodeURIComponent(el("categoryInput").value);
+  const category = encodeURIComponent(rawQuery ? "" : el("categoryInput").value);
   const size = 20;
   currentPage = page != null ? Math.max(Number(page) || 0, 0) : currentPage;
-  const path = `/api/community/posts?type=${type}&category=${category}&q=${q}&page=${currentPage}&size=${size}`;
+  const path = rawQuery
+    ? `/api/community/posts/search?query=${q}&type=${type}&page=${currentPage}&size=${size}`
+    : `/api/community/posts?type=${type}&category=${category}&q=${q}&page=${currentPage}&size=${size}`;
   setStatus("게시글 목록 조회 중...");
   const res = await authApi(path);
   if (res.status !== 200) return setStatus(`목록 조회 실패 (${res.status})`, "bad");
@@ -177,7 +183,7 @@ async function loadList(page) {
   currentPage = Number(data.filters?.page ?? currentPage) || 0;
   currentTotalPages = Number(data.totalPages || 0);
   currentTotalElements = Number(data.totalElements || 0);
-  const items = Array.isArray(data.items) ? data.items : (Array.isArray(data.content) ? data.content : []);
+  const items = Array.isArray(data.items) ? data.items : [];
   renderPostList(items);
   setStatus(`게시글 ${items.length}건 조회 완료`, "good");
 }

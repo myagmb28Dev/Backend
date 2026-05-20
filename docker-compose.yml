@@ -11,7 +11,7 @@ services:
       REDIS_PORT: 6379
       JAVA_STARTUP_OPTS: ${JAVA_STARTUP_OPTS:--XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom}
       APP_STARTUP_WARMUP_ENABLED: ${APP_STARTUP_WARMUP_ENABLED:-true}
-      APP_SCHEMA_SYNC_ENABLED: ${APP_SCHEMA_SYNC_ENABLED:-false}
+      APP_SCHEMA_SYNC_ENABLED: ${APP_SCHEMA_SYNC_ENABLED:-true}
     depends_on:
       redis:
         condition: service_healthy

@@ -111,6 +111,25 @@ public class MissingPetService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public MissingPetListResponse searchMissingPets(
+            String query,
+            String region,
+            String breed,
+            String status,
+            String from,
+            String to,
+            String sort,
+            int page,
+            int size
+    ) {
+        String normalizedQuery = blankToNull(query);
+        if (normalizedQuery == null) {
+            throw ApiException.badRequest("MISSING_SEARCH_QUERY", "검색어는 필수입니다.");
+        }
+        return getMissingPetList(normalizedQuery, region, breed, status, from, to, false, sort, page, size);
+    }
+
     private MissingPetListResponse getMissingPetListUncached(
             String query,
             String region,

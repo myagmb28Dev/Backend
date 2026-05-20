@@ -48,6 +48,21 @@ public class ShelterPetController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "전국 유기 동물 공고 조회 성공", data));
     }
 
+    @GetMapping("/search")
+    @Operation(summary = "보호소 공고 검색", description = "제목과 특징/설명 기준으로 보호소 공고를 검색합니다.")
+    public ResponseEntity<ApiResponse<ShelterPetListResponse>> search(
+            @RequestParam String query,
+            @RequestParam(required = false) String region,
+            @RequestParam(required = false) String breed,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false, defaultValue = "LATEST") String sort,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        ShelterPetListResponse data = shelterPetService.searchShelterPets(query, region, breed, status, sort, page, size);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "보호소 공고 검색 성공", data));
+    }
+
     @GetMapping("/ai-source")
     @Operation(summary = "유기동물 공고 AI 목록 조회", description = "AI 서버가 API 키 헤더로 조회하는 유기동물 공고 목록입니다.")
     public ResponseEntity<ApiResponse<ShelterPetListResponse>> aiSourceList(

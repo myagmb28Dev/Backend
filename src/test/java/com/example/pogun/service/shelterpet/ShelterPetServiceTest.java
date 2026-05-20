@@ -86,7 +86,25 @@ class ShelterPetServiceTest {
         assertThat(response.filters().region()).isEqualTo("서울");
     }
 
+    @Test
+    void searchShelterPetsMatchesTitleAndDescriptionFields() {
+        ShelterPublicApiClient.ShelterPublicApiAnimal gentle = animal("1001", "서울특별시 강남구", "온순하고 사람을 잘 따름");
+        ShelterPublicApiClient.ShelterPublicApiAnimal shy = animal("1002", "부산광역시 해운대구", "겁이 많음");
+        when(shelterPublicApiClient.fetchShelterPets(eq(null), eq(null), eq(null), eq("LATEST"), eq(0), anyInt()))
+                .thenReturn(new ShelterPublicApiClient.ShelterPublicApiPage(1, 20, 2, List.of(gentle, shy)));
+        when(shelterPetRepository.findAllById(List.of("1001"))).thenReturn(List.of());
+
+        ShelterPetListResponse response = shelterPetService.searchShelterPets("온순", null, null, null, "LATEST", 0, 20);
+
+        assertThat(response.totalElements()).isEqualTo(1);
+        assertThat(response.items()).extracting("id").containsExactly("1001");
+    }
+
     private ShelterPublicApiClient.ShelterPublicApiAnimal animal(String id, String organizationName) {
+        return animal(id, organizationName, "온순함");
+    }
+
+    private ShelterPublicApiClient.ShelterPublicApiAnimal animal(String id, String organizationName, String specialMark) {
         return new ShelterPublicApiClient.ShelterPublicApiAnimal(
                 id,
                 "NOTICE-" + id,
@@ -97,7 +115,7 @@ class ShelterPetServiceTest {
                 organizationName,
                 "믹스",
                 "[개] 믹스",
-                "온순함",
+                specialMark,
                 organizationName + " 인근",
                 "20260520",
                 "20260520",

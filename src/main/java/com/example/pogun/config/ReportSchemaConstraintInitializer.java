@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class ReportSchemaConstraintInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
-    @Value("${app.schema-sync.enabled:false}")
+    @Value("${app.schema-sync.enabled:true}")
     private boolean schemaSyncEnabled;
 
     @Override

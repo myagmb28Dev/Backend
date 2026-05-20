@@ -58,6 +58,31 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
                                  @Param("q") String q,
                                  Pageable pageable);
 
+    @Query(value = """
+            SELECT p
+            FROM CommunityPost p
+            WHERE p.status = :status
+              AND (:category = '' OR LOWER(p.category) = :category)
+              AND (
+                    LOWER(p.title) LIKE CONCAT('%', :query, '%')
+                    OR LOWER(p.content) LIKE CONCAT('%', :query, '%')
+              )
+            """,
+            countQuery = """
+            SELECT COUNT(p)
+            FROM CommunityPost p
+            WHERE p.status = :status
+              AND (:category = '' OR LOWER(p.category) = :category)
+              AND (
+                    LOWER(p.title) LIKE CONCAT('%', :query, '%')
+                    OR LOWER(p.content) LIKE CONCAT('%', :query, '%')
+              )
+            """)
+    Page<CommunityPost> searchPosts(@Param("status") CommunityPostStatus status,
+                                    @Param("category") String category,
+                                    @Param("query") String query,
+                                    Pageable pageable);
+
     List<CommunityPost> findByAuthorIdAndStatusNotOrderByCreatedAtDesc(UUID authorId, CommunityPostStatus status);
 
     List<CommunityPost> findByStatusAndUpdatedAtBefore(CommunityPostStatus status, Instant updatedAt);

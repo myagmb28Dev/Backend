@@ -62,6 +62,23 @@ public class MissingPetController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 동물 공고 목록 조회 성공", result));
     }
 
+    @GetMapping("/search")
+    @Operation(summary = "실종 공고 검색", description = "제목과 특징/설명 기준으로 실종 공고를 검색합니다.")
+    public ResponseEntity<ApiResponse<MissingPetListResponse>> search(
+            @RequestParam String query,
+            @RequestParam(required = false) String region,
+            @RequestParam(required = false) String breed,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false, defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        MissingPetListResponse result = missingPetService.searchMissingPets(query, region, breed, status, from, to, sort, page, size);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 검색 성공", result));
+    }
+
     @GetMapping("/ai-source")
     @Operation(summary = "실종 동물 공고 AI 목록 조회", description = "AI 서버가 API 키 헤더로 조회하는 실종 동물 공고 목록입니다.")
     public ResponseEntity<ApiResponse<MissingPetListResponse>> aiSourceList(

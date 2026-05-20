@@ -71,8 +71,40 @@ public class ShelterPetService {
     }
 
     private ShelterPetListResponse getShelterPetListUncached(String region, String breed, String status, String sort, int normalizedPage, int normalizedSize) {
+        return getShelterPetListUncached(null, region, breed, status, sort, normalizedPage, normalizedSize);
+    }
+
+    public ShelterPetListResponse searchShelterPets(String query, String region, String breed, String status, String sort, int page, int size) {
+        String normalizedQuery = normalizeTextFilter(query);
+        if (!StringUtils.hasText(normalizedQuery)) {
+            throw com.example.pogun.dto.common.ApiResponse.ApiException.badRequest("MISSING_SEARCH_QUERY", "검색어는 필수입니다.");
+        }
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
+        String effectiveRegion = blankToNull(region);
+        String cacheKey = String.join(":",
+                "search",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizeCacheValue(normalizedQuery),
+                normalizeCacheValue(effectiveRegion),
+                normalizeCacheValue(breed),
+                normalizeCacheValue(status),
+                normalizeCacheValue(sort),
+                String.valueOf(normalizedPage),
+                String.valueOf(normalizedSize)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(aiSourceCacheTtlSeconds),
+                ShelterPetListResponse.class,
+                () -> getShelterPetListUncached(normalizedQuery, effectiveRegion, breed, status, sort, normalizedPage, normalizedSize)
+        );
+    }
+
+    private ShelterPetListResponse getShelterPetListUncached(String query, String region, String breed, String status, String sort, int normalizedPage, int normalizedSize) {
         String requestedRegion = normalizeTextFilter(region);
         String requestedBreed = normalizeTextFilter(breed);
+        String requestedQuery = normalizeTextFilter(query);
         boolean regionCodeFilter = isCodeFilter(requestedRegion);
         boolean breedCodeFilter = isCodeFilter(requestedBreed);
         int apiFetchSize = Math.min(Math.max((normalizedPage + 1) * normalizedSize, normalizedSize), 1000);
@@ -88,6 +120,7 @@ public class ShelterPetService {
                 .filter(item -> matchesStatus(item, status))
                 .filter(item -> matchesRegion(item, requestedRegion, regionCodeFilter))
                 .filter(item -> matchesBreed(item, requestedBreed, breedCodeFilter))
+                .filter(item -> matchesQuery(item, requestedQuery))
                 .toList();
 
         int fromIndex = Math.min(normalizedPage * normalizedSize, filteredItems.size());
@@ -122,6 +155,19 @@ public class ShelterPetService {
                 filteredItems.size(),
                 items
         );
+    }
+
+    private boolean matchesQuery(ShelterPublicApiClient.ShelterPublicApiAnimal item, String query) {
+        if (!StringUtils.hasText(query)) {
+            return true;
+        }
+        return containsIgnoreCase(buildDefaultTitle(item), query)
+                || containsIgnoreCase(item.specialMark(), query)
+                || containsIgnoreCase(item.happenPlace(), query)
+                || containsIgnoreCase(item.kindName(), query)
+                || containsIgnoreCase(item.kindFullName(), query)
+                || containsIgnoreCase(item.careName(), query)
+                || containsIgnoreCase(item.organizationName(), query);
     }
 
     public ShelterPetDetailResponse getShelterPetDetail(String id) {

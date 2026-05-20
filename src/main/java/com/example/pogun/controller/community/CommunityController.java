@@ -68,6 +68,19 @@ public class CommunityController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 목록 조회 성공", data));
     }
 
+    @GetMapping("/search")
+    @Operation(summary = "커뮤니티 글 검색", description = "제목과 내용 기준으로 커뮤니티 글을 검색합니다.")
+    public ResponseEntity<ApiResponse<CommunityPostListResponse>> search(
+            @RequestParam String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false, defaultValue = "LATEST") String type,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        CommunityPostListResponse data = communityService.searchPosts(query, category, type, page, size);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 검색 성공", data));
+    }
+
     @PostMapping
     @Operation(summary = "커뮤니티 글 생성", description = "커뮤니티 글을 생성합니다.")
     public ResponseEntity<ApiResponse<CommunityPostCreateResponse>> create(@Valid @RequestBody CommunityPostRequest request) {

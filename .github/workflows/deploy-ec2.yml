@@ -137,7 +137,7 @@ jobs:
           PORT=${{ secrets.PORT }}
           APP_IMAGE=${{ needs.build-and-push.outputs.image_ref }}
           APP_STARTUP_WARMUP_ENABLED=true
-          APP_SCHEMA_SYNC_ENABLED=false
+          APP_SCHEMA_SYNC_ENABLED=true
           JAVA_STARTUP_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom
           AI_API_KEY=${{ secrets.AI_API_KEY }}
           APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS=${{ secrets.APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS }}
