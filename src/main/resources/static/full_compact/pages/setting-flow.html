@@ -32,6 +32,10 @@
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:800; }
     .pill.on { color:#34d399; background:rgba(52,211,153,.14); }
     .pill.off { color:#f87171; background:rgba(248,113,113,.16); }
+    .profile-summary { display:grid; gap:4px; margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#1b1528; }
+    .profile-summary strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+    .profile-summary small { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .profile-fields[hidden], .edit-only[hidden] { display:none !important; }
     @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
   </style>
   <link rel="stylesheet" href="/full_compact/admin-theme.css">
@@ -55,12 +59,20 @@
   <div class="grid">
     <section class="card">
       <h2>프로필</h2>
-      <label>닉네임<input id="nicknameInput"></label>
-      <label>전화번호<input id="phoneInput"></label>
-      <label>지역<input id="regionInput"></label>
-      <label>프로필 이미지 URL<input id="profileImageUrlInput"></label>
+      <div class="profile-summary" aria-live="polite">
+        <strong id="profilePreviewName">-</strong>
+        <small id="profilePreviewSummary">프로필 정보 없음</small>
+      </div>
+      <div id="profileFields" class="profile-fields" hidden>
+        <label>닉네임<input id="nicknameInput"></label>
+        <label>전화번호<input id="phoneInput"></label>
+        <label>지역<input id="regionInput"></label>
+        <label>프로필 이미지 업로드<input id="profileImageFileInput" type="file" accept="image/*"></label>
+      </div>
       <div class="actions">
-        <button id="saveProfileButton">프로필 저장</button>
+        <button id="editProfileButton" class="secondary">프로필 수정</button>
+        <button id="saveProfileButton" class="edit-only" hidden>프로필 저장</button>
+        <button id="cancelProfileEditButton" class="secondary edit-only" hidden>취소</button>
       </div>
     </section>
 
@@ -126,9 +138,13 @@ import {
   mountNotificationBell,
   refreshNotificationBell
 } from "/js/notification-web.js";
+import { saveSession } from "/js/session-store.js";
 
 const el = (id) => document.getElementById(id);
+const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
 let notificationSettings = [];
+let profileEditMode = false;
+let lastProfileData = null;
 
 function setStatus(message, tone = "") {
   const node = el("status");
@@ -153,6 +169,47 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function renderProfileSummary() {
+  const name = el("profilePreviewName");
+  const summary = el("profilePreviewSummary");
+  const nickname = el("nicknameInput").value.trim() || getStoredSession()?.nickname || "-";
+  const phoneNumber = el("phoneInput").value.trim();
+  const region = el("regionInput").value.trim();
+  const selectedFileName = el("profileImageFileInput").files?.[0]?.name || "";
+
+  name.textContent = nickname;
+  summary.textContent = [region, phoneNumber, selectedFileName ? `선택된 이미지: ${selectedFileName}` : ""].filter(Boolean).join(" · ") || "프로필 정보 없음";
+}
+
+function syncStoredProfile(data) {
+  const session = getStoredSession();
+  if (!session || !data) {
+    return;
+  }
+  saveSession(REAL_SESSION_KEY, {
+    ...session,
+    nickname: data.nickname || session.nickname || "",
+    profileImageUrl: data.profileImageUrl || "",
+    region: data.region || session.region || "",
+    phoneNumber: data.phoneNumber || session.phoneNumber || ""
+  });
+}
+
+function setProfileFields(data = {}) {
+  el("nicknameInput").value = data?.nickname || "";
+  el("phoneInput").value = data?.phoneNumber || "";
+  el("regionInput").value = data?.region || "";
+  el("profileImageFileInput").value = "";
+}
+
+function setProfileEditMode(enabled) {
+  profileEditMode = !!enabled;
+  el("profileFields").hidden = !profileEditMode;
+  el("saveProfileButton").hidden = !profileEditMode;
+  el("cancelProfileEditButton").hidden = !profileEditMode;
+  el("editProfileButton").hidden = profileEditMode;
+}
+
 async function requestData(path, init = {}) {
   const response = await authRequest(path, init);
   if (response.status < 200 || response.status >= 300) {
@@ -163,24 +220,49 @@ async function requestData(path, init = {}) {
 
 async function loadProfile() {
   const data = await requestData("/api/users/me");
-  el("nicknameInput").value = data?.nickname || "";
-  el("phoneInput").value = data?.phoneNumber || "";
-  el("regionInput").value = data?.region || "";
-  el("profileImageUrlInput").value = data?.profileImageUrl || "";
+  lastProfileData = data || {};
+  setProfileFields(lastProfileData);
+  syncStoredProfile(data);
+  renderProfileSummary();
+  setProfileEditMode(false);
 }
 
 async function saveProfile() {
   const body = {
     nickname: el("nicknameInput").value.trim(),
     phoneNumber: el("phoneInput").value.trim(),
-    region: el("regionInput").value.trim(),
-    profileImageUrl: el("profileImageUrlInput").value.trim()
+    region: el("regionInput").value.trim()
   };
-  await requestData("/api/users/me", {
+  const profileImage = el("profileImageFileInput").files?.[0] || null;
+  const init = profileImage ? buildMultipartProfileRequest(body, profileImage) : {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  });
+  };
+  const data = await requestData("/api/users/me", init);
+  lastProfileData = data || body;
+  setProfileFields(lastProfileData);
+  syncStoredProfile(data);
+  renderProfileSummary();
+  notifyParentProfileUpdated(data);
+  setProfileEditMode(false);
+}
+
+function buildMultipartProfileRequest(body, profileImage) {
+  const formData = new FormData();
+  formData.append("request", new Blob([JSON.stringify(body)], { type: "application/json" }));
+  formData.append("profileImage", profileImage);
+  return {
+    method: "PATCH",
+    body: formData
+  };
+}
+
+function notifyParentProfileUpdated(data) {
+  if (!data || !window.parent || window.parent === window) {
+    return;
+  }
+  window.parent.postMessage({ type: "pogun-profile-updated", profile: data }, window.location.origin);
 }
 
 function setPresencePill(value) {
@@ -322,6 +404,23 @@ el("saveProfileButton").addEventListener("click", async () => {
     setStatus(error.message || String(error), "bad");
   }
 });
+
+el("editProfileButton").addEventListener("click", () => {
+  setProfileEditMode(true);
+  setStatus("프로필 수정 모드", "");
+});
+
+el("cancelProfileEditButton").addEventListener("click", () => {
+  setProfileFields(lastProfileData || {});
+  renderProfileSummary();
+  setProfileEditMode(false);
+  setStatus("프로필 수정을 취소했습니다.", "");
+});
+
+el("profileImageFileInput").addEventListener("change", () => renderProfileSummary());
+el("nicknameInput").addEventListener("input", () => renderProfileSummary());
+el("phoneInput").addEventListener("input", () => renderProfileSummary());
+el("regionInput").addEventListener("input", () => renderProfileSummary());
 
 el("saveAvailabilityButton").addEventListener("click", async () => {
   try {

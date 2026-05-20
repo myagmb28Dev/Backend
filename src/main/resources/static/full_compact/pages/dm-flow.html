@@ -1193,14 +1193,20 @@ async function refreshContext(role = activeRole) {
   await Promise.all([loadNotices(role), loadRooms(role)]);
 }
 async function loadNotices(role) {
-  const listResponse = await dmApiFor(role).getMissingPets();
+  const [listResponse, ownListResponse] = await Promise.all([
+    dmApiFor(role).getMissingPets(),
+    dmApiFor(role).getOwnMissingPets()
+  ]);
   if (listResponse.status !== 200) throw new Error(`공고 목록 조회 실패: ${JSON.stringify(listResponse.body)}`);
+  if (ownListResponse.status !== 200) throw new Error(`내 공고 목록 조회 실패: ${JSON.stringify(ownListResponse.body)}`);
   const summaries = Array.isArray(listResponse.body?.data?.items) ? listResponse.body.data.items : [];
-  const visibleNotices = summaries.filter((notice) => notice && notice.status === "OPEN");
+  const ownSummaries = Array.isArray(ownListResponse.body?.data?.items) ? ownListResponse.body.data.items : [];
+  const visibleNotices = dedupeNotices([...summaries, ...ownSummaries]).filter((notice) => notice && notice.status === "OPEN");
+  const visibleOwnNotices = ownSummaries.filter((notice) => notice && notice.status === "OPEN");
   for (const notice of visibleNotices) {
     rememberKnownUserLabel(notice.authorId, notice.authorNickname);
   }
-  ownNotices = visibleNotices.filter((notice) => notice.authorId === users[role].userId);
+  ownNotices = visibleOwnNotices.filter((notice) => notice.authorId === users[role].userId);
   targetNotices = visibleNotices.filter((notice) => notice.authorId !== users[role].userId);
   const byRecent = (notice) => Date.parse(notice.createdAt || notice.missingDate || 0);
   ownNotices.sort((a, b) => byRecent(b) - byRecent(a));
@@ -1218,6 +1224,14 @@ async function loadNotices(role) {
   if (!selectedTargetNoticeId && targetNotices.length === 1) selectedTargetNoticeId = targetNotices[0].id;
   renderNoticeSelectors();
   updateConversationTitle();
+}
+function dedupeNotices(notices) {
+  const byId = new Map();
+  for (const notice of notices) {
+    if (!notice?.id || byId.has(notice.id)) continue;
+    byId.set(notice.id, notice);
+  }
+  return [...byId.values()];
 }
 async function loadRooms(role) {
   const response = await dmApiFor(role).getRooms();

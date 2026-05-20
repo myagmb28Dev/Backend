@@ -23,9 +23,15 @@
     .hamburger { width:40px; height:36px; border:1px solid var(--line); border-radius:8px; background:#202020; color:var(--ink); font-size:18px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; position:relative; z-index:55; cursor:pointer; }
     .top-menu-btn { display:none; }
     .mobile-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.44); z-index:28; }
-    .shell-side { background:#151515; border-right:1px solid var(--line); }
+    .shell-side { position:relative; background:#151515; border-right:1px solid var(--line); }
+    .side-profile { position:absolute; left:14px; right:14px; bottom:14px; display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--line); border-radius:12px; background:#101012; min-width:0; }
+    .side-profile__image { width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid #3a3a3d; background:#222; flex:0 0 auto; }
+    .side-profile__placeholder { display:none; width:36px; height:36px; border-radius:50%; align-items:center; justify-content:center; border:1px solid #3a3a3d; background:linear-gradient(135deg,#303033,#171719); color:#fff; font-size:14px; font-weight:900; flex:0 0 auto; }
+    .side-profile__meta { display:grid; gap:2px; min-width:0; }
+    .side-profile__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:800; color:#f4f4f5; }
+    .side-profile__email { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--muted); }
     .layout { min-height:100vh; display:grid; grid-template-rows:64px minmax(0,1fr); min-width:0; }
-    .side { padding:20px 14px; display:grid; gap:8px; align-content:start; }
+    .side { padding:20px 14px 92px; display:grid; gap:8px; align-content:start; }
     .nav-group { margin:0 0 12px; color:#cfcfd2; font-size:15px; font-weight:800; }
     .side button { width:100%; min-width:0; min-height:48px; display:flex; align-items:center; text-align:left; border:1px solid transparent; border-radius:10px; background:transparent; color:#c6c6c9; padding:0 18px; font-size:19px; font-weight:700; cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
     .side button .label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
@@ -41,6 +47,8 @@
     body.sidebar-collapsed .side { padding:20px 10px; }
     body.sidebar-collapsed .nav-group { display:none; }
     body.sidebar-collapsed .side button { display:none; }
+    body.sidebar-collapsed .side-profile { left:8px; right:8px; justify-content:center; padding:8px; }
+    body.sidebar-collapsed .side-profile__meta { display:none; }
     @media (max-width:1024px) {
       body { overflow:auto; }
       .app { grid-template-columns:1fr; }
@@ -71,6 +79,14 @@
         <button data-view="notification" data-short="F" aria-label="Notification"><span class="label">알림</span></button>
         <button data-view="setting" data-short="G" aria-label="Setting"><span class="label">설정</span></button>
       </nav>
+      <div id="sideProfile" class="side-profile" title="현재 로그인 프로필">
+        <img id="sideProfileImage" class="side-profile__image" alt="프로필 이미지">
+        <div id="sideProfilePlaceholder" class="side-profile__placeholder">?</div>
+        <div class="side-profile__meta">
+          <div id="sideProfileName" class="side-profile__name">로그인 필요</div>
+          <div id="sideProfileEmail" class="side-profile__email">-</div>
+        </div>
+      </div>
     </aside>
     <button id="menuBackdrop" class="mobile-backdrop" aria-label="menu backdrop"></button>
 
@@ -122,7 +138,12 @@
     const refreshBtn = document.getElementById("refreshBtn");
     const topTitle = document.getElementById("topTitle");
     const backdrop = document.getElementById("menuBackdrop");
+    const sideProfileImage = document.getElementById("sideProfileImage");
+    const sideProfilePlaceholder = document.getElementById("sideProfilePlaceholder");
+    const sideProfileName = document.getElementById("sideProfileName");
+    const sideProfileEmail = document.getElementById("sideProfileEmail");
     const navButtons = [...document.querySelectorAll("#sideNav button[data-view]")];
+    const REAL_SESSION_KEY = "pogun-real-firebase-session-v1";
     const PENDING_VIEW_KEY = "pogun-full-compact-pending-view";
     const VIEWS = ["login","notice","community","dm","notification","setting","shelter"];
     const query = new URLSearchParams(window.location.search);
@@ -138,6 +159,69 @@
       });
     }
     const normalizeView = (view) => VIEWS.includes(view) ? view : null;
+    const loadSession = () => {
+      try {
+        const raw = window.localStorage.getItem(REAL_SESSION_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    };
+    const saveSession = (session) => {
+      try {
+        window.localStorage.setItem(REAL_SESSION_KEY, JSON.stringify(session));
+      } catch {}
+    };
+    const profileInitial = (session) => {
+      const value = session?.nickname || session?.email || "?";
+      return String(value).trim().slice(0, 1).toUpperCase() || "?";
+    };
+    const renderSideProfile = (session = loadSession()) => {
+      const name = session?.nickname || session?.email || "로그인 필요";
+      const email = session?.email || "-";
+      const imageUrl = session?.profileImageUrl || "";
+      sideProfileName.textContent = name;
+      sideProfileEmail.textContent = email;
+      sideProfilePlaceholder.textContent = profileInitial(session);
+      if (!imageUrl) {
+        sideProfileImage.removeAttribute("src");
+        sideProfileImage.style.display = "none";
+        sideProfilePlaceholder.style.display = "inline-flex";
+        return;
+      }
+      sideProfileImage.style.display = "block";
+      sideProfilePlaceholder.style.display = "none";
+      sideProfileImage.src = imageUrl;
+    };
+    const fetchCurrentProfile = async () => {
+      const session = loadSession();
+      if (!session?.firebaseIdToken) {
+        renderSideProfile(session);
+        return;
+      }
+      try {
+        const response = await fetch("/api/users/me", {
+          headers: { Authorization: `Bearer ${session.firebaseIdToken}` }
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.data) {
+          renderSideProfile(session);
+          return;
+        }
+        const nextSession = {
+          ...session,
+          nickname: body.data.nickname || session.nickname || "",
+          email: body.data.email || session.email || "",
+          profileImageUrl: body.data.profileImageUrl || "",
+          region: body.data.region || session.region || "",
+          phoneNumber: body.data.phoneNumber || session.phoneNumber || ""
+        };
+        saveSession(nextSession);
+        renderSideProfile(nextSession);
+      } catch {
+        renderSideProfile(session);
+      }
+    };
     const currentActiveView = () => {
       const active = document.querySelector("#sideNav button.active");
       return normalizeView(active?.dataset?.view) || "login";
@@ -221,8 +305,33 @@
         try { window.sessionStorage.removeItem(PENDING_VIEW_KEY); } catch {}
         activate(targetView, { refresh: false });
       }
+      if (data.type === "pogun-profile-updated") {
+        const session = loadSession() || {};
+        const profile = data.profile || {};
+        const nextSession = {
+          ...session,
+          nickname: profile.nickname || session.nickname || "",
+          email: profile.email || session.email || "",
+          profileImageUrl: profile.profileImageUrl || "",
+          region: profile.region || session.region || "",
+          phoneNumber: profile.phoneNumber || session.phoneNumber || ""
+        };
+        saveSession(nextSession);
+        renderSideProfile(nextSession);
+      }
+    });
+    sideProfileImage.addEventListener("error", () => {
+      sideProfileImage.style.display = "none";
+      sideProfilePlaceholder.style.display = "inline-flex";
+    });
+    window.addEventListener("storage", (event) => {
+      if (event.key === REAL_SESSION_KEY) {
+        renderSideProfile();
+      }
     });
     const initialView = normalizeView(query.get("view")) || "login";
+    renderSideProfile();
+    fetchCurrentProfile();
     activate(initialView, { refresh: false });
   </script>
 </body>
