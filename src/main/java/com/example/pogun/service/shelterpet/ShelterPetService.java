@@ -12,16 +12,13 @@ import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.shelterpet.ShelterPet;
-import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
-import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.ai.AiService;
 import com.example.pogun.service.cache.AiSourceCacheService;
 import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -42,7 +39,6 @@ public class ShelterPetService {
     private final ShelterPublicApiClient shelterPublicApiClient;
     private final ShelterPetRepository shelterPetRepository;
     private final PetNoticeRepository petNoticeRepository;
-    private final UserRepository userRepository;
     private final AiService aiService;
     private final AiSourceCacheService aiSourceCacheService;
     private final NotificationService notificationService;
@@ -55,7 +51,7 @@ public class ShelterPetService {
     public ShelterPetListResponse getShelterPetList(String region, String breed, String status, String sort, int page, int size) {
         int normalizedPage = normalizePage(page);
         int normalizedSize = normalizeSize(size);
-        String effectiveRegion = resolveEffectiveRegion(region);
+        String effectiveRegion = blankToNull(region);
         String cacheKey = String.join(":",
                 "public-list",
                 "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
@@ -353,45 +349,6 @@ public class ShelterPetService {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
-    }
-
-    private boolean isAllRegionSentinel(String region) {
-        if (!StringUtils.hasText(region)) {
-            return false;
-        }
-        return "*".equals(region) || "all".equalsIgnoreCase(region);
-    }
-
-    private User findCurrentUserOrNull() {
-        if (SecurityContextHolder.getContext().getAuthentication() == null) {
-            return null;
-        }
-        String firebaseUid = SecurityContextHolder.getContext().getAuthentication().getName();
-        if (!StringUtils.hasText(firebaseUid) || "anonymousUser".equalsIgnoreCase(firebaseUid)) {
-            return null;
-        }
-        return userRepository.findByFirebaseUid(firebaseUid).orElse(null);
-    }
-
-    private String resolveEffectiveRegion(String requestedRegion) {
-        String explicitRegion = blankToNull(requestedRegion);
-        if (isAllRegionSentinel(explicitRegion)) {
-            return null;
-        }
-        if (explicitRegion != null) {
-            return explicitRegion;
-        }
-        User currentUser = findCurrentUserOrNull();
-        if (currentUser == null) {
-            return null;
-        }
-        return firstNonBlank(
-                blankToNull(currentUser.getRegionAddressName()),
-                blankToNull(currentUser.getRegion()),
-                blankToNull(currentUser.getRegion3DepthName()),
-                blankToNull(currentUser.getRegion2DepthName()),
-                blankToNull(currentUser.getRegion1DepthName())
-        );
     }
 
     private int normalizePage(int page) {

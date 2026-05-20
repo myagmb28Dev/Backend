@@ -82,7 +82,7 @@ public class AuthService {
                     .map(existingUser -> {
                         existingUser.setEmail(email);
                         existingUser.setNickname(resolveNicknameForExistingUser(existingUser.getNickname(), resolvedNickname));
-                        existingUser.setProfileImageUrl(picture);
+                        fillProfileImageIfMissing(existingUser, picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setLastActiveAt(Instant.now());
                         existingUser.setStatus(UserStatus.ACTIVE);
@@ -93,7 +93,7 @@ public class AuthService {
                                 // 에뮬레이터/소셜 재연동 등으로 UID가 바뀐 경우 기존 계정에 새 UID를 연결한다.
                                 existingByEmail.setFirebaseUid(uid);
                                 existingByEmail.setNickname(resolveNicknameForExistingUser(existingByEmail.getNickname(), resolvedNickname));
-                                existingByEmail.setProfileImageUrl(picture);
+                                fillProfileImageIfMissing(existingByEmail, picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
                                 existingByEmail.setLastActiveAt(Instant.now());
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
@@ -205,7 +205,7 @@ public class AuthService {
 
             user.setEmail(email);
             user.setNickname(resolveNicknameForExistingUser(user.getNickname(), resolvedNickname));
-            user.setProfileImageUrl(identity.photoUrl());
+            fillProfileImageIfMissing(user, identity.photoUrl());
             user.setAuthProvider(normalizedProvider);
             user.setLastActiveAt(Instant.now());
             User saved = userRepository.save(user);
@@ -271,6 +271,16 @@ public class AuthService {
             return currentNickname;
         }
         return incomingNickname;
+    }
+
+    private void fillProfileImageIfMissing(User user, String incomingProfileImageUrl) {
+        if (user == null || incomingProfileImageUrl == null || incomingProfileImageUrl.isBlank()) {
+            return;
+        }
+        if (user.getProfileImageUrl() != null && !user.getProfileImageUrl().isBlank()) {
+            return;
+        }
+        user.setProfileImageUrl(incomingProfileImageUrl.trim());
     }
 
     private String resolveDisplayName(FirebaseIdentityService.FirebaseIdentity identity, String email) {

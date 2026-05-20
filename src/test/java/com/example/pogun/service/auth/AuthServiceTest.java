@@ -449,6 +449,73 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginOrSignUp_doesNotReplaceExistingProfileImageWithProviderPhoto() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "firebase-uid",
+                "existing-user@example.com",
+                "Existing User",
+                "https://lh3.googleusercontent.com/provider-default.png",
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "existing-user@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("existing-user@example.com")
+                .nickname("기존 유저")
+                .profileImageUrl("https://cdn.example.com/custom-profile.webp")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
+        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
+
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
+
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/custom-profile.webp");
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getProfileImageUrl()).isEqualTo("https://cdn.example.com/custom-profile.webp");
+    }
+
+    @Test
+    void loginOrSignUp_fillsProviderPhotoOnlyWhenProfileImageIsMissing() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "firebase-uid",
+                "existing-user@example.com",
+                "Existing User",
+                "https://lh3.googleusercontent.com/provider-default.png",
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "existing-user@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("existing-user@example.com")
+                .nickname("기존 유저")
+                .profileImageUrl(null)
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
+        when(userSocialAccountRepository.findByUserAndProvider(any(User.class), any(String.class))).thenReturn(Optional.empty());
+
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
+
+        assertThat(response.profileImageUrl()).isEqualTo("https://lh3.googleusercontent.com/provider-default.png");
+    }
+
+    @Test
     void loginAdmin_allowsExistingAdminUserWithFirebaseProvider() throws Exception {
         FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
                 "admin-uid",
@@ -480,6 +547,41 @@ class AuthServiceTest {
         assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
         assertThat(response.provider()).isEqualTo("FIREBASE");
         verify(userPresenceService).touchFromAuthenticationSafely("admin-uid", "unknown-host");
+    }
+
+    @Test
+    void loginAdmin_doesNotReplaceExistingProfileImageWithProviderPhoto() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "admin-uid",
+                "admin@example.com",
+                "관리자",
+                "https://lh3.googleusercontent.com/admin-provider.png",
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "admin@example.com")),
+                java.util.Map.of()
+        );
+        User admin = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("admin-uid")
+                .email("admin@example.com")
+                .nickname("기존 관리자")
+                .profileImageUrl("https://cdn.example.com/admin-custom.webp")
+                .role(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("admin-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("admin-uid")).thenReturn(Optional.of(admin));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndProvider(admin, "GOOGLE")).thenReturn(Optional.empty());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(any(User.class))).thenReturn(List.of());
+
+        AuthResponse response = authService.loginAdmin("admin-token", httpServletRequest);
+
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/admin-custom.webp");
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getProfileImageUrl()).isEqualTo("https://cdn.example.com/admin-custom.webp");
     }
 
     @Test
