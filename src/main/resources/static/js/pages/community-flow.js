@@ -165,16 +165,13 @@ function renderPostList(items) {
 async function loadList(page) {
   if (!activeRole) return;
   const rawQuery = el("qInput").value.trim();
-  if (rawQuery) {
-    el("categoryInput").value = "";
-  }
   const q = encodeURIComponent(rawQuery);
   const type = encodeURIComponent(el("typeInput").value);
-  const category = encodeURIComponent(rawQuery ? "" : el("categoryInput").value);
+  const category = encodeURIComponent(el("categoryInput").value);
   const size = 20;
   currentPage = page != null ? Math.max(Number(page) || 0, 0) : currentPage;
   const path = rawQuery
-    ? `/api/community/posts/search?query=${q}&type=${type}&page=${currentPage}&size=${size}`
+    ? `/api/community/posts/search?query=${q}&type=${type}&category=${category}&page=${currentPage}&size=${size}`
     : `/api/community/posts?type=${type}&category=${category}&q=${q}&page=${currentPage}&size=${size}`;
   setStatus("게시글 목록 조회 중...");
   const res = await authApi(path);

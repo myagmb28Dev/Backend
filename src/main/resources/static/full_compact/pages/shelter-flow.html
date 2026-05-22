@@ -305,9 +305,9 @@ async function login() {
 function buildListQuery() {
   const params = new URLSearchParams();
   const searchQuery = el("searchQueryInput").value.trim();
-  const region = searchQuery ? "" : el("regionInput").value.trim();
-  const breed = searchQuery ? "" : el("breedInput").value.trim();
-  const status = searchQuery ? "" : el("statusSelect").value;
+  const region = el("regionInput").value.trim();
+  const breed = el("breedInput").value.trim();
+  const status = el("statusSelect").value;
   const sort = el("sortSelect").value;
   const page = String(Math.max(0, Number(el("pageInput").value || 0)));
   const size = el("sizeSelect").value;

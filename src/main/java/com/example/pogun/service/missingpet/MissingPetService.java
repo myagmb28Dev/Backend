@@ -127,7 +127,42 @@ public class MissingPetService {
         if (normalizedQuery == null) {
             throw ApiException.badRequest("MISSING_SEARCH_QUERY", "검색어는 필수입니다.");
         }
-        return getMissingPetList(normalizedQuery, region, breed, status, from, to, false, sort, page, size);
+        return getMissingPetSearchList(normalizedQuery, region, breed, status, from, to, sort, page, size);
+    }
+
+    private MissingPetListResponse getMissingPetSearchList(
+            String query,
+            String region,
+            String breed,
+            String status,
+            String from,
+            String to,
+            String sort,
+            int page,
+            int size
+    ) {
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
+        String effectiveRegion = blankToNull(region);
+        String cacheKey = String.join(":",
+                "search",
+                "v" + aiSourceCacheService.currentVersion(CACHE_NAMESPACE),
+                normalizeCacheValue(query),
+                normalizeCacheValue(effectiveRegion),
+                normalizeCacheValue(breed),
+                normalizeCacheValue(status),
+                normalizeCacheValue(from),
+                normalizeCacheValue(to),
+                normalizeCacheValue(sort),
+                String.valueOf(normalizedPage),
+                String.valueOf(normalizedSize)
+        );
+        return aiSourceCacheService.getOrLoad(
+                cacheKey,
+                Duration.ofSeconds(aiSourceCacheTtlSeconds),
+                MissingPetListResponse.class,
+                () -> getMissingPetListUncached(query, effectiveRegion, breed, status, from, to, false, sort, normalizedPage, normalizedSize, null)
+        );
     }
 
     private MissingPetListResponse getMissingPetListUncached(
@@ -476,6 +511,14 @@ public class MissingPetService {
         );
     }
 
+    private boolean isAllRegionSentinel(String region) {
+        if (region == null) {
+            return false;
+        }
+        String normalized = region.trim();
+        return "*".equals(normalized);
+    }
+
     private String firstNonBlank(String... candidates) {
         for (String candidate : candidates) {
             if (candidate != null && !candidate.isBlank()) {
@@ -722,13 +765,6 @@ public class MissingPetService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private boolean isAllRegionSentinel(String region) {
-        if (region == null) {
-            return false;
-        }
-        return "*".equals(region) || "all".equalsIgnoreCase(region);
     }
 
     private String normalizeTextFilter(String value) {

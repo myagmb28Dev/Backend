@@ -236,13 +236,6 @@ function isOwnerNotice(notice = currentNotice) {
   return Boolean(activeRole && notice?.authorId && users[activeRole]?.userId && notice.authorId === users[activeRole].userId);
 }
 
-function normalizeSearchScope() {
-  if (el("listQuery").value.trim()) {
-    el("listRegionScope").value = "all";
-    el("listMineOnly").value = "false";
-  }
-}
-
 function setEditorMode(editing) {
   editingNoticeId = editing ? currentNoticeId : null;
   el("editorMode").textContent = editingNoticeId ? `수정 모드 · ${editingNoticeId}` : "새 공고 작성 모드";
@@ -613,7 +606,6 @@ function renderNoticeList(items) {
 
 async function loadNoticeList(page = noticeListPage) {
   if (!activeRole) throw new Error("먼저 로그인하세요.");
-  normalizeSearchScope();
   const params = new URLSearchParams();
   const queryText = el("listQuery").value.trim();
   const status = el("listStatus").value;
@@ -624,7 +616,7 @@ async function loadNoticeList(page = noticeListPage) {
   if (queryText) params.set("query", queryText);
   if (status) params.set("status", status);
   if (mineOnly) params.set("mineOnly", "true");
-  if (regionScope === "all") params.set("region", "*");
+  if (!queryText && regionScope === "all") params.set("region", "*");
   params.set("size", size);
   params.set("page", String(noticeListPage));
 
