@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -61,7 +62,7 @@ class ShelterPetServiceTest {
         ShelterPublicApiClient.ShelterPublicApiAnimal busan = animal("1002", "부산광역시 해운대구");
         when(shelterPublicApiClient.fetchShelterPets(eq(null), eq(null), eq(null), eq("LATEST"), eq(0), anyInt()))
                 .thenReturn(new ShelterPublicApiClient.ShelterPublicApiPage(1, 20, 2, List.of(seoul, busan)));
-        when(shelterPetRepository.findAllById(List.of("1001", "1002"))).thenReturn(List.of());
+        when(shelterPetRepository.findAllById(anyList())).thenReturn(List.of());
 
         ShelterPetListResponse response = shelterPetService.getShelterPetList(null, null, null, "LATEST", 0, 20);
 
@@ -77,7 +78,7 @@ class ShelterPetServiceTest {
         ShelterPublicApiClient.ShelterPublicApiAnimal busan = animal("1002", "부산광역시 해운대구");
         when(shelterPublicApiClient.fetchShelterPets(eq(null), eq(null), eq(null), eq("LATEST"), eq(0), anyInt()))
                 .thenReturn(new ShelterPublicApiClient.ShelterPublicApiPage(1, 20, 2, List.of(seoul, busan)));
-        when(shelterPetRepository.findAllById(List.of("1001"))).thenReturn(List.of());
+        when(shelterPetRepository.findAllById(anyList())).thenReturn(List.of());
 
         ShelterPetListResponse response = shelterPetService.getShelterPetList("서울", null, null, "LATEST", 0, 20);
 
@@ -92,7 +93,7 @@ class ShelterPetServiceTest {
         ShelterPublicApiClient.ShelterPublicApiAnimal shy = animal("1002", "부산광역시 해운대구", "겁이 많음");
         when(shelterPublicApiClient.fetchShelterPets(eq(null), eq(null), eq(null), eq("LATEST"), eq(0), anyInt()))
                 .thenReturn(new ShelterPublicApiClient.ShelterPublicApiPage(1, 20, 2, List.of(gentle, shy)));
-        when(shelterPetRepository.findAllById(List.of("1001"))).thenReturn(List.of());
+        when(shelterPetRepository.findAllById(anyList())).thenReturn(List.of());
 
         ShelterPetListResponse response = shelterPetService.searchShelterPets("온순", null, null, null, "LATEST", 0, 20);
 
