@@ -616,13 +616,12 @@ async function loadNoticeList(page = noticeListPage) {
   if (queryText) params.set("query", queryText);
   if (status) params.set("status", status);
   if (mineOnly) params.set("mineOnly", "true");
-  if (!queryText && regionScope === "all") params.set("region", "*");
+  if (regionScope === "all") params.set("region", "*");
   params.set("size", size);
   params.set("page", String(noticeListPage));
 
   setStatus("공고 목록 조회 중...");
-  const endpoint = queryText ? "/api/missing-pets/search" : "/api/missing-pets";
-  const response = await authApi(`${endpoint}?${params.toString()}`);
+  const response = await authApi(`/api/missing-pets?${params.toString()}`);
   if (response.status !== 200) throw new Error(`공고 목록 조회 실패: ${JSON.stringify(response.body)}`);
   const data = response.body?.data || {};
   noticeListPage = Number(data.filters?.page ?? noticeListPage) || 0;
