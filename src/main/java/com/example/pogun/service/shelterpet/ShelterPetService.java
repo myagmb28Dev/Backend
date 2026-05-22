@@ -116,23 +116,27 @@ public class ShelterPetService {
                 0,
                 apiFetchSize
         );
+        Map<String, ShelterPet> localById = new HashMap<>();
+        shelterPetRepository.findAllById(result.items().stream().map(ShelterPublicApiClient.ShelterPublicApiAnimal::desertionNo).toList())
+                .forEach(local -> localById.put(local.getId(), local));
+
         List<ShelterPublicApiClient.ShelterPublicApiAnimal> filteredItems = result.items().stream()
                 .filter(item -> matchesStatus(item, status))
                 .filter(item -> matchesRegion(item, requestedRegion, regionCodeFilter))
                 .filter(item -> matchesBreed(item, requestedBreed, breedCodeFilter))
-                .filter(item -> matchesQuery(item, requestedQuery))
+                .filter(item -> matchesQuery(item, localById.get(item.desertionNo()), requestedQuery))
                 .toList();
 
         int fromIndex = Math.min(normalizedPage * normalizedSize, filteredItems.size());
         int toIndex = Math.min(fromIndex + normalizedSize, filteredItems.size());
         List<ShelterPublicApiClient.ShelterPublicApiAnimal> pageItems = filteredItems.subList(fromIndex, toIndex);
         List<String> pageIds = pageItems.stream().map(ShelterPublicApiClient.ShelterPublicApiAnimal::desertionNo).toList();
-        Map<String, ShelterPet> localById = new HashMap<>();
-        shelterPetRepository.findAllById(pageIds).forEach(local -> localById.put(local.getId(), local));
+        Map<String, ShelterPet> localByPageId = new HashMap<>();
+        shelterPetRepository.findAllById(pageIds).forEach(local -> localByPageId.put(local.getId(), local));
 
         List<ShelterPetSummaryResponse> items = pageItems.stream()
                 .map(item -> {
-                    ShelterPet local = localById.get(item.desertionNo());
+                    ShelterPet local = localByPageId.get(item.desertionNo());
                     return new ShelterPetSummaryResponse(
                             item.desertionNo(),
                             item.noticeNo(),
@@ -157,11 +161,13 @@ public class ShelterPetService {
         );
     }
 
-    private boolean matchesQuery(ShelterPublicApiClient.ShelterPublicApiAnimal item, String query) {
+    private boolean matchesQuery(ShelterPublicApiClient.ShelterPublicApiAnimal item, ShelterPet local, String query) {
         if (!StringUtils.hasText(query)) {
             return true;
         }
         return containsIgnoreCase(buildDefaultTitle(item), query)
+                || containsIgnoreCase(local == null ? null : local.getTitle(), query)
+                || containsIgnoreCase(local == null ? null : local.getDescription(), query)
                 || containsIgnoreCase(item.specialMark(), query)
                 || containsIgnoreCase(item.happenPlace(), query)
                 || containsIgnoreCase(item.kindName(), query)

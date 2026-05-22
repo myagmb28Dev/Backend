@@ -170,7 +170,9 @@ async function loadList(page) {
   const category = encodeURIComponent(el("categoryInput").value);
   const size = 20;
   currentPage = page != null ? Math.max(Number(page) || 0, 0) : currentPage;
-  const path = `/api/community/posts?type=${type}&category=${category}&q=${q}&page=${currentPage}&size=${size}`;
+  const path = rawQuery
+    ? `/api/community/posts/search?query=${q}&type=${type}&category=${category}&page=${currentPage}&size=${size}`
+    : `/api/community/posts?type=${type}&category=${category}&page=${currentPage}&size=${size}`;
   setStatus("게시글 목록 조회 중...");
   const res = await authApi(path);
   if (res.status !== 200) return setStatus(`목록 조회 실패 (${res.status})`, "bad");
