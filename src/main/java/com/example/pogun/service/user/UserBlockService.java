@@ -3,6 +3,7 @@ package com.example.pogun.service.user;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserBlock;
+import com.example.pogun.dto.user.UserBlockResponse;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -40,6 +42,19 @@ public class UserBlockService {
         User blocked = getUser(userId);
         userBlockRepository.findByBlockerAndBlocked(blocker, blocked)
                 .ifPresent(userBlockRepository::delete);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserBlockResponse> listBlockedUsers() {
+        User blocker = getCurrentUser();
+        return userBlockRepository.findByBlockerOrderByCreatedAtDesc(blocker).stream()
+                .map(block -> new UserBlockResponse(
+                        block.getBlocked().getId(),
+                        block.getBlocked().getNickname(),
+                        block.getBlocked().getProfileImageUrl(),
+                        block.getCreatedAt()
+                ))
+                .toList();
     }
 
     private User getCurrentUser() {
