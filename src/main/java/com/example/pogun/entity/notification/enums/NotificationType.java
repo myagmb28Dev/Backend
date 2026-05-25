@@ -19,6 +19,8 @@ public enum NotificationType {
     FOLLOWING_POST,
     COMMUNITY_NOTICE,
     CHAT_ROOM_NOTICE,
+    USER_DIRECT,
+    USER_BROADCAST,
     ADMIN_BROADCAST
 }
 

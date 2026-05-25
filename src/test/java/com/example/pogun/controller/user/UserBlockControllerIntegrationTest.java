@@ -6,12 +6,12 @@ import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.user.UserBlockRepository;
 import com.example.pogun.repository.user.UserRepository;
+import com.example.pogun.support.IntegrationTestProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,9 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@ActiveProfiles("test")
 @Transactional
-class UserBlockControllerIntegrationTest {
+class UserBlockControllerIntegrationTest extends IntegrationTestProperties {
 
     private MockMvc mockMvc;
 

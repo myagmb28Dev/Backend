@@ -8,6 +8,7 @@ import com.example.pogun.dto.notification.NotificationDeviceResponse;
 import com.example.pogun.dto.notification.NotificationListResponse;
 import com.example.pogun.dto.notification.NotificationReadAllResponse;
 import com.example.pogun.dto.notification.NotificationResponse;
+import com.example.pogun.dto.notification.NotificationSendRequest;
 import com.example.pogun.dto.notification.NotificationSettingResponse;
 import com.example.pogun.dto.notification.NotificationSettingsUpdateRequest;
 import com.example.pogun.dto.notification.NotificationUnreadCountResponse;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 /**
  * HTTP/WebSocket 진입점을 담당하는 NotificationController이다.
@@ -52,6 +54,22 @@ public class NotificationController {
     ) {
         NotificationListResponse data = notificationService.getNotifications(page, size, unreadOnly, type);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "알림 목록 조회 성공", data));
+    }
+
+    @GetMapping("/{notificationId}")
+    @Operation(summary = "개별 알림 조회", description = "현재 로그인 사용자 소유의 알림 1건을 조회합니다.")
+    public ResponseEntity<ApiResponse<NotificationResponse>> getNotification(@PathVariable String notificationId) {
+        NotificationResponse data = notificationService.getNotification(notificationId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "개별 알림 조회 성공", data));
+    }
+
+    @PostMapping("/send")
+    @Operation(summary = "사용자 알림 발송", description = "현재 로그인 사용자가 전체 또는 특정 사용자에게 알림을 발송합니다.")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> sendNotification(
+            @Valid @RequestBody NotificationSendRequest request
+    ) {
+        Map<String, Object> data = notificationService.sendNotification(request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "사용자 알림 발송 성공", data));
     }
 
     @GetMapping("/unread-count")
