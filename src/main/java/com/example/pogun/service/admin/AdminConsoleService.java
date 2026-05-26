@@ -45,7 +45,6 @@ import com.example.pogun.service.adminauth.AdminSecurityService;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.presence.PresenceSessionStore;
 import com.example.pogun.service.user.UserPresenceService;
-import com.example.pogun.service.shelterpet.ShelterPublicApiClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
@@ -61,6 +60,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -115,7 +115,6 @@ public class AdminConsoleService {
     private final RedisConnectionFactory redisConnectionFactory;
     private final FirebaseAuth firebaseAuth;
     private final FirebaseAuthProperties firebaseAuthProperties;
-    private final ShelterPublicApiClient shelterPublicApiClient;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -711,7 +710,7 @@ public class AdminConsoleService {
             case "DATABASE" -> toIntegrationMap(checkDatabase());
             case "REDIS" -> toIntegrationMap(checkRedis());
             case "FIREBASE" -> toIntegrationMap(checkFirebase());
-            case "SHELTER_API" -> toIntegrationMap(checkShelterApi());
+            case "SHELTER_API" -> toIntegrationMap(checkShelterApiConfiguration());
             case "GLOBAL", "ALL" -> {
                 refreshAllIntegrations();
                 yield Map.of("updated", true);
@@ -900,16 +899,7 @@ public class AdminConsoleService {
         checkDatabase();
         checkRedis();
         checkFirebase();
-        if (settingBoolean("autoSyncEnabled", true)) {
-            checkShelterApi();
-        } else {
-            adminIntegrationStatusRepository.save(AdminIntegrationStatus.builder()
-                    .integrationKey("SHELTER_API")
-                    .status("DISABLED")
-                    .latencyMs(0L)
-                    .message("autoSyncEnabled=false (수동 비활성화)")
-                    .build());
-        }
+        checkShelterApiConfiguration();
     }
 
     private AdminIntegrationStatus checkDatabase() {
@@ -975,25 +965,23 @@ public class AdminConsoleService {
         }
     }
 
-    private AdminIntegrationStatus checkShelterApi() {
+    private AdminIntegrationStatus checkShelterApiConfiguration() {
         long startedAt = System.currentTimeMillis();
-        try {
-            shelterPublicApiClient.fetchShelterPets(null, null, null, null, 0, 1);
+        String endpoint = settingValue("apiEndpoint", "https://apis.data.go.kr/1543061/abandonmentPublicService_v2");
+        if (StringUtils.hasText(endpoint) && endpoint.startsWith("http")) {
             return adminIntegrationStatusRepository.save(AdminIntegrationStatus.builder()
                     .integrationKey("SHELTER_API")
                     .status("OPERATIONAL")
                     .latencyMs(System.currentTimeMillis() - startedAt)
-                    .message("외부 보호소 API 정상")
-                    .build());
-        } catch (Exception e) {
-            return adminIntegrationStatusRepository.save(AdminIntegrationStatus.builder()
-                    .integrationKey("SHELTER_API")
-                    .status("OUTAGE")
-                    .latencyMs(System.currentTimeMillis() - startedAt)
-                    .message("외부 보호소 API 실패")
-                    .details(safe(e.getMessage()))
+                    .message("외부 보호소 API 설정 정상")
                     .build());
         }
+        return adminIntegrationStatusRepository.save(AdminIntegrationStatus.builder()
+                .integrationKey("SHELTER_API")
+                .status("DISABLED")
+                .latencyMs(System.currentTimeMillis() - startedAt)
+                .message("외부 보호소 API 엔드포인트 미설정")
+                .build());
     }
 
     private Map<String, Object> latestIntegrationSnapshot(String integrationKey) {
