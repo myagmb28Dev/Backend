@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-ec2-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE_NAME: pawgun
 
@@ -28,9 +32,6 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
 
       - name: Build and test
         run: ./gradlew test bootJar --no-daemon --build-cache
@@ -55,10 +56,9 @@ jobs:
           context: .
           push: true
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ steps.image-tag.outputs.short_sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=min
+          cache-to: type=gha,mode=min,ignore-error=true
           provenance: false
           sbom: false
 
@@ -93,6 +93,9 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o IdentitiesOnly=yes \
             -o NumberOfPasswordPrompts=1 \
+            -o ConnectTimeout=10 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
             -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
@@ -104,6 +107,9 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o IdentitiesOnly=yes \
             -o NumberOfPasswordPrompts=1 \
+            -o ConnectTimeout=10 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
             -i ~/.ssh/pawgun_ec2_key \
             -p "${{ secrets.EC2_PORT || 22 }}" \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
@@ -115,7 +121,10 @@ jobs:
           if ! command -v docker >/dev/null 2>&1; then
             sudo dnf install -y docker
           fi
-          sudo systemctl enable --now docker
+          if ! sudo systemctl is-active --quiet docker; then
+            sudo systemctl start docker
+          fi
+          sudo systemctl enable docker >/dev/null 2>&1 || true
 
           if ! sudo docker compose version >/dev/null 2>&1; then
             arch="\$(uname -m)"
@@ -170,7 +179,10 @@ jobs:
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
           sudo docker compose pull --quiet app
-          sudo docker compose up -d --remove-orphans redis
+          redis_state="\$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
+          if ! echo "\$redis_state" | grep -q '^true healthy'; then
+            sudo docker compose up -d --remove-orphans redis
+          fi
           sudo docker compose up -d --remove-orphans --no-deps app
           sudo docker compose ps
 
@@ -200,5 +212,5 @@ jobs:
             sleep 2
           done
 
-          sudo docker image prune -f
+          echo "Deploy completed. Skipping docker image prune in hot deploy path."
           EOF
