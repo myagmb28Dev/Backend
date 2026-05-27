@@ -3,6 +3,8 @@
 .gradle-user/
 /backup/
 src/main/resources/static/
+.env.local
+src/main/resources/application-local.yml
 
 # Allow only files needed by Dockerfile build steps
 !.dockerignore
@@ -12,6 +14,5 @@ src/main/resources/static/
 !build/libs/app.jar
 !scripts/healthcheck-adaptive.sh
 !scripts/docker-entrypoint.sh
-src/main/resources/application-local.yml
 src/main/resources/application-test.yml
 src/test/resources/application-test.yml

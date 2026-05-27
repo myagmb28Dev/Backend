@@ -82,6 +82,8 @@ jobs:
           import os
           import re
           import sys
+          import base64
+          import urllib.parse
           import urllib.error
           import urllib.request
 
@@ -108,7 +110,22 @@ jobs:
           auth_headers = {"Authorization": f"Bearer {access_token}"}
           tag_pattern = re.compile(r"sha-[0-9a-f]{12}")
           delete_targets = []
+          digests_to_delete = set()
           next_url = f"https://hub.docker.com/v2/namespaces/{username}/repositories/{repository}/tags?page_size=100"
+
+          def collect_candidate_digests(tag_result):
+              digests = set()
+              top_level_digest = tag_result.get("digest")
+              if top_level_digest:
+                  digests.add(top_level_digest)
+              images = tag_result.get("images") or []
+              if isinstance(images, dict):
+                  images = [images]
+              for image in images:
+                  digest = image.get("digest")
+                  if digest:
+                      digests.add(digest)
+              return digests
 
           while next_url:
               request = urllib.request.Request(next_url, headers=auth_headers, method="GET")
@@ -118,6 +135,7 @@ jobs:
                   tag_name = result.get("name", "")
                   if tag_pattern.fullmatch(tag_name) and tag_name != keep_tag:
                       delete_targets.append(tag_name)
+                      digests_to_delete.update(collect_candidate_digests(result))
               next_url = payload.get("next")
 
           if not delete_targets:
@@ -141,7 +159,52 @@ jobs:
                       continue
                   raise
 
-          print(f"Docker Hub cleanup complete. deleted={deleted_count} keep_tag={keep_tag}")
+          registry_scope = f"repository:{username}/{repository}:pull,delete"
+          registry_token_url = "https://auth.docker.io/token?" + urllib.parse.urlencode({
+              "service": "registry.docker.io",
+              "scope": registry_scope,
+          })
+          basic_auth = base64.b64encode(f"{username}:{secret}".encode("utf-8")).decode("ascii")
+          registry_token_request = urllib.request.Request(
+              registry_token_url,
+              headers={"Authorization": f"Basic {basic_auth}"},
+              method="GET",
+          )
+          with urllib.request.urlopen(registry_token_request) as response:
+              registry_token_payload = json.load(response)
+          registry_token = registry_token_payload.get("token") or registry_token_payload.get("access_token")
+          registry_headers = {
+              "Authorization": f"Bearer {registry_token}",
+              "Accept": ",".join([
+                  "application/vnd.oci.image.index.v1+json",
+                  "application/vnd.oci.image.manifest.v1+json",
+                  "application/vnd.docker.distribution.manifest.list.v2+json",
+                  "application/vnd.docker.distribution.manifest.v2+json",
+              ]),
+          }
+
+          deleted_manifest_count = 0
+          for digest in sorted(digests_to_delete):
+              manifest_request = urllib.request.Request(
+                  f"https://registry-1.docker.io/v2/{username}/{repository}/manifests/{digest}",
+                  headers=registry_headers,
+                  method="DELETE",
+              )
+              try:
+                  with urllib.request.urlopen(manifest_request) as response:
+                      if response.status in (202, 200):
+                          deleted_manifest_count += 1
+                          print(f"Deleted Docker Hub manifest: {digest}")
+              except urllib.error.HTTPError as error:
+                  if error.code in (404, 405):
+                      print(f"Skip manifest delete for digest={digest} code={error.code}")
+                      continue
+                  raise
+
+          print(
+              "Docker Hub cleanup complete. "
+              f"deleted_tags={deleted_count} deleted_manifests={deleted_manifest_count} keep_tag={keep_tag}"
+          )
           PY
 
   deploy:

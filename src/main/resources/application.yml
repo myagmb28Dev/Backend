@@ -136,6 +136,7 @@ logbook:
   write:
     max-body-size: 2000
 
+---
 # 운영 환경용 설정
 spring:
   config:
