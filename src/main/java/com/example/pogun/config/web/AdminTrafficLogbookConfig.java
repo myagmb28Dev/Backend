@@ -140,7 +140,7 @@ public class AdminTrafficLogbookConfig {
                 return true;
             }
             String lower = path.toLowerCase(Locale.ROOT);
-            return lower.startsWith("/api/admin/traffic/logs")
+            return lower.startsWith("/api/admin/traffic/")
                     || "/".equals(lower)
                     || "/favicon.ico".equals(lower)
                     || lower.startsWith("/full_compact/")
