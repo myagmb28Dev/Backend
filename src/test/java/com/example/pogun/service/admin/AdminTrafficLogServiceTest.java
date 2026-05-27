@@ -13,6 +13,7 @@ class AdminTrafficLogServiceTest {
         service.recordInbound("GET", "/api/admin/traffic/config", 200, 3, "127.0.0.1", "", "");
 
         assertThat(service.recent(100)).isEmpty();
+        assertThat(service.currentErrorCount()).isZero();
     }
 
     @Test
@@ -30,6 +31,17 @@ class AdminTrafficLogServiceTest {
         );
 
         assertThat(service.recent(100)).isEmpty();
+        assertThat(service.currentErrorCount()).isZero();
+    }
+
+    @Test
+    void skipsTrafficErrorPathFromErrorCount() {
+        AdminTrafficLogService service = new AdminTrafficLogService();
+
+        service.recordInbound("GET", "/api/admin/traffic/config", 500, 3, "127.0.0.1", "", "");
+
+        assertThat(service.recent(100, true)).isEmpty();
+        assertThat(service.currentErrorCount()).isZero();
     }
 
     @Test

@@ -139,9 +139,11 @@ public class AdminTrafficLogbookConfig {
             if (!StringUtils.hasText(path)) {
                 return true;
             }
+            if (AdminTrafficLogService.isExcludedTrafficPath(path)) {
+                return true;
+            }
             String lower = path.toLowerCase(Locale.ROOT);
-            return lower.startsWith("/api/admin/traffic/")
-                    || "/".equals(lower)
+            return "/".equals(lower)
                     || "/favicon.ico".equals(lower)
                     || lower.startsWith("/full_compact/")
                     || lower.equals("/full_compact.html")

@@ -77,7 +77,10 @@ public class AdminTrafficLogService {
 
     public int currentErrorCount() {
         synchronized (lock) {
-            return (int) logs.stream().filter(this::isUnexpectedStatus).count();
+            return (int) logs.stream()
+                    .filter(entry -> !isExcludedTrafficPath(String.valueOf(entry.get("path"))))
+                    .filter(this::isUnexpectedStatus)
+                    .count();
         }
     }
 
@@ -109,7 +112,7 @@ public class AdminTrafficLogService {
         return true;
     }
 
-    private boolean isExcludedTrafficPath(String rawPath) {
+    public static boolean isExcludedTrafficPath(String rawPath) {
         if (rawPath == null || rawPath.isBlank()) {
             return true;
         }
@@ -118,7 +121,7 @@ public class AdminTrafficLogService {
         return lower.startsWith("/api/admin/traffic/");
     }
 
-    private String normalizePath(String rawPath) {
+    private static String normalizePath(String rawPath) {
         String value = rawPath.trim();
         try {
             URI uri = URI.create(value);
