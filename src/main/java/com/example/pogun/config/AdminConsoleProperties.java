@@ -30,7 +30,7 @@ public class AdminConsoleProperties {
         /**
          * Comma-separated origin->rpId pairs.
          * Example:
-         * https://paw.gbsw.hs.kr=paw.gbsw.hs.kr,https://pawgen.kro.kr=pawgen.kro.kr
+         * https://pawgen.kro.kr=pawgen.kro.kr
          */
         private String originRpMap = "";
 
@@ -64,7 +64,7 @@ public class AdminConsoleProperties {
         /**
          * Comma-separated origin->continueUrl pairs.
          * Example:
-         * https://paw.gbsw.hs.kr=https://paw.gbsw.hs.kr/login-flow.html?adminVerify=done,https://pawgen.kro.kr=https://pawgen.kro.kr/login?adminVerify=done
+         * https://pawgen.kro.kr=https://pawgen.kro.kr/login?adminVerify=done
          */
         private String continueUrlMap = "";
         private String defaultContinueUrl = "";

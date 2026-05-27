@@ -70,10 +70,10 @@ app:
       challenge-ttl-seconds: ${APP_ADMIN_CHALLENGE_TTL_SECONDS:300}
       promote-stepup-ttl-seconds: 300
       webauthn:
-        rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID:localhost}
+        rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID:pawgen.kro.kr}
         rp-name: ${APP_ADMIN_WEBAUTHN_RP_NAME:Pogun Admin}
-        allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:http://localhost:8080,http://127.0.0.1:8080}
-        origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP:http://localhost:8080=localhost,http://127.0.0.1:8080=localhost,http://localhost:8081=localhost,http://127.0.0.1:8081=localhost}
+        allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:https://pawgen.kro.kr}
+        origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP:https://pawgen.kro.kr=pawgen.kro.kr}
       email-verification:
         continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP:https://pawgen.kro.kr=https://pawgen.kro.kr/login?adminVerify=done}
         default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL:https://pawgen.kro.kr/login?adminVerify=done}

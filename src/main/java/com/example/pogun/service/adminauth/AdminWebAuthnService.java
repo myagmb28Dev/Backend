@@ -138,6 +138,7 @@ public class AdminWebAuthnService {
         if (origin == null) {
             throw new IllegalStateException("Admin WebAuthn request origin is missing.");
         }
+        String host = extractHost(origin);
 
         Map<String, String> originRpMappings = adminConsoleProperties.getWebauthn().getOriginRpMappings();
         String mappedRpId = originRpMappings.get(origin);
@@ -157,7 +158,7 @@ public class AdminWebAuthnService {
                 .filter(v -> v != null && !v.isBlank())
                 .forEach(allowedOrigins::add);
         if (allowedOrigins.contains(origin)) {
-            String rpIdFromOrigin = extractHost(origin);
+            String rpIdFromOrigin = host;
             if (rpIdFromOrigin != null && !rpIdFromOrigin.isBlank()) {
                 return new OriginRpContext(origin, rpIdFromOrigin);
             }

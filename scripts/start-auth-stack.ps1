@@ -613,9 +613,6 @@ $backendCommand = @(
     "`$env:SPRING_WEB_RESOURCES_STATIC_LOCATIONS = 'file:$($repoRoot.Replace('\', '/'))/src/main/resources/static/,classpath:/static/'",
     "`$env:SPRING_WEB_RESOURCES_CACHE_PERIOD = '0'",
     "`$env:SPRING_WEB_RESOURCES_CACHE_CACHECONTROL_NO_STORE = 'true'",
-    "`$env:APP_ADMIN_WEBAUTHN_RP_ID = 'localhost'",
-    "`$env:APP_ADMIN_WEBAUTHN_RP_NAME = 'Pogun Admin Local'",
-    "`$env:APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS = 'http://localhost:$BackendPort,http://127.0.0.1:$BackendPort,http://localhost:8080,http://127.0.0.1:8080'",
     "& '.\\gradlew.bat' bootRun *> '.\\.local\\backend-local.log'"
 ) -join "; "
 
