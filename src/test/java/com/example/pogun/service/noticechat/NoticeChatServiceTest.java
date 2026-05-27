@@ -34,6 +34,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -87,6 +88,8 @@ class NoticeChatServiceTest {
     private NotificationService notificationService;
     @Mock
     private UserPresenceService userPresenceService;
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private NoticeChatService noticeChatService;
@@ -185,7 +188,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -194,6 +197,37 @@ class NoticeChatServiceTest {
         verify(noticeChatRoomRepository).save(roomCaptor.capture());
         assertThat(roomCaptor.getValue().getLastMessageType()).isEqualTo(NoticeChatMessageType.TEXT);
         assertThat(roomCaptor.getValue().getLastMessagePreview()).isEqualTo("텍스트 메시지 전송");
+    }
+
+    @Test
+    void sendMessage_publishesAsyncDirectMessageNotificationEvent() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatMessageRequest request = new NoticeChatMessageRequest();
+        request.setRoomId(roomId);
+        request.setMessage("비동기 알림 테스트");
+
+        NoticeChatMessage savedMessage = NoticeChatMessage.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .senderUser(currentUser)
+                .messageType(NoticeChatMessageType.TEXT)
+                .message("비동기 알림 테스트")
+                .isRead(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+
+        noticeChatService.sendMessage(principal(currentUser), request);
+
+        verify(applicationEventPublisher).publishEvent(any(DirectMessageNotificationEvent.class));
+        verify(notificationService, never()).createAndSendNotification(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+        );
     }
 
     @Test
@@ -270,7 +304,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findByRoomAndSenderUserAndClientMessageId(room, currentUser, "client-message-ack-1"))
                 .thenReturn(Optional.empty());
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -408,7 +442,7 @@ class NoticeChatServiceTest {
                         variant(s3Url("uploads/notice-chat/messages/test/two.webp"))
                 ));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, " 이미지와 함께 보낸 글 ", List.of(first, second));
 
@@ -438,7 +472,7 @@ class NoticeChatServiceTest {
         when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
                 .thenReturn(List.of(variant(s3Url("uploads/notice-chat/messages/test/one.webp"))));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, "   ", List.of(file));
 
@@ -508,7 +542,7 @@ class NoticeChatServiceTest {
                         null
                 )));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, null, List.of(file));
 
@@ -549,7 +583,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findById(parentMessage.getId())).thenReturn(Optional.of(parentMessage));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -693,7 +727,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findById(message.getId())).thenReturn(Optional.of(message));
-        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class)))
+        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room))
                 .thenReturn(Optional.of(message));
@@ -702,7 +736,7 @@ class NoticeChatServiceTest {
 
         assertThat(response.message()).isEqualTo("수정 후");
         assertThat(room.getLastMessagePreview()).isEqualTo("수정 후");
-        verify(noticeChatMessageRepository).saveAndFlush(message);
+        verify(noticeChatMessageRepository).save(message);
         verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms/" + roomId), any(Object.class));
         verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + author.getId() + "/rooms/" + roomId), any(Object.class));
     }

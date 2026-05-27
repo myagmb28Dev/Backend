@@ -267,6 +267,47 @@ class NotificationServiceTest {
     }
 
     @Test
+    void createAndSendDirectMessageNotification_skipsPushWhenRecipientAlreadyConnected() {
+        User receiver = user("receiver");
+        User sender = user("sender");
+        User managedReceiver = user("receiver-managed");
+        User managedSender = user("sender-managed");
+        managedReceiver.setId(receiver.getId());
+        managedSender.setId(sender.getId());
+        UUID roomId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        when(userNotificationSettingRepository.findByUserAndType(receiver, NotificationType.DM_MESSAGE))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
+        when(userRepository.getReferenceById(sender.getId())).thenReturn(managedSender);
+        when(notificationRepository.findByDedupKey("dm-message:" + receiver.getId() + ":" + messageId)).thenReturn(Optional.empty());
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            notification.setId(UUID.randomUUID());
+            return notification;
+        });
+        when(userPresenceService.snapshot(managedReceiver)).thenReturn(new UserPresenceService.PresenceSnapshot(
+                UserAvailabilityStatus.ONLINE,
+                UserAvailabilityStatus.ONLINE,
+                "connected",
+                managedReceiver.getLastActiveAt()
+        ));
+
+        notificationService.createAndSendDirectMessageNotification(
+                receiver,
+                sender,
+                roomId,
+                messageId,
+                false,
+                "body"
+        );
+
+        verify(notificationRepository).save(any(Notification.class));
+        verify(userFcmTokenRepository, never()).findByUserAndActiveTrueOrderByUpdatedAtDesc(any());
+    }
+
+    @Test
     void upsertFcmToken_deactivatesOtherActiveTokensForSameDevice() {
         User user = user("owner");
         SecurityContextHolder.getContext().setAuthentication(

@@ -17,9 +17,6 @@ import com.example.pogun.dto.noticechat.NoticeChatTypingRequest;
 import com.example.pogun.dto.storage.StoredImageVariant;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
-import com.example.pogun.entity.notification.enums.NotificationPriority;
-import com.example.pogun.entity.notification.enums.NotificationTargetType;
-import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
 import com.example.pogun.entity.noticechat.NoticeChatMessageImage;
 import com.example.pogun.entity.noticechat.NoticeChatReadReceipt;
@@ -43,6 +40,7 @@ import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -85,6 +83,7 @@ public class NoticeChatService {
     private final S3ImageStorageService s3ImageStorageService;
     private final NotificationService notificationService;
     private final UserPresenceService userPresenceService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public NoticeChatRoomCreateResult createOrGetRoom(String noticeId) {
@@ -398,7 +397,7 @@ public class NoticeChatService {
         }
         message.setMessage(content);
         message.setEditedAt(Instant.now());
-        NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
+        NoticeChatMessage saved = noticeChatMessageRepository.save(message);
         refreshLastMessageSummary(room);
         NoticeChatMessageResponse currentPayload = toMessageResponse(saved, currentUser);
         NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
@@ -667,8 +666,22 @@ public class NoticeChatService {
         NoticeChatMessageType lastMessageType = resolveLastMessageType(room);
         NoticeChatRoomParticipantState currentState = ensureParticipantState(room, currentUser);
         UserPresenceService.PresenceSnapshot opponentPresence = userPresenceService.snapshot(opponent);
-        String opponentProfileImageUrl = trimToNull(opponent.getProfileImageUrl());
         String noticeThumbnailUrl = resolveNoticeThumbnailUrl(room.getNotice());
+        String lastMessagePreview = resolveLastMessagePreview(room, lastMessageType);
+        return toRoomResponse(room, currentUser, currentState, opponent, opponentPresence, lastMessageType, lastMessagePreview, noticeThumbnailUrl);
+    }
+
+    private NoticeChatRoomResponse toRoomResponse(
+            NoticeChatRoom room,
+            User currentUser,
+            NoticeChatRoomParticipantState currentState,
+            User opponent,
+            UserPresenceService.PresenceSnapshot opponentPresence,
+            NoticeChatMessageType lastMessageType,
+            String lastMessagePreview,
+            String noticeThumbnailUrl
+    ) {
+        String opponentProfileImageUrl = trimToNull(opponent.getProfileImageUrl());
         String displayRoomName = trimToNull(currentState.getCustomRoomName()) != null
                 ? currentState.getCustomRoomName().trim()
                 : room.getNotice().getTitle() + " · " + displayUserName(opponent);
@@ -682,7 +695,7 @@ public class NoticeChatService {
                 room.getStatus().name(),
                 lastMessageType != null ? lastMessageType.name() : null,
                 room.getLastMessageAt(),
-                resolveLastMessagePreview(room, lastMessageType),
+                lastMessagePreview,
                 room.getCreatedAt(),
                 opponent.getId(),
                 displayUserName(opponent),
@@ -864,11 +877,20 @@ public class NoticeChatService {
     }
 
     private RoomUpdatePayload buildRoomUpdatePayload(NoticeChatRoom room) {
+        User owner = room.getOwnerUser();
+        User guest = room.getGuestUser();
+        NoticeChatRoomParticipantState ownerState = ensureParticipantState(room, owner);
+        NoticeChatRoomParticipantState guestState = ensureParticipantState(room, guest);
+        UserPresenceService.PresenceSnapshot ownerPresence = userPresenceService.snapshot(owner);
+        UserPresenceService.PresenceSnapshot guestPresence = userPresenceService.snapshot(guest);
+        NoticeChatMessageType lastMessageType = resolveLastMessageType(room);
+        String lastMessagePreview = resolveLastMessagePreview(room, lastMessageType);
+        String noticeThumbnailUrl = resolveNoticeThumbnailUrl(room.getNotice());
         return new RoomUpdatePayload(
-                room.getOwnerUser().getId(),
-                toRoomResponse(room, room.getOwnerUser()),
-                room.getGuestUser().getId(),
-                toRoomResponse(room, room.getGuestUser())
+                owner.getId(),
+                toRoomResponse(room, owner, ownerState, guest, guestPresence, lastMessageType, lastMessagePreview, noticeThumbnailUrl),
+                guest.getId(),
+                toRoomResponse(room, guest, guestState, owner, ownerPresence, lastMessageType, lastMessagePreview, noticeThumbnailUrl)
         );
     }
 
@@ -930,7 +952,7 @@ public class NoticeChatService {
                     .build());
         }
 
-        NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
+        NoticeChatMessage saved = noticeChatMessageRepository.save(message);
         lockedRoom.setLastMessageSequence(nextSequence);
         lockedRoom.setLastMessageAt(saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now());
         lockedRoom.setLastMessageType(saved.getMessageType());
@@ -1109,13 +1131,16 @@ public class NoticeChatService {
         NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
         RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(savedRoom);
         boolean opponentNotificationEnabled = Boolean.TRUE.equals(ensureParticipantState(savedRoom, opponent).getNotificationEnabled());
-        notifyDirectMessage(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
+        DirectMessageNotificationEvent notificationEvent = buildDirectMessageNotificationEvent(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
 
         afterCommitOrNow(() -> {
             sendMessageAck(sender.getId(), savedRoom.getId(), senderPayload, false);
             simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
             simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), savedRoom.getId()), opponentPayload);
             broadcastRoomUpdate(roomUpdatePayload);
+            if (notificationEvent != null) {
+                applicationEventPublisher.publishEvent(notificationEvent);
+            }
         });
         return senderPayload;
     }
@@ -1135,44 +1160,31 @@ public class NoticeChatService {
         simpMessagingTemplate.convertAndSend(userRoomTopic(senderUserId, roomId), (Object) ackPayload);
     }
 
-    private void notifyDirectMessage(NoticeChatRoom room, NoticeChatMessage message, User sender, User opponent, boolean opponentNotificationEnabled) {
+    private DirectMessageNotificationEvent buildDirectMessageNotificationEvent(
+            NoticeChatRoom room,
+            NoticeChatMessage message,
+            User sender,
+            User opponent,
+            boolean opponentNotificationEnabled
+    ) {
         if (!opponentNotificationEnabled) {
-            return;
+            return null;
         }
         boolean replyToOpponent = message.getReplyToMessage() != null
                 && message.getReplyToMessage().getSenderUser() != null
                 && message.getReplyToMessage().getSenderUser().getId().equals(opponent.getId());
-        NotificationType type = replyToOpponent ? NotificationType.DM_REPLY : NotificationType.DM_MESSAGE;
         String preview = toPreview(message);
         if (preview == null) {
             preview = "새 메시지가 도착했습니다.";
         }
-        notificationService.createAndSendNotification(
-                opponent,
-                sender,
-                type,
-                NotificationTargetType.NOTICE_CHAT_MESSAGE,
+        return new DirectMessageNotificationEvent(
+                room.getId(),
                 message.getId(),
-                replyToOpponent ? "답장이 도착했습니다." : sender.getNickname() + "님의 메시지",
-                preview,
-                NotificationPriority.HIGH,
-                "dm-message:" + opponent.getId() + ":" + message.getId(),
-                Map.of(
-                        "roomId", room.getId().toString(),
-                        "roomName", resolveNotificationRoomName(room, sender),
-                        "messageId", message.getId().toString(),
-                        "senderUserId", sender.getId().toString()
-                )
+                sender.getId(),
+                opponent.getId(),
+                replyToOpponent,
+                preview
         );
-    }
-
-    private String resolveNotificationRoomName(NoticeChatRoom room, User sender) {
-        String senderName = displayUserName(sender);
-        String noticeTitle = room != null && room.getNotice() != null ? trimToNull(room.getNotice().getTitle()) : null;
-        if (noticeTitle == null) {
-            return senderName;
-        }
-        return senderName + " · " + noticeTitle;
     }
 
     private String toPreview(NoticeChatMessage message) {

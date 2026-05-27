@@ -102,6 +102,86 @@ public class NotificationService {
         return new NotificationUnreadCountResponse(notificationRepository.countByUserAndIsReadFalse(user));
     }
 
+    @Transactional
+    public void createAndSendDirectMessageNotification(
+            User recipient,
+            User sender,
+            UUID roomId,
+            UUID messageId,
+            boolean replyToRecipient,
+            String preview
+    ) {
+        if (recipient == null || sender == null || roomId == null || messageId == null) {
+            return;
+        }
+        if (Objects.equals(recipient.getId(), sender.getId())) {
+            return;
+        }
+
+        NotificationType type = replyToRecipient ? NotificationType.DM_REPLY : NotificationType.DM_MESSAGE;
+        if (!isNotificationEnabled(recipient, type)) {
+            return;
+        }
+
+        User managedRecipient = userRepository.getReferenceById(recipient.getId());
+        User managedSender = userRepository.getReferenceById(sender.getId());
+        String title = replyToRecipient ? "답장이 도착했습니다." : sender.getNickname() + "님의 메시지";
+        String body = trimToNull(preview) != null ? preview : "새 메시지가 도착했습니다.";
+        String dedupKey = "dm-message:" + recipient.getId() + ":" + messageId;
+
+        if (notificationRepository.findByDedupKey(dedupKey).isPresent()) {
+            return;
+        }
+
+        Notification notification = notificationRepository.save(Notification.builder()
+                .user(managedRecipient)
+                .actorUser(managedSender)
+                .type(type)
+                .targetType(NotificationTargetType.NOTICE_CHAT_MESSAGE)
+                .targetId(messageId)
+                .title(title)
+                .body(body)
+                .priority(NotificationPriority.HIGH)
+                .dedupKey(dedupKey)
+                .metadata(Map.of(
+                        "roomId", roomId.toString(),
+                        "senderUserId", sender.getId().toString()
+                ))
+                .build());
+
+        UserPresenceService.PresenceSnapshot snapshot = userPresenceService.snapshot(managedRecipient);
+        if (snapshot.availabilityStatus() == UserAvailabilityStatus.IDLE) {
+            return;
+        }
+        if ("connected".equalsIgnoreCase(snapshot.actualConnectionState())) {
+            return;
+        }
+
+        List<UserFcmToken> activeTokens = userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedRecipient);
+        for (UserFcmToken fcmToken : activeTokens) {
+            try {
+                Message.Builder builder = Message.builder()
+                        .setToken(fcmToken.getToken())
+                        .putData("notificationId", notification.getId().toString())
+                        .putData("type", type.name())
+                        .putData("targetType", NotificationTargetType.NOTICE_CHAT_MESSAGE.name())
+                        .putData("targetId", messageId.toString())
+                        .putData("title", title)
+                        .putData("body", body)
+                        .putData("priority", NotificationPriority.HIGH.name())
+                        .putData("roomId", roomId.toString())
+                        .putData("senderUserId", sender.getId().toString());
+                firebaseMessaging.send(builder.build());
+            } catch (Exception e) {
+                log.warn("FCM 발송 실패. tokenId={}, reason={}", fcmToken.getId(), e.getMessage());
+                if (e instanceof FirebaseMessagingException firebaseMessagingException && isUnregisteredToken(firebaseMessagingException)) {
+                    fcmToken.setActive(false);
+                    userFcmTokenRepository.save(fcmToken);
+                }
+            }
+        }
+    }
+
     @Transactional(readOnly = true)
     public NotificationResponse getNotification(String notificationId) {
         User user = getCurrentUser();
