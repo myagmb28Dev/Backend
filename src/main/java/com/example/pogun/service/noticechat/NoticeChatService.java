@@ -899,6 +899,15 @@ public class NoticeChatService {
         simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.guestUserId()), roomUpdatePayload.guestPayload());
     }
 
+    private void broadcastRoomUpdateByRoomId(UUID roomId) {
+        if (roomId == null) {
+            return;
+        }
+        noticeChatRoomRepository.findById(roomId)
+                .map(this::buildRoomUpdatePayload)
+                .ifPresent(this::broadcastRoomUpdate);
+    }
+
     private void broadcastRoomDeletion(RoomDeletionPayload roomDeletionPayload) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", "ROOM_DELETED");
@@ -1129,15 +1138,15 @@ public class NoticeChatService {
         User opponent = getOpponent(savedRoom, sender);
         NoticeChatMessageResponse senderPayload = toMessageResponse(saved, sender);
         NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
-        RoomUpdatePayload roomUpdatePayload = buildRoomUpdatePayload(savedRoom);
         boolean opponentNotificationEnabled = Boolean.TRUE.equals(ensureParticipantState(savedRoom, opponent).getNotificationEnabled());
         DirectMessageNotificationEvent notificationEvent = buildDirectMessageNotificationEvent(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
+        UUID roomId = savedRoom.getId();
 
         afterCommitOrNow(() -> {
             sendMessageAck(sender.getId(), savedRoom.getId(), senderPayload, false);
             simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
             simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), savedRoom.getId()), opponentPayload);
-            broadcastRoomUpdate(roomUpdatePayload);
+            broadcastRoomUpdateByRoomId(roomId);
             if (notificationEvent != null) {
                 applicationEventPublisher.publishEvent(notificationEvent);
             }
