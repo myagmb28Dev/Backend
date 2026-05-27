@@ -30,11 +30,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setHeartbeatValue(BROKER_HEARTBEAT);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
+        registry.setPreservePublishOrder(true);
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // 프론트는 이 endpoint로 STOMP CONNECT 하고, 실제 인증은 inbound interceptor 에서 검증한다.
+        registry.setPreserveReceiveOrder(true);
         registry.setErrorHandler(webSocketApiErrorHandler);
         registry.addEndpoint("/ws/chat")
                 .setAllowedOriginPatterns(

@@ -724,11 +724,17 @@ public class NoticeChatService {
     }
 
     private NoticeChatMessageResponse toMessageResponse(NoticeChatMessage message, User currentUser) {
+        return toMessageResponse(message, currentUser, null);
+    }
+
+    private NoticeChatMessageResponse toMessageResponse(NoticeChatMessage message, User currentUser, Boolean isReadOverride) {
         NoticeChatMessageType messageType = resolveMessageType(message);
         boolean mine = message.getSenderUser().getId().equals(currentUser.getId());
-        Boolean isRead = mine
-                ? ensureParticipantState(message.getRoom(), getOpponent(message.getRoom(), currentUser)).getLastReadRoomSequence() >= safeSequence(message)
-                : Boolean.TRUE;
+        Boolean isRead = isReadOverride != null
+                ? isReadOverride
+                : (mine
+                        ? ensureParticipantState(message.getRoom(), getOpponent(message.getRoom(), currentUser)).getLastReadRoomSequence() >= safeSequence(message)
+                        : Boolean.TRUE);
         return new NoticeChatMessageResponse(
                 message.getId(),
                 message.getRoom().getId(),
@@ -1136,10 +1142,9 @@ public class NoticeChatService {
     private NoticeChatMessageResponse broadcastMessage(NoticeChatRoom room, User sender, NoticeChatMessage saved) {
         NoticeChatRoom savedRoom = saved.getRoom();
         User opponent = getOpponent(savedRoom, sender);
-        NoticeChatMessageResponse senderPayload = toMessageResponse(saved, sender);
-        NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent);
-        boolean opponentNotificationEnabled = Boolean.TRUE.equals(ensureParticipantState(savedRoom, opponent).getNotificationEnabled());
-        DirectMessageNotificationEvent notificationEvent = buildDirectMessageNotificationEvent(savedRoom, saved, sender, opponent, opponentNotificationEnabled);
+        NoticeChatMessageResponse senderPayload = toMessageResponse(saved, sender, false);
+        NoticeChatMessageResponse opponentPayload = toMessageResponse(saved, opponent, true);
+        DirectMessageNotificationEvent notificationEvent = buildDirectMessageNotificationEvent(savedRoom, saved, sender, opponent);
         UUID roomId = savedRoom.getId();
 
         afterCommitOrNow(() -> {
@@ -1147,9 +1152,7 @@ public class NoticeChatService {
             simpMessagingTemplate.convertAndSend(userRoomTopic(sender.getId(), savedRoom.getId()), senderPayload);
             simpMessagingTemplate.convertAndSend(userRoomTopic(opponent.getId(), savedRoom.getId()), opponentPayload);
             broadcastRoomUpdateByRoomId(roomId);
-            if (notificationEvent != null) {
-                applicationEventPublisher.publishEvent(notificationEvent);
-            }
+            applicationEventPublisher.publishEvent(notificationEvent);
         });
         return senderPayload;
     }
@@ -1173,12 +1176,8 @@ public class NoticeChatService {
             NoticeChatRoom room,
             NoticeChatMessage message,
             User sender,
-            User opponent,
-            boolean opponentNotificationEnabled
+            User opponent
     ) {
-        if (!opponentNotificationEnabled) {
-            return null;
-        }
         boolean replyToOpponent = message.getReplyToMessage() != null
                 && message.getReplyToMessage().getSenderUser() != null
                 && message.getReplyToMessage().getSenderUser().getId().equals(opponent.getId());

@@ -1,6 +1,9 @@
 package com.example.pogun.service.noticechat;
 
+import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.repository.noticechat.NoticeChatRoomParticipantStateRepository;
+import com.example.pogun.repository.noticechat.NoticeChatRoomRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,8 @@ import org.springframework.stereotype.Component;
 public class DirectMessageNotificationEventListener {
 
     private final UserRepository userRepository;
+    private final NoticeChatRoomRepository noticeChatRoomRepository;
+    private final NoticeChatRoomParticipantStateRepository participantStateRepository;
     private final NotificationService notificationService;
 
     @Async("chatNotificationExecutor")
@@ -23,7 +28,8 @@ public class DirectMessageNotificationEventListener {
         try {
             User sender = userRepository.findById(event.senderUserId()).orElse(null);
             User recipient = userRepository.findById(event.recipientUserId()).orElse(null);
-            if (sender == null || recipient == null) {
+            NoticeChatRoom room = noticeChatRoomRepository.findById(event.roomId()).orElse(null);
+            if (sender == null || recipient == null || room == null || !isNotificationEnabled(room, recipient)) {
                 return;
             }
             notificationService.createAndSendDirectMessageNotification(
@@ -38,5 +44,11 @@ public class DirectMessageNotificationEventListener {
             log.warn("direct message notification async failed. roomId={}, messageId={}, reason={}",
                     event.roomId(), event.messageId(), e.getClass().getSimpleName());
         }
+    }
+
+    private boolean isNotificationEnabled(NoticeChatRoom room, User recipient) {
+        return participantStateRepository.findByRoomAndUser(room, recipient)
+                .map(state -> Boolean.TRUE.equals(state.getNotificationEnabled()))
+                .orElse(true);
     }
 }
