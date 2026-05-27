@@ -220,3 +220,85 @@ jobs:
 
           echo "Deploy completed. Skipping docker image prune in hot deploy path."
           EOF
+
+  cleanup-dockerhub:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push
+      - deploy
+    environment: production
+    if: github.ref == 'refs/heads/dev' && needs.deploy.result == 'success'
+    steps:
+      - name: Delete old Docker Hub sha tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          KEEP_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          import urllib.error
+          import urllib.request
+
+          username = os.environ["DOCKERHUB_USERNAME"]
+          secret = os.environ["DOCKERHUB_TOKEN"]
+          repository = os.environ["IMAGE_NAME"]
+          keep_tag = os.environ["KEEP_TAG"]
+
+          auth_body = json.dumps({
+              "identifier": username,
+              "secret": secret,
+          }).encode("utf-8")
+
+          auth_request = urllib.request.Request(
+              "https://hub.docker.com/v2/auth/token",
+              data=auth_body,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+
+          with urllib.request.urlopen(auth_request) as response:
+              access_token = json.load(response)["access_token"]
+
+          auth_headers = {"Authorization": f"Bearer {access_token}"}
+          tag_pattern = re.compile(r"sha-[0-9a-f]{12}")
+          delete_targets = []
+          next_url = f"https://hub.docker.com/v2/namespaces/{username}/repositories/{repository}/tags?page_size=100"
+
+          while next_url:
+              request = urllib.request.Request(next_url, headers=auth_headers, method="GET")
+              with urllib.request.urlopen(request) as response:
+                  payload = json.load(response)
+              for result in payload.get("results", []):
+                  tag_name = result.get("name", "")
+                  if tag_pattern.fullmatch(tag_name) and tag_name != keep_tag:
+                      delete_targets.append(tag_name)
+              next_url = payload.get("next")
+
+          if not delete_targets:
+              print(f"No old Docker Hub sha tags to delete. keep_tag={keep_tag}")
+              sys.exit(0)
+
+          deleted_count = 0
+          for tag_name in delete_targets:
+              delete_request = urllib.request.Request(
+                  f"https://hub.docker.com/v2/namespaces/{username}/repositories/{repository}/tags/{tag_name}",
+                  headers=auth_headers,
+                  method="DELETE",
+              )
+              try:
+                  with urllib.request.urlopen(delete_request):
+                      deleted_count += 1
+                      print(f"Deleted Docker Hub tag: {tag_name}")
+              except urllib.error.HTTPError as error:
+                  if error.code == 404:
+                      print(f"Skip missing Docker Hub tag: {tag_name}")
+                      continue
+                  raise
+
+          print(f"Docker Hub cleanup complete. deleted={deleted_count} keep_tag={keep_tag}")
+          PY
