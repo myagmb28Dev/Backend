@@ -4,6 +4,7 @@ param(
     [string]$ProjectId = "pogun-local",
     [string]$Email = "playwright-user1@local.dev",
     [string]$Password = "Test1234!",
+    [switch]$PrepareTestUser,
     [int]$AuthPort = 9099,
     [int]$BackendPort = 8080,
     [int]$UiPort = 4000,
@@ -627,56 +628,38 @@ try {
 }
 Write-Step "ready"
 
-$authTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
-$idToken = $authTokenResponse.idToken
-$refreshToken = $authTokenResponse.refreshToken
-Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
-
-$playwrightAccounts = @(
-    @{ Index = 1; Email = "playwright-user1@local.dev"; Password = "Test1234!" }
-)
-
-Write-TokenArtifacts -Token $idToken -RefreshToken $refreshToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json" -RefreshTokenFileName "emulator-refresh-token.txt"
-
-foreach ($account in $playwrightAccounts) {
-    $accountTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $account.Email -TargetPassword $account.Password
-    $accountToken = $accountTokenResponse.idToken
-    $accountRefreshToken = $accountTokenResponse.refreshToken
-    if ($account.Index -eq 1) {
-        Ensure-EmulatorEmailVerified -TargetEmail $account.Email -Token $accountToken
-    }
-    try {
-        Ensure-BackendUserReady -Token $accountToken | Out-Null
-    } catch {
-        Write-Warning "Backend bootstrap failed for $($account.Email). Continuing without onboarding bootstrap."
-    }
-    Write-TokenArtifacts `
-        -Token $accountToken `
-        -RefreshToken $accountRefreshToken `
-        -TokenFileName ("emulator-user{0}-firebase-id-token.txt" -f $account.Index) `
-        -HeaderFileName ("emulator-user{0}-authorization-header.txt" -f $account.Index) `
-        -LoginBodyFileName ("emulator-user{0}-login-request.json" -f $account.Index) `
-        -RefreshTokenFileName ("emulator-user{0}-refresh-token.txt" -f $account.Index)
-}
-
-$tokenPath = Join-Path $localDir "emulator-firebase-id-token.txt"
-$authHeaderPath = Join-Path $localDir "emulator-authorization-header.txt"
-$loginBodyPath = Join-Path $localDir "emulator-login-request.json"
-
 Write-Host ""
 Write-Host "Local auth emulator stack is ready." -ForegroundColor Green
-Write-Host "These token files are emulator-only. Do not use them against real Firebase mode or deployed servers." -ForegroundColor Yellow
 Write-Host "Project       : $ProjectId"
 Write-Host "Auth Emulator : http://127.0.0.1:$AuthPort"
 Write-Host "Emulator UI   : http://127.0.0.1:$UiPort"
 Write-Host "Backend       : http://localhost:$BackendPort"
-Write-Host ""
-Write-Host "Email         : $Email"
-Write-Host "Token file    : $tokenPath"
-Write-Host "Header file   : $authHeaderPath"
-Write-Host "Login body    : $loginBodyPath"
-Write-Host ""
-Write-Host "Login payload values are stored in the local files above and are not echoed to the terminal." -ForegroundColor Yellow
+
+if ($PrepareTestUser) {
+    $authTokenResponse = Ensure-EmulatorUserAndGetToken -TargetEmail $Email -TargetPassword $Password
+    $idToken = $authTokenResponse.idToken
+    $refreshToken = $authTokenResponse.refreshToken
+    Ensure-EmulatorEmailVerified -TargetEmail $Email -Token $idToken
+    try {
+        Ensure-BackendUserReady -Token $idToken | Out-Null
+    } catch {
+        Write-Warning "Backend bootstrap failed for $Email. Continuing without onboarding bootstrap."
+    }
+    Write-TokenArtifacts -Token $idToken -RefreshToken $refreshToken -TokenFileName "emulator-firebase-id-token.txt" -HeaderFileName "emulator-authorization-header.txt" -LoginBodyFileName "emulator-login-request.json" -RefreshTokenFileName "emulator-refresh-token.txt"
+
+    $tokenPath = Join-Path $localDir "emulator-firebase-id-token.txt"
+    $authHeaderPath = Join-Path $localDir "emulator-authorization-header.txt"
+    $loginBodyPath = Join-Path $localDir "emulator-login-request.json"
+
+    Write-Host ""
+    Write-Host "Test user prepared." -ForegroundColor Yellow
+    Write-Host "Email         : $Email"
+    Write-Host "Token file    : $tokenPath"
+    Write-Host "Header file   : $authHeaderPath"
+    Write-Host "Login body    : $loginBodyPath"
+    Write-Host ""
+    Write-Host "These token files are emulator-only. Do not use them against real Firebase mode or deployed servers." -ForegroundColor Yellow
+}
 
 if (-not $NoAutoOpen) {
     try {
