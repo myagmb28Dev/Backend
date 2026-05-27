@@ -136,14 +136,6 @@ logbook:
   write:
     max-body-size: 2000
 
----
-# 로컬 개발 환경용 설정
-spring:
-  config:
-    activate:
-      on-profile: local
-
----
 # 운영 환경용 설정
 spring:
   config:
