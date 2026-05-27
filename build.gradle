@@ -58,6 +58,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	systemProperty 'SPRING_PROFILES_ACTIVE', 'test'
 }
 
 tasks.withType(JavaCompile).configureEach {

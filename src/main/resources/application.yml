@@ -3,7 +3,7 @@ spring:
     date-format: yyyy-MM-dd'T'HH:mm:ss'Z'
     time-zone: UTC
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:local}
+    active: ${SPRING_PROFILES_ACTIVE}
   servlet:
     multipart:
       max-file-size: 30MB
@@ -24,8 +24,8 @@ spring:
       leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:20000}
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD:}
   web:
     resources:
@@ -43,9 +43,9 @@ spring:
 
 app:
   schema-sync:
-    enabled: ${APP_SCHEMA_SYNC_ENABLED:true}
+    enabled: ${APP_SCHEMA_SYNC_ENABLED}
   startup-warmup:
-    enabled: ${APP_STARTUP_WARMUP_ENABLED:true}
+    enabled: ${APP_STARTUP_WARMUP_ENABLED}
   storage:
     s3:
       bucket: ${AWS_S3_BUCKET:}
@@ -55,28 +55,28 @@ app:
     local:
       rest-api-key: ${KAKAO_REST_API_KEY:}
       javascript-key: ${KAKAO_JAVASCRIPT_KEY:}
-      base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+      base-url: ${KAKAO_LOCAL_BASE_URL}
   firebase:
     auth:
-      mode: ${APP_FIREBASE_AUTH_MODE:PRODUCTION}
-      project-id: ${FIREBASE_PROJECT_ID:${GCLOUD_PROJECT:}}
-      emulator-project-id: ${APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID:${FIREBASE_AUTH_EMULATOR_PROJECT_ID:}}
-      allow-emulator: ${APP_FIREBASE_AUTH_ALLOW_EMULATOR:${FIREBASE_ALLOW_AUTH_EMULATOR:false}}
-      web-api-key: ${FIREBASE_WEB_API_KEY:${APP_FIREBASE_WEB_API_KEY:${FIREBASE_API_KEY:}}}
+      mode: ${APP_FIREBASE_AUTH_MODE}
+      project-id: ${FIREBASE_PROJECT_ID}
+      emulator-project-id: ${APP_FIREBASE_AUTH_EMULATOR_PROJECT_ID}
+      allow-emulator: ${APP_FIREBASE_AUTH_ALLOW_EMULATOR}
+      web-api-key: ${FIREBASE_WEB_API_KEY}
   admin:
     console:
-      session-ttl-seconds: ${APP_ADMIN_SESSION_TTL_SECONDS:28800}
-      bootstrap-session-ttl-seconds: ${APP_ADMIN_BOOTSTRAP_SESSION_TTL_SECONDS:900}
-      challenge-ttl-seconds: ${APP_ADMIN_CHALLENGE_TTL_SECONDS:300}
+      session-ttl-seconds: ${APP_ADMIN_SESSION_TTL_SECONDS}
+      bootstrap-session-ttl-seconds: ${APP_ADMIN_BOOTSTRAP_SESSION_TTL_SECONDS}
+      challenge-ttl-seconds: ${APP_ADMIN_CHALLENGE_TTL_SECONDS}
       promote-stepup-ttl-seconds: 300
       webauthn:
-        rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID:pawgen.kro.kr}
-        rp-name: ${APP_ADMIN_WEBAUTHN_RP_NAME:Pogun Admin}
-        allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS:https://pawgen.kro.kr}
-        origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP:https://pawgen.kro.kr=pawgen.kro.kr}
+        rp-id: ${APP_ADMIN_WEBAUTHN_RP_ID}
+        rp-name: ${APP_ADMIN_WEBAUTHN_RP_NAME}
+        allowed-origins: ${APP_ADMIN_WEBAUTHN_ALLOWED_ORIGINS}
+        origin-rp-map: ${APP_ADMIN_WEBAUTHN_ORIGIN_RP_MAP}
       email-verification:
-        continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP:https://pawgen.kro.kr=https://pawgen.kro.kr/login?adminVerify=done}
-        default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL:https://pawgen.kro.kr/login?adminVerify=done}
+        continue-url-map: ${APP_ADMIN_VERIFY_CONTINUE_URL_MAP}
+        default-continue-url: ${APP_ADMIN_VERIFY_DEFAULT_CONTINUE_URL}
   shelter:
     api:
       base-url: ${SHELTER_API_BASE_URL:https://apis.data.go.kr/1543061/abandonmentPublicService_v2}
@@ -89,10 +89,10 @@ app:
     ttl-seconds: 60
   presence:
     store: redis
-    reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS:1500}
+    reconcile-interval-ms: ${APP_PRESENCE_RECONCILE_INTERVAL_MS}
   notification:
-    inactive-token-retention-days: ${APP_NOTIFICATION_INACTIVE_TOKEN_RETENTION_DAYS:30}
-    inactive-token-cleanup-cron: ${APP_NOTIFICATION_INACTIVE_TOKEN_CLEANUP_CRON:0 10 4 * * *}
+    inactive-token-retention-days: ${APP_NOTIFICATION_INACTIVE_TOKEN_RETENTION_DAYS}
+    inactive-token-cleanup-cron: ${APP_NOTIFICATION_INACTIVE_TOKEN_CLEANUP_CRON}
 
 decorator:
   datasource:
@@ -104,7 +104,7 @@ springdoc:
     url: /v3/api-docs
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT}
   compression:
     enabled: true
     min-response-size: 2KB
@@ -142,14 +142,6 @@ spring:
   config:
     activate:
       on-profile: local
-  data:
-    redis:
-      host: localhost
-app:
-  schema-sync:
-    enabled: true
-  startup-warmup:
-    enabled: true
 
 ---
 # 운영 환경용 설정
@@ -157,7 +149,4 @@ spring:
   config:
     activate:
       on-profile: prod
-  data:
-    redis:
-      host: redis
 
