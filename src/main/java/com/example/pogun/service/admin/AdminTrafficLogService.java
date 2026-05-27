@@ -2,11 +2,13 @@ package com.example.pogun.service.admin;
 
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -21,6 +23,9 @@ public class AdminTrafficLogService {
     private final Object lock = new Object();
 
     public void recordInbound(String method, String path, int status, long durationMs, String remoteAddr, String requestBody, String responseBody) {
+        if (isExcludedTrafficPath(path)) {
+            return;
+        }
         push(Map.of(
                 "direction", "IN",
                 "timestamp", Instant.now().toString(),
@@ -53,7 +58,9 @@ public class AdminTrafficLogService {
     public List<Map<String, Object>> recent(int limit, boolean errorsOnly) {
         int resolvedLimit = Math.max(1, Math.min(limit, 200));
         synchronized (lock) {
-            List<Map<String, Object>> snapshot = new ArrayList<>(logs);
+            List<Map<String, Object>> snapshot = new ArrayList<>(logs).stream()
+                    .filter(entry -> !isExcludedTrafficPath(String.valueOf(entry.get("path"))))
+                    .toList();
             if (errorsOnly) {
                 snapshot = snapshot.stream()
                         .filter(this::isUnexpectedStatus)
@@ -100,5 +107,35 @@ public class AdminTrafficLogService {
             }
         }
         return true;
+    }
+
+    private boolean isExcludedTrafficPath(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            return true;
+        }
+        String normalized = normalizePath(rawPath);
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        return lower.startsWith("/api/admin/traffic/");
+    }
+
+    private String normalizePath(String rawPath) {
+        String value = rawPath.trim();
+        try {
+            URI uri = URI.create(value);
+            if (uri.getScheme() != null && uri.getPath() != null) {
+                value = uri.getPath();
+            }
+        } catch (RuntimeException ignored) {
+            // Keep the raw input when URI parsing fails.
+        }
+        int queryIndex = value.indexOf('?');
+        if (queryIndex >= 0) {
+            value = value.substring(0, queryIndex);
+        }
+        int hashIndex = value.indexOf('#');
+        if (hashIndex >= 0) {
+            value = value.substring(0, hashIndex);
+        }
+        return value;
     }
 }
