@@ -114,8 +114,8 @@ jobs:
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<'EOF'
           set -e
           APP_DIR="${{ secrets.EC2_APP_DIR }}"
-          mkdir -p "\$APP_DIR"
-          cd "\$APP_DIR"
+          mkdir -p "$APP_DIR"
+          cd "$APP_DIR"
 
           if ! command -v docker >/dev/null 2>&1; then
             sudo dnf install -y docker
@@ -126,14 +126,14 @@ jobs:
           sudo systemctl enable docker >/dev/null 2>&1 || true
 
           if ! sudo docker compose version >/dev/null 2>&1; then
-            arch="\$(uname -m)"
-            case "\$arch" in
+            arch="$(uname -m)"
+            case "$arch" in
               x86_64) compose_arch="x86_64" ;;
               aarch64) compose_arch="aarch64" ;;
-              *) echo "Unsupported architecture for Docker Compose: \$arch"; exit 1 ;;
+              *) echo "Unsupported architecture for Docker Compose: $arch"; exit 1 ;;
             esac
             sudo mkdir -p /usr/local/lib/docker/cli-plugins
-            sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-\$compose_arch" \
+            sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$compose_arch" \
               -o /usr/local/lib/docker/cli-plugins/docker-compose
             sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             sudo docker compose version
@@ -179,42 +179,42 @@ jobs:
           sed -i '/^DB_PASSWORD=/ s/\$/$$/g' .env
 
           compose() {
-            sudo docker compose --env-file "\$APP_DIR/.env" -f "\$APP_DIR/docker-compose.yml" "\$@"
+            sudo docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" "$@"
           }
 
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
           compose pull --quiet app
-          redis_state="\$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
-          if ! echo "\$redis_state" | grep -q '^true healthy'; then
+          redis_state="$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
+          if ! echo "$redis_state" | grep -q '^true healthy'; then
             compose up -d --remove-orphans redis
           fi
           compose up -d --remove-orphans --no-deps app
           compose ps
 
-          health_port="\$(grep -E '^PORT=' .env | cut -d= -f2-)"
-          health_port="\${health_port:-8080}"
-          health_url="http://127.0.0.1:\${health_port}/health"
+          health_port="$(grep -E '^PORT=' .env | cut -d= -f2-)"
+          health_port="${health_port:-8080}"
+          health_url="http://127.0.0.1:${health_port}/health"
           for attempt in {1..60}; do
-            if curl -fsS "\$health_url" >/dev/null 2>&1; then
-              echo "Application health endpoint passed: \$health_url"
+            if curl -fsS "$health_url" >/dev/null 2>&1; then
+              echo "Application health endpoint passed: $health_url"
               break
             fi
 
-            app_status="\$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
-            app_health="\$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
+            app_status="$(sudo docker inspect -f '{{.State.Status}}' pogun-backend)"
+            app_health="$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
 
-            if [ "\$app_status" = "exited" ] || [ "\$app_status" = "dead" ]; then
+            if [ "$app_status" = "exited" ] || [ "$app_status" = "dead" ]; then
               compose logs --tail=200 app
               exit 1
             fi
 
-            if [ "\$attempt" -eq 60 ]; then
+            if [ "$attempt" -eq 60 ]; then
               compose logs --tail=200 app
               exit 1
             fi
 
-            echo "Waiting for app healthcheck... status=\$app_status health=\$app_health attempt=\$attempt/60"
+            echo "Waiting for app healthcheck... status=$app_status health=$app_health attempt=$attempt/60"
             sleep 2
           done
 
