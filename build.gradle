@@ -68,6 +68,7 @@ tasks.withType(JavaCompile).configureEach {
 bootJar {
 	enabled = true
 	archiveFileName = 'app.jar'
+	exclude('static/**')
 	layered {
 		enabled = true
 	}

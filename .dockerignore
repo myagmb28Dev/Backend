@@ -2,6 +2,7 @@
 *
 .gradle-user/
 /backup/
+src/main/resources/static/
 
 # Allow only files needed by Dockerfile build steps
 !.dockerignore
