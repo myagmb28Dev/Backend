@@ -121,6 +121,21 @@ server:
       enabled: true
       force: true
 
+logbook:
+  obfuscate:
+    headers:
+      - Authorization
+      - Cookie
+      - Set-Cookie
+    parameters:
+      - access_token
+      - refresh_token
+      - id_token
+      - token
+      - password
+  write:
+    max-body-size: 2000
+
 ---
 # 로컬 개발 환경용 설정
 spring:
