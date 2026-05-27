@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     outputs:
-      image_ref: ${{ steps.pushed-image.outputs.image_ref }}
+      image_tag: ${{ steps.image-tag.outputs.image_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -51,7 +51,10 @@ jobs:
 
       - name: Set image tag
         id: image-tag
-        run: echo "short_sha=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        run: |
+          short_sha="${GITHUB_SHA::12}"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
         id: build-push
@@ -60,19 +63,11 @@ jobs:
           context: .
           push: true
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ steps.image-tag.outputs.short_sha }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=min,ignore-error=true
           provenance: false
           sbom: false
-
-      - name: Set pushed image ref
-        id: pushed-image
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          PUSHED_DIGEST: ${{ steps.build-push.outputs.digest }}
-        run: echo "image_ref=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${PUSHED_DIGEST}" >> "$GITHUB_OUTPUT"
 
   deploy:
     runs-on: ubuntu-latest
@@ -148,7 +143,7 @@ jobs:
           cat > .env <<'ENVEOF'
           SPRING_PROFILES_ACTIVE=prod
           PORT=${{ secrets.PORT }}
-          APP_IMAGE=${{ needs.build-and-push.outputs.image_ref }}
+          APP_IMAGE=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}
           APP_STARTUP_WARMUP_ENABLED=true
           APP_SCHEMA_SYNC_ENABLED=true
           JAVA_STARTUP_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom
@@ -181,15 +176,21 @@ jobs:
           SHELTER_API_SERVICE_KEY=${{ secrets.SHELTER_API_SERVICE_KEY }}
           ENVEOF
 
+          sed -i '/^DB_PASSWORD=/ s/\$/$$/g' .env
+
+          compose() {
+            sudo docker compose --env-file "\$APP_DIR/.env" -f "\$APP_DIR/docker-compose.yml" "\$@"
+          }
+
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          sudo docker compose pull --quiet app
+          compose pull --quiet app
           redis_state="\$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
           if ! echo "\$redis_state" | grep -q '^true healthy'; then
-            sudo docker compose up -d --remove-orphans redis
+            compose up -d --remove-orphans redis
           fi
-          sudo docker compose up -d --remove-orphans --no-deps app
-          sudo docker compose ps
+          compose up -d --remove-orphans --no-deps app
+          compose ps
 
           health_port="\$(grep -E '^PORT=' .env | cut -d= -f2-)"
           health_port="\${health_port:-8080}"
@@ -204,12 +205,12 @@ jobs:
             app_health="\$(sudo docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-backend)"
 
             if [ "\$app_status" = "exited" ] || [ "\$app_status" = "dead" ]; then
-              sudo docker compose logs --tail=200 app
+              compose logs --tail=200 app
               exit 1
             fi
 
             if [ "\$attempt" -eq 60 ]; then
-              sudo docker compose logs --tail=200 app
+              compose logs --tail=200 app
               exit 1
             fi
 
