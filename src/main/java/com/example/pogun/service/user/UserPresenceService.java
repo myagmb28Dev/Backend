@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -25,12 +26,15 @@ public class UserPresenceService {
     private static final Duration GLOBAL_SESSION_STALE_AFTER = Duration.ofSeconds(10);
     // DM/socket freshness stays shorter than global presence.
     private static final Duration WEBSOCKET_SESSION_STALE_AFTER = Duration.ofSeconds(8);
+    // WebSocket preSend 훅에서 프레임마다 전체 presence cache를 갱신하면 DM 전송 경로가 느려질 수 있어 완만하게 스로틀한다.
+    private static final Duration WEBSOCKET_REFRESH_THROTTLE = Duration.ofSeconds(2);
     private static final String AUTH_GLOBAL_SESSION_ID = "auth";
     private static final String CONNECTION_CONNECTED = "connected";
     private static final String CONNECTION_DISCONNECTED = "disconnected";
 
     private final UserRepository userRepository;
     private final PresenceSessionStore presenceSessionStore;
+    private final Map<String, Instant> websocketRefreshGate = new ConcurrentHashMap<>();
 
     @Transactional
     public boolean touch(String firebaseUid) {
@@ -145,13 +149,22 @@ public class UserPresenceService {
         if (firebaseUid == null || firebaseUid.isBlank() || sessionId == null || sessionId.isBlank()) {
             return;
         }
+        Instant now = Instant.now();
+        presenceSessionStore.putSession(firebaseUid, sessionId, now);
+
+        String refreshKey = websocketRefreshKey(firebaseUid, sessionId);
+        Instant lastRefreshAt = websocketRefreshGate.get(refreshKey);
+        if (lastRefreshAt != null && Duration.between(lastRefreshAt, now).compareTo(WEBSOCKET_REFRESH_THROTTLE) < 0) {
+            return;
+        }
+        websocketRefreshGate.put(refreshKey, now);
+
         if (presenceSessionStore.getForcedOfflineAt(firebaseUid) != null) {
             log.debug("[presence] skip refresh for forced-offline uid={} sessionId={}", firebaseUid, sessionId);
             return;
         }
         rememberGlobalAuthenticationSession(firebaseUid, null);
         presenceSessionStore.clearDisconnectGraceUntil(firebaseUid);
-        rememberWebSocketActivity(firebaseUid, sessionId, Instant.now());
         syncPresenceCache(firebaseUid, presenceSessionStore.getManualPresenceStatus(firebaseUid));
     }
 
@@ -162,6 +175,7 @@ public class UserPresenceService {
         }
         if (sessionId != null && !sessionId.isBlank()) {
             presenceSessionStore.removeSession(firebaseUid, sessionId);
+            websocketRefreshGate.remove(websocketRefreshKey(firebaseUid, sessionId));
         }
         Instant now = Instant.now();
         if (hasActiveWebSocketSession(firebaseUid)) {
@@ -389,6 +403,10 @@ public class UserPresenceService {
             return "unknown";
         }
         return clientSessionId.trim();
+    }
+
+    private String websocketRefreshKey(String firebaseUid, String sessionId) {
+        return firebaseUid + "::" + sessionId;
     }
 
     public record PresenceSnapshot(UserAvailabilityStatus manualPresenceStatus,

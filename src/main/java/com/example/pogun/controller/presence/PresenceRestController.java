@@ -39,7 +39,6 @@ public class PresenceRestController {
         UserPresenceService.PresenceSnapshot snapshot = userPresenceService.heartbeat(firebaseUid, scopedSessionId);
         NoticeChatService noticeChatService = noticeChatServiceProvider.getIfAvailable();
         if (noticeChatService != null) {
-            noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
             noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
         }
         log.trace("[presence] heartbeat uid={} page={} connectionState={} effective={}",

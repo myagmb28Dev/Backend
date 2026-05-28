@@ -24,7 +24,6 @@ public class PresenceReconciliationScheduler {
         }
         userPresenceService.reconcileStaleSessions().forEach(firebaseUid -> {
             log.info("[presence] reconciled stale/disconnected uid={} -> broadcast", firebaseUid);
-            noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
             noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
         });
     }

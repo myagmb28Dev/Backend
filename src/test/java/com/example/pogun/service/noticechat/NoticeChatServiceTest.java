@@ -109,6 +109,10 @@ class NoticeChatServiceTest {
         );
         lenient().when(participantStateRepository.findByRoomAndUser(any(NoticeChatRoom.class), any(User.class)))
                 .thenAnswer(invocation -> Optional.of(participantState(invocation.getArgument(0), invocation.getArgument(1))));
+        lenient().when(participantStateRepository.findByRoomAndUserForUpdate(any(NoticeChatRoom.class), any(User.class)))
+                .thenAnswer(invocation -> Optional.of(participantState(invocation.getArgument(0), invocation.getArgument(1))));
+        lenient().when(noticeChatReadReceiptRepository.findByRoomAndReaderForUpdate(any(NoticeChatRoom.class), any(User.class)))
+                .thenReturn(Optional.empty());
         lenient().when(userPresenceService.snapshot(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             return new UserPresenceService.PresenceSnapshot(
@@ -645,7 +649,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findVisiblePage(eq(room), eq(null), eq(PageRequest.of(0, 51)))).thenReturn(List.of(unread));
-        when(noticeChatReadReceiptRepository.findByRoomAndReader(room, currentUser)).thenReturn(Optional.empty());
+        when(noticeChatReadReceiptRepository.findByRoomAndReaderForUpdate(room, currentUser)).thenReturn(Optional.empty());
 
         var response = noticeChatService.getMessages(roomId.toString(), null, null);
 
@@ -674,7 +678,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findVisiblePage(eq(room), eq(null), eq(PageRequest.of(0, 51)))).thenReturn(List.of(message));
-        when(noticeChatReadReceiptRepository.findByRoomAndReader(room, currentUser)).thenReturn(Optional.empty());
+        when(noticeChatReadReceiptRepository.findByRoomAndReaderForUpdate(room, currentUser)).thenReturn(Optional.empty());
 
         var response = noticeChatService.getMessages(roomId.toString(), null, null);
 
@@ -703,7 +707,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findTopByRoomAndSenderUserNotAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room, currentUser))
                 .thenReturn(Optional.of(latestOpponentMessage));
-        when(noticeChatReadReceiptRepository.findByRoomAndReader(room, currentUser)).thenReturn(Optional.empty());
+        when(noticeChatReadReceiptRepository.findByRoomAndReaderForUpdate(room, currentUser)).thenReturn(Optional.empty());
 
         var response = noticeChatService.enterRoom(principal(currentUser), request);
 

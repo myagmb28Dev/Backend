@@ -34,7 +34,7 @@ public class PresenceMessageController {
         }
         if (userPresenceService.touch(firebaseUid)) {
             log.debug("[presence] ping touch updated uid={} sessionId={}", firebaseUid, sessionId);
-            noticeChatService.publishPresenceUpdatesByFirebaseUid(firebaseUid);
+            noticeChatService.publishPresenceEventsByFirebaseUid(firebaseUid);
         } else {
             log.trace("[presence] ping touch skipped uid={} sessionId={}", firebaseUid, sessionId);
         }

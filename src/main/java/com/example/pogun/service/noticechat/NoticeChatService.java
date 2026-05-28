@@ -988,7 +988,7 @@ public class NoticeChatService {
             NoticeChatMessage latestReadMessage,
             Long requestedSequence
     ) {
-        NoticeChatRoomParticipantState state = ensureParticipantState(room, reader);
+        NoticeChatRoomParticipantState state = ensureParticipantStateForUpdate(room, reader);
         notificationService.markDirectMessageNotificationsAsRead(reader, room.getId());
         long currentSequence = state.getLastReadRoomSequence() == null ? 0L : state.getLastReadRoomSequence();
         long messageSequence = latestReadMessage != null ? safeSequence(latestReadMessage) : 0L;
@@ -1005,7 +1005,7 @@ public class NoticeChatService {
         state.setLastReadAt(now);
         participantStateRepository.save(state);
 
-        NoticeChatReadReceipt receipt = noticeChatReadReceiptRepository.findByRoomAndReader(room, reader)
+        NoticeChatReadReceipt receipt = noticeChatReadReceiptRepository.findByRoomAndReaderForUpdate(room, reader)
                 .orElseGet(() -> NoticeChatReadReceipt.builder()
                         .room(room)
                         .reader(reader)
@@ -1123,6 +1123,14 @@ public class NoticeChatService {
                 .favorite(false)
                 .pinned(false)
                 .build()));
+    }
+
+    private NoticeChatRoomParticipantState ensureParticipantStateForUpdate(NoticeChatRoom room, User user) {
+        return participantStateRepository.findByRoomAndUserForUpdate(room, user)
+                .orElseGet(() -> {
+                    NoticeChatRoomParticipantState created = ensureParticipantState(room, user);
+                    return participantStateRepository.findByRoomAndUserForUpdate(room, user).orElse(created);
+                });
     }
 
     private Comparator<NoticeChatRoom> roomComparator(User currentUser) {
