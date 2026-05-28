@@ -49,6 +49,11 @@ public interface NoticeChatMessageRepository extends JpaRepository<NoticeChatMes
 
     Optional<NoticeChatMessage> findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(NoticeChatRoom room);
 
+    Optional<NoticeChatMessage> findTopByRoomAndSenderUserNotAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(
+            NoticeChatRoom room,
+            User senderUser
+    );
+
     Optional<NoticeChatMessage> findByRoomAndSenderUserAndClientMessageId(NoticeChatRoom room, User senderUser, String clientMessageId);
 
     @Query("""

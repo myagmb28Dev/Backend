@@ -1076,10 +1076,7 @@ public class NoticeChatService {
     }
 
     private NoticeChatMessage latestVisibleOpponentMessage(NoticeChatRoom room, User reader) {
-        return noticeChatMessageRepository.findVisiblePage(room, null, PageRequest.of(0, 100))
-                .stream()
-                .filter(message -> !message.getSenderUser().getId().equals(reader.getId()))
-                .findFirst()
+        return noticeChatMessageRepository.findTopByRoomAndSenderUserNotAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room, reader)
                 .orElse(null);
     }
 
