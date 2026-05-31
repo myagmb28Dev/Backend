@@ -111,6 +111,7 @@ jobs:
           tag_pattern = re.compile(r"sha-[0-9a-f]{12}")
           delete_targets = []
           digests_to_delete = set()
+          keep_digests = set()
           next_url = f"https://hub.docker.com/v2/namespaces/{username}/repositories/{repository}/tags?page_size=100"
 
           def collect_candidate_digests(tag_result):
@@ -133,10 +134,15 @@ jobs:
                   payload = json.load(response)
               for result in payload.get("results", []):
                   tag_name = result.get("name", "")
-                  if tag_pattern.fullmatch(tag_name) and tag_name != keep_tag:
+                  candidate_digests = collect_candidate_digests(result)
+                  if tag_name == keep_tag:
+                      keep_digests.update(candidate_digests)
+                  elif tag_pattern.fullmatch(tag_name):
                       delete_targets.append(tag_name)
-                      digests_to_delete.update(collect_candidate_digests(result))
+                      digests_to_delete.update(candidate_digests)
               next_url = payload.get("next")
+
+          digests_to_delete.difference_update(keep_digests)
 
           if not delete_targets:
               print(f"No old Docker Hub sha tags to delete. keep_tag={keep_tag}")
@@ -203,7 +209,9 @@ jobs:
 
           print(
               "Docker Hub cleanup complete. "
-              f"deleted_tags={deleted_count} deleted_manifests={deleted_manifest_count} keep_tag={keep_tag}"
+              "deleted_tags="
+              f"{deleted_count} deleted_manifests={deleted_manifest_count} keep_tag={keep_tag} "
+              f"protected_digests={len(keep_digests)}"
           )
           PY
 
