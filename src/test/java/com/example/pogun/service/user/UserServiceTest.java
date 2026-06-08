@@ -2,7 +2,12 @@ package com.example.pogun.service.user;
 
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.dto.user.UserLocationUpdateRequest;
+import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
+import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.missingpet.PetNoticeImage;
+import com.example.pogun.entity.missingpet.enums.PetGender;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -22,6 +27,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -88,7 +95,7 @@ class UserServiceTest {
         when(userRepository.findByFirebaseUid(firebaseUid)).thenReturn(Optional.of(user));
         when(kakaoLocalService.resolveRegion(anyDouble(), anyDouble())).thenReturn(region);
         when(userRepository.save(user)).thenReturn(user);
-        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user)).thenReturn(java.util.List.of());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user)).thenReturn(List.of());
 
         UserProfileResponse response = userService.updateLocation(request);
 
@@ -101,5 +108,51 @@ class UserServiceTest {
         assertThat(response.region()).isEqualTo("서울 강남구 역삼동");
         assertThat(response.regionInfo()).isNotNull();
         assertThat(response.regionInfo().region2DepthName()).isEqualTo("강남구");
+    }
+
+    @Test
+    void myPetNotices_includesImageUrls() {
+        String firebaseUid = "firebase-uid-2";
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(firebaseUid, "N/A")
+        );
+
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid(firebaseUid)
+                .email("user2@example.com")
+                .nickname("tester2")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        PetNotice notice = PetNotice.builder()
+                .id(UUID.randomUUID())
+                .author(user)
+                .title("Missing pet")
+                .animalType("DOG")
+                .breed("Poodle")
+                .gender(PetGender.UNKNOWN)
+                .missingDate(Instant.parse("2026-06-08T00:00:00Z"))
+                .missingRegion("Seoul")
+                .status(PetNoticeStatus.OPEN)
+                .viewCount(12L)
+                .createdAt(Instant.parse("2026-06-08T01:00:00Z"))
+                .images(List.of(
+                        PetNoticeImage.builder().imageUrl("https://cdn.example.com/1.jpg").sortOrder(0).build(),
+                        PetNoticeImage.builder().imageUrl("https://cdn.example.com/2.jpg").sortOrder(1).build()
+                ))
+                .build();
+
+        when(userRepository.findByFirebaseUid(firebaseUid)).thenReturn(Optional.of(user));
+        when(petNoticeRepository.findByAuthorOrderByCreatedAtDesc(user)).thenReturn(List.of(notice));
+
+        List<UserPetNoticeSummaryResponse> response = userService.myPetNotices();
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).imageUrls()).containsExactly(
+                "https://cdn.example.com/1.jpg",
+                "https://cdn.example.com/2.jpg"
+        );
     }
 }
