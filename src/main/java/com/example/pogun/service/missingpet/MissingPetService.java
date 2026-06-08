@@ -218,7 +218,7 @@ public class MissingPetService {
         PetNotice notice = PetNotice.builder()
                 .author(author)
                 .title(requiredString(request, "title"))
-                .animalType(requiredString(request, "animalType"))
+                .animalType(normalizeAnimalType(requiredString(request, "animalType")))
                 .breed(optionalString(request, "breed"))
                 .gender(parseGender(optionalString(request, "gender")))
                 .age(parseInteger(request.get("age")))
@@ -283,7 +283,7 @@ public class MissingPetService {
         PetNotice notice = getOwnedNotice(missingPetId);
 
         if (request.containsKey("title")) notice.setTitle(requiredString(request, "title"));
-        if (request.containsKey("animalType")) notice.setAnimalType(requiredString(request, "animalType"));
+        if (request.containsKey("animalType")) notice.setAnimalType(normalizeAnimalType(requiredString(request, "animalType")));
         if (request.containsKey("breed")) notice.setBreed(optionalString(request, "breed"));
         if (request.containsKey("gender")) notice.setGender(parseGender(optionalString(request, "gender")));
         if (request.containsKey("age")) notice.setAge(parseInteger(request.get("age")));
@@ -556,7 +556,7 @@ public class MissingPetService {
         return new MissingPetSummaryResponse(
                 notice.getId(),
                 notice.getTitle(),
-                notice.getAnimalType(),
+                normalizeAnimalTypeForResponse(notice.getAnimalType()),
                 notice.getBreed(),
                 notice.getMissingDate(),
                 notice.getMissingRegion(),
@@ -580,7 +580,7 @@ public class MissingPetService {
         return new MissingPetDetailResponse(
                 notice.getId(),
                 notice.getTitle(),
-                notice.getAnimalType(),
+                normalizeAnimalTypeForResponse(notice.getAnimalType()),
                 notice.getBreed(),
                 notice.getGender() == null ? PetGender.UNKNOWN.name() : notice.getGender().name(),
                 notice.getAge(),
@@ -765,6 +765,14 @@ public class MissingPetService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeAnimalType(String value) {
+        return AnimalTypeNormalizer.normalize(value);
+    }
+
+    private String normalizeAnimalTypeForResponse(String value) {
+        return AnimalTypeNormalizer.normalizeForResponse(value);
     }
 
     private String normalizeTextFilter(String value) {

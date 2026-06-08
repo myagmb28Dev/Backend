@@ -42,6 +42,7 @@ import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.adminauth.AdminAuditService;
 import com.example.pogun.service.adminauth.AdminPermissionService;
 import com.example.pogun.service.adminauth.AdminSecurityService;
+import com.example.pogun.service.missingpet.AnimalTypeNormalizer;
 import com.example.pogun.service.notification.NotificationService;
 import com.example.pogun.service.presence.PresenceSessionStore;
 import com.example.pogun.service.user.UserPresenceService;
@@ -1230,7 +1231,7 @@ public class AdminConsoleService {
         return orderedMap(
                 "id", notice.getId(),
                 "title", safe(notice.getTitle()),
-                "animalType", safe(notice.getAnimalType()),
+                "animalType", normalizeAnimalTypeForResponse(notice.getAnimalType()),
                 "status", normalizeNoticeStatus(notice),
                 "reporter", safe(notice.getAuthor().getNickname()),
                 "reportedAt", notice.getCreatedAt(),
@@ -1264,7 +1265,7 @@ public class AdminConsoleService {
             notice.setDescription(nullableString(request.get("description")));
         }
         if (request.containsKey("animalType")) {
-            notice.setAnimalType(String.valueOf(request.get("animalType")).trim());
+            notice.setAnimalType(AnimalTypeNormalizer.normalize(String.valueOf(request.get("animalType"))));
         }
         if (request.containsKey("breed")) {
             notice.setBreed(nullableString(request.get("breed")));
@@ -1577,5 +1578,10 @@ public class AdminConsoleService {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private String normalizeAnimalTypeForResponse(String value) {
+        String normalized = AnimalTypeNormalizer.normalizeForResponse(value);
+        return normalized == null ? "" : normalized;
     }
 }
