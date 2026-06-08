@@ -85,6 +85,9 @@ public class AuthService {
                         fillProfileImageIfMissing(existingUser, picture);
                         existingUser.setAuthProvider(normalizedProvider);
                         existingUser.setLastActiveAt(Instant.now());
+                        if (existingUser.getRole() == null) {
+                            existingUser.setRole(UserRole.USER);
+                        }
                         existingUser.setStatus(UserStatus.ACTIVE);
                         return userRepository.save(existingUser);
                     })
@@ -96,6 +99,9 @@ public class AuthService {
                                 fillProfileImageIfMissing(existingByEmail, picture);
                                 existingByEmail.setAuthProvider(normalizedProvider);
                                 existingByEmail.setLastActiveAt(Instant.now());
+                                if (existingByEmail.getRole() == null) {
+                                    existingByEmail.setRole(UserRole.USER);
+                                }
                                 existingByEmail.setStatus(UserStatus.ACTIVE);
                                 return userRepository.save(existingByEmail);
                             })
@@ -208,6 +214,12 @@ public class AuthService {
             fillProfileImageIfMissing(user, identity.photoUrl());
             user.setAuthProvider(normalizedProvider);
             user.setLastActiveAt(Instant.now());
+            if (user.getRole() == null) {
+                user.setRole(UserRole.USER);
+            }
+            if (user.getStatus() == null) {
+                user.setStatus(UserStatus.ACTIVE);
+            }
             User saved = userRepository.save(user);
 
             syncProviders(saved, identity);
@@ -570,11 +582,15 @@ public class AuthService {
                 user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "",
                 FirebaseProviderNormalizer.normalize(user.getAuthProvider()),
                 getLinkedProviders(user),
-                user.getRole().name(),
+                resolveRole(user).name(),
                 REGISTRATION_COMPLETED,
                 user.getRegion() != null ? user.getRegion() : "",
                 buildRegionResponse(user)
         );
+    }
+
+    private UserRole resolveRole(User user) {
+        return user.getRole() != null ? user.getRole() : UserRole.USER;
     }
 
     private AuthResponse buildPendingAuthResponse(PendingSocialSignup pending) {

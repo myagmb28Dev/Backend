@@ -17,6 +17,8 @@ import com.example.pogun.entity.missingpet.PetNoticeImage;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+import com.example.pogun.entity.user.enums.UserRole;
+import com.example.pogun.entity.user.enums.UserStatus;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.user.UserRepository;
@@ -161,10 +163,18 @@ public class UserService {
                 buildRegionResponse(user),
                 FirebaseProviderNormalizer.normalize(user.getAuthProvider()),
                 getLinkedProviders(user),
-                user.getRole().name(),
-                user.getStatus().name(),
+                resolveRole(user).name(),
+                resolveStatus(user).name(),
                 resolveAvailabilityStatus(user).name()
         );
+    }
+
+    private UserRole resolveRole(User user) {
+        return user.getRole() != null ? user.getRole() : UserRole.USER;
+    }
+
+    private UserStatus resolveStatus(User user) {
+        return user.getStatus() != null ? user.getStatus() : UserStatus.ACTIVE;
     }
 
     private UserAvailabilityStatus resolveAvailabilityStatus(User user) {

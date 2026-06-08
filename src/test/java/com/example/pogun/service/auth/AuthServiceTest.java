@@ -516,6 +516,40 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginOrSignUp_defaultsMissingRoleForLegacyUser() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "legacy-uid",
+                "legacy@example.com",
+                "Legacy User",
+                null,
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "legacy@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("legacy-uid")
+                .email("legacy@example.com")
+                .nickname("legacy-user")
+                .role(null)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("legacy-uid")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(existing))
+                .thenReturn(List.<UserSocialAccount>of())
+                .thenReturn(List.<UserSocialAccount>of());
+        when(userSocialAccountRepository.findByUserAndProvider(existing, "GOOGLE")).thenReturn(Optional.empty());
+
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
+
+        assertThat(response.role()).isEqualTo(UserRole.USER.name());
+        assertThat(existing.getRole()).isEqualTo(UserRole.USER);
+    }
+
+    @Test
     void loginAdmin_allowsExistingAdminUserWithFirebaseProvider() throws Exception {
         FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
                 "admin-uid",

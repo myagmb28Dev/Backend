@@ -155,4 +155,29 @@ class UserServiceTest {
                 "https://cdn.example.com/2.jpg"
         );
     }
+
+    @Test
+    void getProfile_defaultsLegacyNullRoleAndStatus() {
+        String firebaseUid = "firebase-uid-legacy";
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(firebaseUid, "N/A")
+        );
+
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid(firebaseUid)
+                .email("legacy@example.com")
+                .nickname("legacy-user")
+                .role(null)
+                .status(null)
+                .build();
+
+        when(userRepository.findByFirebaseUid(firebaseUid)).thenReturn(Optional.of(user));
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(user)).thenReturn(List.of());
+
+        UserProfileResponse response = userService.getProfile();
+
+        assertThat(response.role()).isEqualTo(UserRole.USER.name());
+        assertThat(response.status()).isEqualTo(UserStatus.ACTIVE.name());
+    }
 }
