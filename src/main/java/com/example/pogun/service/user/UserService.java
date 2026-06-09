@@ -31,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 /**
@@ -137,6 +138,7 @@ public class UserService {
         return getProfileResponse(saved);
     }
 
+    @Transactional(readOnly = true)
     public List<UserPetNoticeSummaryResponse> myPetNotices() {
         User user = getCurrentUser();
         return petNoticeRepository.findByAuthorOrderByCreatedAtDesc(user).stream()
