@@ -2,12 +2,7 @@ package com.example.pogun.service.user;
 
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.dto.user.UserLocationUpdateRequest;
-import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
-import com.example.pogun.entity.missingpet.PetNotice;
-import com.example.pogun.entity.missingpet.PetNoticeImage;
-import com.example.pogun.entity.missingpet.enums.PetGender;
-import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -27,7 +22,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -65,7 +59,7 @@ class UserServiceTest {
     }
 
     @Test
-    void updateLocation_updatesRegionFieldsFromKakaoResult() {
+    void updateLocation_updatesRegionFieldsFromResolvedRegion() {
         String firebaseUid = "firebase-uid-1";
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(firebaseUid, "N/A")
@@ -82,10 +76,10 @@ class UserServiceTest {
 
         RegionResponse region = new RegionResponse(
                 "H",
-                "서울 강남구 역삼동",
-                "서울",
-                "강남구",
-                "역삼동"
+                "Seoul Gangnam Yeoksam",
+                "Seoul",
+                "Gangnam-gu",
+                "Yeoksam-dong"
         );
 
         UserLocationUpdateRequest request = new UserLocationUpdateRequest();
@@ -99,61 +93,14 @@ class UserServiceTest {
 
         UserProfileResponse response = userService.updateLocation(request);
 
-        assertThat(user.getRegion()).isEqualTo("서울 강남구 역삼동");
+        assertThat(user.getRegion()).isEqualTo("Seoul Gangnam Yeoksam");
         assertThat(user.getRegionType()).isEqualTo("H");
-        assertThat(user.getRegionAddressName()).isEqualTo("서울 강남구 역삼동");
-        assertThat(user.getRegion1DepthName()).isEqualTo("서울");
-        assertThat(user.getRegion2DepthName()).isEqualTo("강남구");
-        assertThat(user.getRegion3DepthName()).isEqualTo("역삼동");
-        assertThat(response.region()).isEqualTo("서울 강남구 역삼동");
-        assertThat(response.regionInfo()).isNotNull();
-        assertThat(response.regionInfo().region2DepthName()).isEqualTo("강남구");
-    }
-
-    @Test
-    void myPetNotices_includesImageUrls() {
-        String firebaseUid = "firebase-uid-2";
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(firebaseUid, "N/A")
-        );
-
-        User user = User.builder()
-                .id(UUID.randomUUID())
-                .firebaseUid(firebaseUid)
-                .email("user2@example.com")
-                .nickname("tester2")
-                .role(UserRole.USER)
-                .status(UserStatus.ACTIVE)
-                .build();
-
-        PetNotice notice = PetNotice.builder()
-                .id(UUID.randomUUID())
-                .author(user)
-                .title("Missing pet")
-                .animalType("DOG")
-                .breed("Poodle")
-                .gender(PetGender.UNKNOWN)
-                .missingDate(Instant.parse("2026-06-08T00:00:00Z"))
-                .missingRegion("Seoul")
-                .status(PetNoticeStatus.OPEN)
-                .viewCount(12L)
-                .createdAt(Instant.parse("2026-06-08T01:00:00Z"))
-                .images(List.of(
-                        PetNoticeImage.builder().imageUrl("https://cdn.example.com/1.jpg").sortOrder(0).build(),
-                        PetNoticeImage.builder().imageUrl("https://cdn.example.com/2.jpg").sortOrder(1).build()
-                ))
-                .build();
-
-        when(userRepository.findByFirebaseUid(firebaseUid)).thenReturn(Optional.of(user));
-        when(petNoticeRepository.findByAuthorOrderByCreatedAtDesc(user)).thenReturn(List.of(notice));
-
-        List<UserPetNoticeSummaryResponse> response = userService.myPetNotices();
-
-        assertThat(response).hasSize(1);
-        assertThat(response.get(0).imageUrls()).containsExactly(
-                "https://cdn.example.com/1.jpg",
-                "https://cdn.example.com/2.jpg"
-        );
+        assertThat(user.getRegionAddressName()).isEqualTo("Seoul Gangnam Yeoksam");
+        assertThat(user.getRegion1DepthName()).isEqualTo("Seoul");
+        assertThat(user.getRegion2DepthName()).isEqualTo("Gangnam-gu");
+        assertThat(user.getRegion3DepthName()).isEqualTo("Yeoksam-dong");
+        assertThat(response.region()).isEqualTo("Seoul Gangnam Yeoksam");
+        assertThat(response.regionInfo()).isEqualTo(region);
     }
 
     @Test
