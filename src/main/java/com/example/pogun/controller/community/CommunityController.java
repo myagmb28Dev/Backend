@@ -4,6 +4,7 @@ import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.community.CommunityCommentCreateResponse;
 import com.example.pogun.dto.community.CommunityCommentDeleteResponse;
 import com.example.pogun.dto.community.CommunityCommentRequest;
+import com.example.pogun.dto.community.CommunityCommentReportRequest;
 import com.example.pogun.dto.community.CommunityCommentResponse;
 import com.example.pogun.dto.community.CommunityCommentUpdateResponse;
 import com.example.pogun.dto.community.CommunityPostCreateResponse;
@@ -17,9 +18,11 @@ import com.example.pogun.dto.community.CommunityReactionRequest;
 import com.example.pogun.dto.community.CommunityReactionResponse;
 import com.example.pogun.dto.community.CommunityVoteRequest;
 import com.example.pogun.dto.community.CommunityVoteResponse;
+import com.example.pogun.dto.report.ReportResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.pogun.service.community.CommunityService;
+import com.example.pogun.service.report.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -51,6 +54,7 @@ import java.util.List;
 public class CommunityController {
 
     private final CommunityService communityService;
+    private final ReportService reportService;
     private final ObjectMapper objectMapper;
 
     @GetMapping
@@ -163,6 +167,18 @@ public class CommunityController {
     ) {
         CommunityCommentUpdateResponse data = communityService.updateComment(postId, commentId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "댓글 수정 성공", data));
+    }
+
+    @PostMapping("/{postId}/comments/{commentId}/report")
+    @Operation(summary = "댓글 신고 접수", description = "지정한 커뮤니티 댓글에 대한 신고를 접수합니다.")
+    public ResponseEntity<ApiResponse<ReportResponse>> reportComment(
+            @PathVariable String postId,
+            @PathVariable String commentId,
+            @RequestBody(required = false) CommunityCommentReportRequest request
+    ) {
+        ReportResponse data = reportService.createCommunityCommentReport(postId, commentId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED, "댓글 신고 접수 성공", data));
     }
 
     @PostMapping("/{postId}/votes")
