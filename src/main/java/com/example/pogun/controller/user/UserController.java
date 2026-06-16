@@ -1,14 +1,17 @@
 package com.example.pogun.controller.user;
 
 import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.dto.user.CreditLedgerListResponse;
 import com.example.pogun.dto.user.UpdateProfileRequest;
 import com.example.pogun.dto.user.UserAvailabilityResponse;
 import com.example.pogun.dto.user.UserAvailabilityUpdateRequest;
 import com.example.pogun.dto.user.UserCommunityPostSummaryResponse;
+import com.example.pogun.dto.user.UserCreditBalanceResponse;
 import com.example.pogun.dto.user.UserFollowResponse;
 import com.example.pogun.dto.user.UserLocationUpdateRequest;
 import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
+import com.example.pogun.service.payment.CreditService;
 import com.example.pogun.service.user.UserFollowService;
 import com.example.pogun.service.user.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +45,7 @@ public class UserController {
 
     private final UserService userService;
     private final UserFollowService userFollowService;
+    private final CreditService creditService;
 
     @GetMapping("/me")
     @Operation(summary = "프로필 조회", description = "로그인한 사용자의 프로필 정보를 조회합니다.")
@@ -94,6 +98,20 @@ public class UserController {
     public ResponseEntity<ApiResponse<List<UserCommunityPostSummaryResponse>>> myCommunityPosts() {
         List<UserCommunityPostSummaryResponse> data = userService.myCommunityPosts();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "커뮤니티 글 목록 조회 성공", data));
+    }
+
+    @GetMapping("/me/credits")
+    @Operation(summary = "내 크레딧 잔액 조회", description = "로그인한 사용자의 현재 AI 크레딧 잔액을 조회합니다.")
+    public ResponseEntity<ApiResponse<UserCreditBalanceResponse>> getCredits() {
+        UserCreditBalanceResponse data = creditService.getCurrentBalance();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "크레딧 잔액 조회 성공", data));
+    }
+
+    @GetMapping("/me/credit-logs")
+    @Operation(summary = "내 크레딧 이력 조회", description = "로그인한 사용자의 최근 크레딧 충전 및 사용 이력을 조회합니다.")
+    public ResponseEntity<ApiResponse<CreditLedgerListResponse>> getCreditLogs() {
+        CreditLedgerListResponse data = creditService.getCurrentUserCreditLogs();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "크레딧 이력 조회 성공", data));
     }
 
     @PostMapping("/{userId}/follow")

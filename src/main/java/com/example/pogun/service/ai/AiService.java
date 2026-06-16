@@ -2,6 +2,7 @@ package com.example.pogun.service.ai;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.MissingPetAnalysisRequestResponse;
 import com.example.pogun.dto.ai.SimilarNoticeItemResponse;
 import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
@@ -9,6 +10,7 @@ import com.example.pogun.entity.ai.AiAnalysis;
 import com.example.pogun.entity.ai.enums.AiAnalysisStatus;
 import com.example.pogun.entity.ai.enums.AiAnalysisTargetType;
 import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.ai.AiAnalysisRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
 import com.example.pogun.repository.shelterpet.ShelterPetRepository;
@@ -38,6 +40,43 @@ public class AiService {
 
     @Value("${app.ai.api-key:}")
     private String aiApiKey;
+
+    public MissingPetAnalysisRequestResponse createMissingPetAnalysisRequest(
+            User author,
+            PetNotice notice,
+            int remainingCredits,
+            int appliedMaxDescriptionLength,
+            String purchaseId,
+            String productId
+    ) {
+        AiAnalysis latest = aiAnalysisRepository.findTopByTargetTypeAndTargetIdOrderByCreatedAtDesc(
+                AiAnalysisTargetType.MISSING_PET,
+                notice.getId().toString()
+        ).orElse(null);
+        if (latest != null && (latest.getStatus() == AiAnalysisStatus.PENDING || latest.getStatus() == AiAnalysisStatus.RETRYING)) {
+            throw ApiException.conflict("ANALYSIS_ALREADY_PENDING", "이미 진행 중인 AI 분석 요청이 있습니다.");
+        }
+
+        AiAnalysis analysis = aiAnalysisRepository.save(AiAnalysis.builder()
+                .author(author)
+                .targetType(AiAnalysisTargetType.MISSING_PET)
+                .targetId(notice.getId().toString())
+                .status(AiAnalysisStatus.PENDING)
+                .provider("MANUAL_REQUEST")
+                .features(new ArrayList<>())
+                .similarNoticeIds(new ArrayList<>())
+                .build());
+
+        return new MissingPetAnalysisRequestResponse(
+                analysis.getId(),
+                notice.getId(),
+                analysis.getStatus().name(),
+                remainingCredits,
+                appliedMaxDescriptionLength,
+                purchaseId,
+                productId
+        );
+    }
 
     public AiAnalysisResultCallbackResponse saveMissingPetAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
         PetNotice notice = petNoticeRepository.findById(parseNoticeId(missingPetId))

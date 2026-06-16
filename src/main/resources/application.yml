@@ -84,6 +84,18 @@ app:
       abandonment-path: ${SHELTER_API_ABANDONMENT_PATH:/abandonmentPublic_v2}
   ai:
     api-key: ${AI_API_KEY:}
+  payment:
+    apple:
+      enabled: ${APPLE_APP_STORE_ENABLED:true}
+      key-id: ${APPLE_APP_STORE_KEY_ID:}
+      issuer-id: ${APPLE_APP_STORE_ISSUER_ID:}
+      bundle-id: ${APPLE_APP_STORE_BUNDLE_ID:}
+      private-key-base64: ${APPLE_APP_STORE_PRIVATE_KEY_BASE64:}
+      environment: ${APPLE_APP_STORE_ENVIRONMENT:sandbox}
+    google:
+      enabled: ${GOOGLE_PLAY_ENABLED:false}
+      package-name: ${GOOGLE_PLAY_PACKAGE_NAME:}
+      service-account-base64: ${GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64:}
   ai-source-cache:
     enabled: true
     ttl-seconds: 60
