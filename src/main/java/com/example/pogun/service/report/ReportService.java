@@ -4,6 +4,7 @@ import com.example.pogun.dto.admin.AdminReportDetailResponse;
 import com.example.pogun.dto.admin.AdminReportListResponse;
 import com.example.pogun.dto.admin.AdminReportActionRequest;
 import com.example.pogun.dto.admin.AdminReportReviewRequest;
+import com.example.pogun.dto.community.CommunityCommentReportRequest;
 import com.example.pogun.dto.report.ReportResponse;
 import com.example.pogun.entity.admin.enums.AdminPermission;
 import com.example.pogun.entity.community.CommunityComment;
@@ -86,6 +87,36 @@ public class ReportService {
                 .status(ReportStatus.RECEIVED)
                 .build());
         applyAutoHideThreshold(report);
+
+        return toReportResponse(report);
+    }
+
+    @Transactional
+    public ReportResponse createCommunityCommentReport(String postId, String commentId, CommunityCommentReportRequest request) {
+        User reporter = getCurrentUser();
+        UUID postUuid = parseUuid(postId);
+        UUID commentUuid = parseUuid(commentId);
+        CommunityComment comment = communityCommentRepository.findById(commentUuid)
+                .orElseThrow(() -> ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 댓글을 찾을 수 없습니다."));
+        if (!comment.getPost().getId().equals(postUuid) || comment.getStatus() != com.example.pogun.entity.community.enums.CommunityCommentStatus.NORMAL) {
+            throw ApiException.notFound("REPORT_TARGET_NOT_FOUND", "신고 대상 댓글을 찾을 수 없습니다.");
+        }
+
+        validateDuplicateReport(reporter, ReportTargetType.COMMUNITY_COMMENT, commentUuid);
+
+        String reason = request == null || request.getReason() == null || request.getReason().isBlank()
+                ? "ETC"
+                : request.getReason().trim();
+        String description = request == null ? null : normalizeNullable(request.getDescription());
+
+        Report report = reportRepository.save(Report.builder()
+                .reporter(reporter)
+                .targetType(ReportTargetType.COMMUNITY_COMMENT)
+                .targetId(commentUuid)
+                .reason(reason)
+                .description(description)
+                .status(ReportStatus.RECEIVED)
+                .build());
 
         return toReportResponse(report);
     }
@@ -456,6 +487,7 @@ public class ReportService {
         switch (report.getTargetType()) {
             case PET_NOTICE -> adminService.updateMissingPostVisibility(report.getTargetId().toString(), "HIDDEN");
             case COMMUNITY_POST -> adminService.updateCommunityVisibility(report.getTargetId().toString(), "HIDDEN");
+            case COMMUNITY_COMMENT -> adminService.deleteCommunityComment(report.getTargetId().toString());
             default -> throw ApiException.badRequest("UNSUPPORTED_REPORT_ACTION", "해당 신고 대상은 숨김 처리할 수 없습니다.");
         }
     }
@@ -464,6 +496,7 @@ public class ReportService {
         switch (report.getTargetType()) {
             case PET_NOTICE -> adminService.deleteMissingPost(report.getTargetId().toString());
             case COMMUNITY_POST -> adminService.deleteCommunityPost(report.getTargetId().toString());
+            case COMMUNITY_COMMENT -> adminService.deleteCommunityComment(report.getTargetId().toString());
             default -> throw ApiException.badRequest("UNSUPPORTED_REPORT_ACTION", "해당 신고 대상은 삭제 처리할 수 없습니다.");
         }
     }
@@ -629,7 +662,9 @@ public class ReportService {
         return switch (report.getTargetType()) {
             case PET_NOTICE -> "/api/admin/notices/" + report.getTargetId();
             case COMMUNITY_POST -> "/api/admin/community/posts/" + report.getTargetId();
-            case COMMUNITY_COMMENT -> "/api/admin/community/posts/" + report.getTargetId();
+            case COMMUNITY_COMMENT -> communityCommentRepository.findById(report.getTargetId())
+                    .map(comment -> "/api/admin/community/posts/" + comment.getPost().getId())
+                    .orElse("/api/admin/reports/" + report.getId());
             case NOTICE_CHAT_ROOM -> "/api/admin/reports/" + report.getId();
             case USER -> "/api/admin/users/" + report.getTargetId();
         };

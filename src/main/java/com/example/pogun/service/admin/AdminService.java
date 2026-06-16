@@ -9,6 +9,7 @@ import com.example.pogun.dto.admin.AdminStatusSummaryResponse;
 import com.example.pogun.dto.admin.AdminUserSanctionResponse;
 import com.example.pogun.dto.admin.AdminVisibilityResponse;
 import com.example.pogun.entity.admin.enums.AdminPermission;
+import com.example.pogun.entity.community.CommunityComment;
 import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.noticechat.NoticeChatRoom;
 import com.example.pogun.entity.noticechat.NoticeChatMessage;
@@ -45,7 +46,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.time.LocalDate;
+import java.util.Map;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
@@ -370,8 +374,32 @@ public class AdminService {
         return response;
     }
 
+    @Transactional
+    public AdminDeleteResponse deleteCommunityComment(String commentId) {
+        adminSecurityService.require(AdminPermission.NOTICE_WRITE);
+        CommunityComment comment = getCommunityComment(commentId);
+        CommunityPost post = comment.getPost();
+        softDeleteCommentTree(post, comment);
+        AdminDeleteResponse response = new AdminDeleteResponse(comment.getId(), true, comment.getStatus().name());
+        adminAuditService.log("ADMIN_COMMUNITY_COMMENT_DELETED", "COMMUNITY_COMMENT", comment.getId().toString(),
+                java.util.Map.of("status", CommunityCommentStatus.NORMAL.name()),
+                java.util.Map.of("status", comment.getStatus().name(), "postId", post.getId().toString()),
+                null);
+        return response;
+    }
+
     private CommunityPost getCommunityPost(String postId) {
         return communityPostRepository.findById(parseUuid(postId, "INVALID_COMMUNITY_POST_ID", "올바르지 않은 커뮤니티 글 ID 형식입니다.")).orElseThrow(() -> ApiException.notFound("COMMUNITY_POST_NOT_FOUND", "커뮤니티 게시글을 찾을 수 없습니다."));
+    }
+
+    private CommunityComment getCommunityComment(String commentId) {
+        CommunityComment comment = communityCommentRepository.findById(
+                parseUuid(commentId, "INVALID_COMMUNITY_COMMENT_ID", "올바르지 않은 댓글 ID 형식입니다.")
+        ).orElseThrow(() -> ApiException.notFound("COMMUNITY_COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다."));
+        if (comment.getStatus() != CommunityCommentStatus.NORMAL) {
+            throw ApiException.notFound("COMMUNITY_COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다.");
+        }
+        return comment;
     }
 
     private PetNotice getPetNotice(String postId) {
@@ -387,6 +415,25 @@ public class AdminService {
             return UUID.fromString(value);
         } catch (IllegalArgumentException e) {
             throw ApiException.badRequest(code, message);
+        }
+    }
+
+    private void softDeleteCommentTree(CommunityPost post, CommunityComment rootComment) {
+        List<CommunityComment> comments = communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL);
+        Map<UUID, List<CommunityComment>> childrenByParentId = new LinkedHashMap<>();
+        for (CommunityComment comment : comments) {
+            if (comment.getParentComment() == null) {
+                continue;
+            }
+            childrenByParentId.computeIfAbsent(comment.getParentComment().getId(), key -> new ArrayList<>()).add(comment);
+        }
+        markCommentTreeDeleted(rootComment, childrenByParentId);
+    }
+
+    private void markCommentTreeDeleted(CommunityComment comment, Map<UUID, List<CommunityComment>> childrenByParentId) {
+        comment.setStatus(CommunityCommentStatus.DELETED);
+        for (CommunityComment child : childrenByParentId.getOrDefault(comment.getId(), List.of())) {
+            markCommentTreeDeleted(child, childrenByParentId);
         }
     }
 

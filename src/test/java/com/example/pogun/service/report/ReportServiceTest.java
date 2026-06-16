@@ -1,12 +1,16 @@
 package com.example.pogun.service.report;
 
 import com.example.pogun.entity.missingpet.PetNotice;
+import com.example.pogun.entity.community.CommunityComment;
+import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
 import com.example.pogun.entity.report.Report;
 import com.example.pogun.entity.report.enums.ReportStatus;
 import com.example.pogun.entity.report.enums.ReportTargetType;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
+import com.example.pogun.dto.community.CommunityCommentReportRequest;
 import com.example.pogun.repository.community.CommunityCommentRepository;
 import com.example.pogun.repository.community.CommunityPostRepository;
 import com.example.pogun.repository.missingpet.PetNoticeRepository;
@@ -144,5 +148,53 @@ class ReportServiceTest {
         assertThat(items).hasSize(1);
         assertThat(items.get(0).get("status")).isEqualTo("PENDING");
         assertThat(items.get(0).get("targetType")).isEqualTo("NOTICE");
+    }
+
+    @Test
+    void createCommunityCommentReport_createsReportForActiveComment() {
+        UUID postId = UUID.randomUUID();
+        UUID commentId = UUID.randomUUID();
+        User reporter = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("reporter-uid")
+                .email("reporter@example.com")
+                .nickname("댓글신고자")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        CommunityPost post = CommunityPost.builder()
+                .id(postId)
+                .author(reporter)
+                .title("커뮤니티 글")
+                .build();
+        CommunityComment comment = CommunityComment.builder()
+                .id(commentId)
+                .post(post)
+                .author(reporter)
+                .content("문제 댓글")
+                .status(CommunityCommentStatus.NORMAL)
+                .build();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("reporter-uid", "token")
+        );
+
+        when(userRepository.findByFirebaseUid("reporter-uid")).thenReturn(Optional.of(reporter));
+        when(communityCommentRepository.findById(commentId)).thenReturn(Optional.of(comment));
+        when(reportRepository.existsByReporterAndTargetTypeAndTargetIdAndStatusIn(any(), any(), any(), any())).thenReturn(false);
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CommunityCommentReportRequest request = new CommunityCommentReportRequest();
+        request.setReason("ABUSE");
+        request.setDescription("욕설이 있습니다.");
+
+        reportService.createCommunityCommentReport(postId.toString(), commentId.toString(), request);
+
+        ArgumentCaptor<Report> reportCaptor = ArgumentCaptor.forClass(Report.class);
+        verify(reportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getTargetType()).isEqualTo(ReportTargetType.COMMUNITY_COMMENT);
+        assertThat(reportCaptor.getValue().getTargetId()).isEqualTo(commentId);
+        assertThat(reportCaptor.getValue().getReason()).isEqualTo("ABUSE");
+        assertThat(reportCaptor.getValue().getDescription()).isEqualTo("욕설이 있습니다.");
     }
 }
