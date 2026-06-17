@@ -10,6 +10,7 @@ import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.payment.PurchaseRepository;
 import com.example.pogun.service.user.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,20 +56,25 @@ public class PaymentService {
         }
         ensureNotAlreadyProcessed(verified);
 
-        Purchase purchase = purchaseRepository.save(Purchase.builder()
-                .user(user)
-                .platform(platform)
-                .status(PurchaseStatus.VERIFIED)
-                .productId(catalog.getProductId())
-                .transactionId(verified.transactionId())
-                .originalTransactionId(verified.originalTransactionId())
-                .purchaseToken(verified.purchaseToken())
-                .creditedCredits(catalog.getCredits())
-                .consumedCredits(0)
-                .providerPurchaseAt(verified.purchasedAt())
-                .providerEnvironment(verified.environment())
-                .verificationPayload(verified.rawPayload())
-                .build());
+        Purchase purchase;
+        try {
+            purchase = purchaseRepository.saveAndFlush(Purchase.builder()
+                    .user(user)
+                    .platform(platform)
+                    .status(PurchaseStatus.VERIFIED)
+                    .productId(catalog.getProductId())
+                    .transactionId(verified.transactionId())
+                    .originalTransactionId(verified.originalTransactionId())
+                    .purchaseToken(verified.purchaseToken())
+                    .creditedCredits(catalog.getCredits())
+                    .consumedCredits(0)
+                    .providerPurchaseAt(verified.purchasedAt())
+                    .providerEnvironment(verified.environment())
+                    .verificationPayload(verified.rawPayload())
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            throw ApiException.conflict("DUPLICATE_PURCHASE", "이미 처리 중이거나 처리된 결제입니다. 잠시 후 잔액을 다시 조회해주세요.");
+        }
 
         int balanceAfter = creditService.addCreditsForPurchase(user, purchase, catalog.getCredits());
         return new PaymentVerifyResponse(

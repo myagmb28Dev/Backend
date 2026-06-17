@@ -191,7 +191,7 @@ public class CreditService {
 
     private Purchase findEligiblePurchase(User user, String description) {
         int length = description == null ? 0 : description.length();
-        return purchaseRepository.findByUserAndStatusOrderByCreatedAtAsc(user, PurchaseStatus.VERIFIED).stream()
+        return purchaseRepository.findByUserAndStatusForUpdate(user, PurchaseStatus.VERIFIED).stream()
                 .filter(purchase -> safeConsumedCredits(purchase) < (purchase.getCreditedCredits() == null ? 0 : purchase.getCreditedCredits()))
                 .filter(purchase -> {
                     PaymentProductCatalog catalog = PaymentProductCatalog.requireSupported(purchase.getProductId());

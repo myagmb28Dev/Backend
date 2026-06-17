@@ -85,7 +85,7 @@ class PaymentServiceTest {
         when(androidVerifier.supports()).thenReturn(PaymentPlatform.ANDROID);
         when(purchaseRepository.findByTransactionId("tx-1")).thenReturn(Optional.empty());
         when(iosVerifier.verify(request)).thenReturn(verifiedPurchase);
-        when(purchaseRepository.save(any(Purchase.class))).thenReturn(savedPurchase);
+        when(purchaseRepository.saveAndFlush(any(Purchase.class))).thenReturn(savedPurchase);
         when(creditService.addCreditsForPurchase(user, savedPurchase, 3)).thenReturn(3);
 
         PaymentVerifyResponse response = paymentService.verify(request);

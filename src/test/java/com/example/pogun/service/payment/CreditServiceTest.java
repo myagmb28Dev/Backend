@@ -140,7 +140,7 @@ class CreditServiceTest {
         pack500.setCreatedAt(Instant.parse("2026-06-15T00:00:00Z"));
 
         when(currentUserService.getCurrentUser()).thenReturn(user);
-        when(purchaseRepository.findByUserAndStatusOrderByCreatedAtAsc(user, PurchaseStatus.VERIFIED))
+        when(purchaseRepository.findByUserAndStatusForUpdate(user, PurchaseStatus.VERIFIED))
                 .thenReturn(java.util.List.of(pack500, pack300));
         when(userCreditBalanceRepository.findByUserIdForUpdate(user.getId())).thenReturn(Optional.of(balance));
         when(userCreditBalanceRepository.save(balance)).thenReturn(balance);
@@ -167,7 +167,7 @@ class CreditServiceTest {
                 .build();
 
         when(currentUserService.getCurrentUser()).thenReturn(user);
-        when(purchaseRepository.findByUserAndStatusOrderByCreatedAtAsc(user, PurchaseStatus.VERIFIED))
+        when(purchaseRepository.findByUserAndStatusForUpdate(user, PurchaseStatus.VERIFIED))
                 .thenReturn(java.util.List.of(pack300));
 
         assertThatThrownBy(() -> creditService.useMissingPetAnalysisCredit("notice-2", "a".repeat(400)))
