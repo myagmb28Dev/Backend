@@ -1,6 +1,7 @@
 package com.example.pogun.controller.missingpet;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.MissingPetAnalysisRequestResponse;
 import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.missingpet.MissingPetCreateRequest;
@@ -140,6 +141,14 @@ public class MissingPetController {
     public ResponseEntity<ApiResponse<SimilarNoticeListResponse>> getSimilarNotices(@PathVariable String missingPetId) {
         SimilarNoticeListResponse data = missingPetService.getSimilarNotices(missingPetId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 유사 공고 조회 성공", data));
+    }
+
+    @PostMapping("/{missingPetId}/analyze")
+    @Operation(summary = "실종 공고 AI 수동 분석 요청", description = "실종 공고 설명을 기준으로 수동 AI 분석을 요청하고 요청권 1회를 차감합니다.")
+    public ResponseEntity<ApiResponse<MissingPetAnalysisRequestResponse>> requestManualAnalysis(@PathVariable String missingPetId) {
+        MissingPetAnalysisRequestResponse data = missingPetService.requestManualAnalysis(missingPetId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED, "실종 공고 AI 분석 요청이 접수되었습니다.", data));
     }
 
     @PostMapping("/{missingPetId}/analysis-result")

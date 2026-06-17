@@ -2,6 +2,7 @@ package com.example.pogun.service.missingpet;
 
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
+import com.example.pogun.dto.ai.MissingPetAnalysisRequestResponse;
 import com.example.pogun.dto.ai.SimilarNoticeListResponse;
 import com.example.pogun.dto.missingpet.MissingPetDetailResponse;
 import com.example.pogun.dto.missingpet.MissingPetListFiltersResponse;
@@ -16,6 +17,7 @@ import com.example.pogun.entity.user.User;
 import com.example.pogun.service.ai.AiService;
 import com.example.pogun.service.cache.AiSourceCacheService;
 import com.example.pogun.service.notification.NotificationService;
+import com.example.pogun.service.payment.CreditService;
 import com.example.pogun.service.storage.S3ImageStorageService;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
@@ -65,6 +67,7 @@ public class MissingPetService {
     private final AiService aiService;
     private final NoticeChatService noticeChatService;
     private final AiSourceCacheService aiSourceCacheService;
+    private final CreditService creditService;
 
     private static final String CACHE_NAMESPACE = "missing-pets";
 
@@ -419,6 +422,27 @@ public class MissingPetService {
     public SimilarNoticeListResponse getSimilarNotices(String missingPetId) {
         PetNotice notice = getVisibleNotice(missingPetId);
         return aiService.getLatestSimilarNotices("MISSING_PET", notice.getId().toString());
+    }
+
+    @Transactional
+    public MissingPetAnalysisRequestResponse requestManualAnalysis(String missingPetId) {
+        PetNotice notice = getOwnedNotice(missingPetId);
+        String description = blankToNull(notice.getDescription());
+        if (description == null) {
+            throw ApiException.badRequest("MISSING_NOTICE_DESCRIPTION", "공고 설명이 있어야 AI 분석을 요청할 수 있습니다.");
+        }
+        CreditService.ManualAnalysisCreditUsage creditUsage =
+                creditService.useMissingPetAnalysisCredit(notice.getId().toString(), description);
+        MissingPetAnalysisRequestResponse response = aiService.createMissingPetAnalysisRequest(
+                notice.getAuthor(),
+                notice,
+                creditUsage.balanceAfter(),
+                creditUsage.appliedMaxDescriptionLength(),
+                creditUsage.purchaseId(),
+                creditUsage.productId()
+        );
+        afterCommitOrNow(() -> aiSourceCacheService.bumpVersion(CACHE_NAMESPACE));
+        return response;
     }
 
     @Transactional

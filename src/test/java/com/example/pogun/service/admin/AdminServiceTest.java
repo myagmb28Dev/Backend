@@ -2,6 +2,10 @@ package com.example.pogun.service.admin;
 
 import com.example.pogun.dto.admin.AdminPromoteResponse;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
+import com.example.pogun.entity.community.CommunityComment;
+import com.example.pogun.entity.community.CommunityPost;
+import com.example.pogun.entity.community.enums.CommunityCommentStatus;
+import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -25,6 +29,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -100,5 +105,37 @@ class AdminServiceTest {
         assertThatThrownBy(() -> adminService.promoteUserToAdmin(missingUserId.toString()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("사용자를 찾을 수 없습니다.");
+    }
+    @Test
+    void deleteCommunityComment_marksCommentTreeDeleted() {
+        UUID postId = UUID.randomUUID();
+        UUID parentId = UUID.randomUUID();
+        UUID childId = UUID.randomUUID();
+        CommunityPost post = CommunityPost.builder()
+                .id(postId)
+                .status(CommunityPostStatus.ACTIVE)
+                .build();
+        CommunityComment parent = CommunityComment.builder()
+                .id(parentId)
+                .post(post)
+                .content("parent")
+                .status(CommunityCommentStatus.NORMAL)
+                .build();
+        CommunityComment child = CommunityComment.builder()
+                .id(childId)
+                .post(post)
+                .parentComment(parent)
+                .content("child")
+                .status(CommunityCommentStatus.NORMAL)
+                .build();
+
+        when(communityCommentRepository.findById(parentId)).thenReturn(Optional.of(parent));
+        when(communityCommentRepository.findByPostAndStatusOrderByCreatedAtAsc(post, CommunityCommentStatus.NORMAL))
+                .thenReturn(List.of(parent, child));
+
+        adminService.deleteCommunityComment(parentId.toString());
+
+        assertThat(parent.getStatus()).isEqualTo(CommunityCommentStatus.DELETED);
+        assertThat(child.getStatus()).isEqualTo(CommunityCommentStatus.DELETED);
     }
 }
