@@ -7,11 +7,14 @@ import com.example.pogun.entity.notification.enums.NotificationPriority;
 import com.example.pogun.entity.notification.enums.NotificationTargetType;
 import com.example.pogun.entity.notification.enums.NotificationType;
 import com.example.pogun.entity.user.User;
+import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.notification.NotificationDeviceDeleteResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenResponse;
 import com.example.pogun.dto.notification.NotificationFcmTokenRequest;
 import com.example.pogun.dto.notification.NotificationDeviceResponse;
+import com.example.pogun.dto.notification.NotificationSendRequest;
 import com.example.pogun.repository.notification.NotificationRepository;
 import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
@@ -35,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -308,6 +312,31 @@ class NotificationServiceTest {
     }
 
     @Test
+    void sendNotification_requiresAdminAuthority() {
+        User sender = user("sender");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        sender.getFirebaseUid(),
+                        null,
+                        List.of()
+                )
+        );
+
+        NotificationSendRequest request = new NotificationSendRequest();
+        request.setTarget("all");
+        request.setTitle("title");
+        request.setBody("body");
+
+        assertThatThrownBy(() -> notificationService.sendNotification(request))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.getStatus().value()).isEqualTo(403);
+                    assertThat(apiException.getCode()).isEqualTo("NOTIFICATION_SEND_FORBIDDEN");
+                });
+    }
+
+    @Test
     void upsertFcmToken_deactivatesOtherActiveTokensForSameDevice() {
         User user = user("owner");
         SecurityContextHolder.getContext().setAuthentication(
@@ -540,6 +569,7 @@ class NotificationServiceTest {
                 .firebaseUid(nickname + "-uid")
                 .email(nickname + "@test.dev")
                 .nickname(nickname)
+                .role(UserRole.USER)
                 .build();
     }
 

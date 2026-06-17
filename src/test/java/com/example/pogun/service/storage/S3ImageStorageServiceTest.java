@@ -96,6 +96,36 @@ class S3ImageStorageServiceTest {
         verify(s3StorageSupport, never()).uploadBytes(anyString(), org.mockito.ArgumentMatchers.any(byte[].class), anyString());
     }
 
+    @Test
+    void storeImageRejectsSpoofedImageContentType() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "profile.jpg",
+                "image/gif",
+                createJpegBytes()
+        );
+
+        assertThatThrownBy(() -> s3ImageStorageService.storeImage("profile", "users", UUID.randomUUID(), file))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("INVALID_IMAGE"));
+        verifyNoInteractions(s3StorageSupport);
+    }
+
+    @Test
+    void storeImageRejectsFakeMp4Payload() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "clip.mp4",
+                "video/mp4",
+                "not-a-real-mp4".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        );
+
+        assertThatThrownBy(() -> s3ImageStorageService.storeImage("notice-chat", "messages", UUID.randomUUID(), file))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("INVALID_IMAGE"));
+        verifyNoInteractions(s3StorageSupport);
+    }
+
     private byte[] createJpegBytes() {
         try {
             BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);

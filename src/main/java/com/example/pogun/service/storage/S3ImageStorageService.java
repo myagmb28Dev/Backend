@@ -140,6 +140,9 @@ public class S3ImageStorageService {
                 if (!MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType) && !"video/mp4".equals(contentType)) {
                     throw ApiException.badRequest("INVALID_IMAGE", "허용되지 않는 영상 형식입니다.");
                 }
+                if (!isMp4File(file)) {
+                    throw ApiException.badRequest("INVALID_IMAGE", "?뚯씪 ?댁슜???좏슚???곸긽??MP4媛 ?꾨떃?덈떎.");
+                }
                 return;
             }
             ImageFormat imageFormat = detectImageFormat(file);
@@ -264,11 +267,17 @@ public class S3ImageStorageService {
         return ImageFormat.UNKNOWN;
     }
 
+    private boolean isMp4File(MultipartFile file) throws IOException {
+        byte[] header = file.getInputStream().readNBytes(12);
+        return header.length >= 8
+                && header[4] == 0x66
+                && header[5] == 0x74
+                && header[6] == 0x79
+                && header[7] == 0x70;
+    }
+
     private boolean matchesExpectedFormat(String contentType, ImageFormat imageFormat) {
-        if (contentType.isBlank() || ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            return true;
-        }
-        if (MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType)) {
+        if (contentType.isBlank() || MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(contentType)) {
             return true;
         }
         if (contentType.startsWith("image/")) {

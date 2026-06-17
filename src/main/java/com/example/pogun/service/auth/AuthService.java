@@ -119,10 +119,7 @@ public class AuthService {
             return buildAuthResponse(user);
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
-            String detail = e instanceof FirebaseAuthException firebaseAuthException
-                    ? String.valueOf(firebaseAuthException.getAuthErrorCode())
-                    : e.getMessage();
-            throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + detail);
+            throw ApiException.unauthorized("INVALID_TOKEN", "인증에 실패했습니다. 다시 로그인해주세요.");
         } catch (RuntimeException e) {
             log.error("소셜 로그인 처리 중 런타임 오류 발생", e);
             throw ApiException.unauthorized("INVALID_TOKEN", "토큰 검증에 실패했습니다. 다시 로그인해주세요.");
@@ -229,10 +226,7 @@ public class AuthService {
             throw e;
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("관리자 Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
-            String detail = e instanceof FirebaseAuthException firebaseAuthException
-                    ? String.valueOf(firebaseAuthException.getAuthErrorCode())
-                    : e.getMessage();
-            throw ApiException.unauthorized("INVALID_TOKEN", "인증 오류가 발생했습니다: " + detail);
+            throw ApiException.unauthorized("INVALID_TOKEN", "인증에 실패했습니다. 다시 로그인해주세요.");
         } catch (RuntimeException e) {
             log.error("관리자 로그인 처리 중 런타임 오류 발생", e);
             throw ApiException.unauthorized("INVALID_TOKEN", "토큰 검증에 실패했습니다. 다시 로그인해주세요.");

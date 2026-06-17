@@ -1,5 +1,10 @@
 package com.example.pogun.config.web;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.example.pogun.service.admin.AdminTrafficLogService;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
@@ -16,13 +21,42 @@ import org.zalando.logbook.Precorrelation;
 import org.zalando.logbook.Sink;
 import org.zalando.logbook.servlet.LogbookFilter;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Configuration
 public class AdminTrafficLogbookConfig {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String REDACTED_VALUE = "[REDACTED]";
+    private static final Set<String> SENSITIVE_KEYS = Set.of(
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "access_token",
+            "refresh_token",
+            "id_token",
+            "token",
+            "password",
+            "firebaseidtoken",
+            "firebase_id_token",
+            "refreshtoken",
+            "refreshToken",
+            "idToken",
+            "accessToken",
+            "client_secret",
+            "secret",
+            "api_key",
+            "apikey",
+            "x-ai-api-key"
+    );
 
     @Bean
     public Logbook adminTrafficLogbook(Sink adminTrafficSink) {
@@ -64,7 +98,7 @@ public class AdminTrafficLogbookConfig {
 
         @Override
         public void write(Correlation correlation, HttpRequest request, HttpResponse response) {
-            String path = buildPath(request);
+            String path = sanitizePath(buildPath(request));
             if (shouldSkip(path)) {
                 startedAtByCorrelationId.remove(correlation.getId());
                 return;
@@ -117,7 +151,7 @@ public class AdminTrafficLogbookConfig {
             if (!isTextContent(contentType)) {
                 return "<non-text>";
             }
-            String normalized = new String(body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8).trim();
+            String normalized = sanitizeBody(body, contentType).trim();
             if (normalized.length() <= BODY_LIMIT) {
                 return normalized;
             }
@@ -171,5 +205,137 @@ public class AdminTrafficLogbookConfig {
         private String safe(String value) {
             return value == null ? "" : value;
         }
+    }
+
+    static String sanitizePath(String path) {
+        if (!StringUtils.hasText(path)) {
+            return "";
+        }
+        String trimmed = path.trim();
+        try {
+            URI uri = URI.create(trimmed);
+            String rawQuery = uri.getRawQuery();
+            if (!StringUtils.hasText(rawQuery)) {
+                return trimmed;
+            }
+            String sanitizedQuery = sanitizeFormEncoded(rawQuery, true);
+            if (uri.getScheme() != null) {
+                return new URI(
+                        uri.getScheme(),
+                        uri.getAuthority(),
+                        uri.getPath(),
+                        sanitizedQuery,
+                        uri.getFragment()
+                ).toString();
+            }
+            return (uri.getPath() == null ? "" : uri.getPath())
+                    + "?"
+                    + sanitizedQuery
+                    + (uri.getFragment() == null ? "" : "#" + uri.getFragment());
+        } catch (Exception ignored) {
+            int queryIndex = trimmed.indexOf('?');
+            if (queryIndex < 0) {
+                return trimmed;
+            }
+            String base = trimmed.substring(0, queryIndex);
+            String query = trimmed.substring(queryIndex + 1);
+            return base + "?" + sanitizeFormEncoded(query, true);
+        }
+    }
+
+    static String sanitizeBody(String body, String contentType) {
+        if (!StringUtils.hasText(body)) {
+            return "";
+        }
+        String normalizedContentType = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        String normalizedBody = new String(body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        if (normalizedContentType.startsWith("application/json")) {
+            return sanitizeJson(normalizedBody);
+        }
+        if (normalizedContentType.startsWith("application/x-www-form-urlencoded")) {
+            return sanitizeFormEncoded(normalizedBody, false);
+        }
+        return redactPlainText(normalizedBody);
+    }
+
+    private static String sanitizeJson(String body) {
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(body);
+            sanitizeJsonNode(root);
+            return OBJECT_MAPPER.writeValueAsString(root);
+        } catch (JsonProcessingException ignored) {
+            return redactPlainText(body);
+        }
+    }
+
+    private static void sanitizeJsonNode(JsonNode node) {
+        if (node instanceof ObjectNode objectNode) {
+            objectNode.fieldNames().forEachRemaining(fieldName -> {
+                JsonNode child = objectNode.get(fieldName);
+                if (isSensitiveKey(fieldName)) {
+                    objectNode.put(fieldName, REDACTED_VALUE);
+                    return;
+                }
+                sanitizeJsonNode(child);
+            });
+            return;
+        }
+        if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode child : arrayNode) {
+                sanitizeJsonNode(child);
+            }
+        }
+    }
+
+    private static String sanitizeFormEncoded(String raw, boolean keepEncoding) {
+        if (!StringUtils.hasText(raw)) {
+            return "";
+        }
+        String[] pairs = raw.split("&");
+        return java.util.Arrays.stream(pairs)
+                .map(pair -> sanitizeFormPair(pair, keepEncoding))
+                .collect(Collectors.joining("&"));
+    }
+
+    private static String sanitizeFormPair(String pair, boolean keepEncoding) {
+        int separator = pair.indexOf('=');
+        String rawKey = separator >= 0 ? pair.substring(0, separator) : pair;
+        String rawValue = separator >= 0 ? pair.substring(separator + 1) : "";
+        String decodedKey = decode(rawKey, keepEncoding);
+        if (!isSensitiveKey(decodedKey)) {
+            return pair;
+        }
+        String encodedValue = keepEncoding ? encode(REDACTED_VALUE) : REDACTED_VALUE;
+        return rawKey + "=" + encodedValue;
+    }
+
+    private static String redactPlainText(String body) {
+        String redacted = body;
+        for (String key : SENSITIVE_KEYS) {
+            redacted = redacted.replaceAll(
+                    "(?i)(\\b" + java.util.regex.Pattern.quote(key) + "\\b\\s*[=:]\\s*[\"']?)([^\\s,\"'&}]+)",
+                    "$1" + REDACTED_VALUE
+            );
+        }
+        return redacted;
+    }
+
+    private static boolean isSensitiveKey(String key) {
+        if (!StringUtils.hasText(key)) {
+            return false;
+        }
+        String normalized = key.trim().toLowerCase(Locale.ROOT);
+        return SENSITIVE_KEYS.contains(key) || SENSITIVE_KEYS.contains(normalized);
+    }
+
+    private static String decode(String value, boolean keepEncoding) {
+        if (!keepEncoding) {
+            return value;
+        }
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

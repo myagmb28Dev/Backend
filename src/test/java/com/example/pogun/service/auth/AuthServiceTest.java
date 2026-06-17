@@ -4,6 +4,7 @@ import com.example.pogun.config.firebase.FirebaseAuthProperties;
 import com.example.pogun.dto.auth.AuthResponse;
 import com.example.pogun.dto.auth.LogoutResponse;
 import com.example.pogun.dto.auth.OnboardingCompleteRequest;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.entity.user.PendingSocialSignup;
 import com.example.pogun.entity.user.User;
@@ -643,5 +644,34 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.loginAdmin("user-token", httpServletRequest))
                 .hasMessageContaining("관리자 계정만 로그인할 수 있습니다.");
+    }
+    @Test
+    void loginOrSignUp_doesNotExposeTokenFailureDetails() throws Exception {
+        when(firebaseIdentityService.verifyIdToken("bad-token"))
+                .thenThrow(new IllegalArgumentException("decoded internal failure detail"));
+
+        assertThatThrownBy(() -> authService.loginOrSignUp("bad-token", httpServletRequest))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getCode()).isEqualTo("INVALID_TOKEN");
+                    assertThat(apiException.getMessage()).isEqualTo("인증에 실패했습니다. 다시 로그인해주세요.");
+                    assertThat(apiException.getMessage()).doesNotContain("decoded internal failure detail");
+                });
+    }
+
+    @Test
+    void loginAdmin_doesNotExposeTokenFailureDetails() throws Exception {
+        when(firebaseIdentityService.verifyIdToken("bad-admin-token"))
+                .thenThrow(new IllegalArgumentException("decoded admin internal failure detail"));
+
+        assertThatThrownBy(() -> authService.loginAdmin("bad-admin-token", httpServletRequest))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getCode()).isEqualTo("INVALID_TOKEN");
+                    assertThat(apiException.getMessage()).isEqualTo("인증에 실패했습니다. 다시 로그인해주세요.");
+                    assertThat(apiException.getMessage()).doesNotContain("decoded admin internal failure detail");
+                });
     }
 }

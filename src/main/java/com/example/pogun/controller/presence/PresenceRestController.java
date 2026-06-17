@@ -2,6 +2,7 @@ package com.example.pogun.controller.presence;
 
 import com.example.pogun.config.web.RequestHostResolver;
 import com.example.pogun.dto.common.ApiResponse;
+import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.presence.PresenceHeartbeatRequest;
 import com.example.pogun.dto.presence.PresenceHeartbeatResponse;
 import com.example.pogun.service.noticechat.NoticeChatService;
@@ -58,7 +59,10 @@ public class PresenceRestController {
     private String currentFirebaseUid() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         Object principal = authentication != null ? authentication.getPrincipal() : null;
-        return principal instanceof String firebaseUid ? firebaseUid : "";
+        if (principal instanceof String firebaseUid && !firebaseUid.isBlank()) {
+            return firebaseUid;
+        }
+        throw ApiException.unauthorized("AUTHENTICATION_REQUIRED", "인증이 필요합니다.");
     }
 
     private String scopedSessionId(String clientSessionId, HttpServletRequest request) {

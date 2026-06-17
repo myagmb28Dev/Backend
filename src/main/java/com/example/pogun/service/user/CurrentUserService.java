@@ -16,10 +16,9 @@ public class CurrentUserService {
 
     public User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getPrincipal() == null) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof String firebaseUid) || firebaseUid.isBlank()) {
             throw ApiException.unauthorized("AUTHENTICATION_REQUIRED", "인증이 필요합니다.");
         }
-        String firebaseUid = String.valueOf(authentication.getPrincipal());
         return userRepository.findByFirebaseUid(firebaseUid)
                 .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
     }

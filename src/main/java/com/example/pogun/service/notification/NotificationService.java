@@ -36,6 +36,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -191,6 +192,7 @@ public class NotificationService {
 
     @Transactional
     public Map<String, Object> sendNotification(NotificationSendRequest request) {
+        requireAdminNotificationAuthority();
         String target = trimToNull(request == null ? null : request.getTarget());
         if (target == null) {
             throw ApiException.badRequest("MISSING_NOTIFICATION_TARGET", "알림 대상은 필수입니다.");
@@ -607,6 +609,16 @@ public class NotificationService {
         return userNotificationSettingRepository.findByUserAndType(user, type)
                 .map(UserNotificationSetting::getEnabled)
                 .orElse(true);
+    }
+
+    private void requireAdminNotificationAuthority() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean allowed = authentication != null
+                && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+        if (!allowed) {
+            throw ApiException.forbidden("NOTIFICATION_SEND_FORBIDDEN", "?뚮┝ 諛쒖넚 沅뚰븳???놁뒿?덈떎.");
+        }
     }
 
     private User getCurrentUser() {

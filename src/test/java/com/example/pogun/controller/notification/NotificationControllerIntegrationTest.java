@@ -109,7 +109,7 @@ class NotificationControllerIntegrationTest extends IntegrationTestProperties {
 
     @Test
     void sendToUser_createsNotificationForRecipient() throws Exception {
-        User sender = userRepository.save(user("sender", "sender@test.dev", "sender"));
+        User sender = userRepository.save(user("sender", "sender@test.dev", "sender", UserStatus.ACTIVE, UserRole.ADMIN));
         User recipient = userRepository.save(user("recipient", "recipient@test.dev", "recipient"));
 
         String body = """
@@ -138,7 +138,7 @@ class NotificationControllerIntegrationTest extends IntegrationTestProperties {
 
     @Test
     void sendToAllUsers_createsNotificationsForActiveUsersExceptSender() throws Exception {
-        User sender = userRepository.save(user("sender-all", "sender-all@test.dev", "sender-all"));
+        User sender = userRepository.save(user("sender-all", "sender-all@test.dev", "sender-all", UserStatus.ACTIVE, UserRole.ADMIN));
         User active1 = userRepository.save(user("active1", "active1@test.dev", "active1"));
         User active2 = userRepository.save(user("active2", "active2@test.dev", "active2"));
         User withdrawn = userRepository.save(user("withdrawn", "withdrawn@test.dev", "withdrawn", UserStatus.WITHDRAWN));
@@ -172,11 +172,35 @@ class NotificationControllerIntegrationTest extends IntegrationTestProperties {
                 .isEmpty();
     }
 
+    @Test
+    void sendNotification_forbiddenForNonAdminUser() throws Exception {
+        User sender = userRepository.save(user("sender-user", "sender-user@test.dev", "sender-user"));
+        User recipient = userRepository.save(user("recipient-user", "recipient-user@test.dev", "recipient-user"));
+
+        String body = """
+                {
+                  "target": "specific",
+                  "title": "권한 없음",
+                  "body": "일반 사용자는 발송 불가",
+                  "userIds": ["%s"]
+                }
+                """.formatted(recipient.getId());
+
+        mockMvc.perform(post("/api/notifications/send")
+                        .with(authentication(auth(sender)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(notificationRepository.findByUserOrderByCreatedAtDesc(recipient))
+                .isEmpty();
+    }
+
     private UsernamePasswordAuthenticationToken auth(User user) {
         return new UsernamePasswordAuthenticationToken(
                 user.getFirebaseUid(),
                 null,
-                List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                List.of(new SimpleGrantedAuthority("ROLE_" + (user.getRole() == null ? UserRole.USER.name() : user.getRole().name())))
         );
     }
 
@@ -185,11 +209,15 @@ class NotificationControllerIntegrationTest extends IntegrationTestProperties {
     }
 
     private User user(String uidSeed, String email, String nickname, UserStatus status) {
+        return user(uidSeed, email, nickname, status, UserRole.USER);
+    }
+
+    private User user(String uidSeed, String email, String nickname, UserStatus status, UserRole role) {
         return User.builder()
                 .firebaseUid(uidSeed + "-" + UUID.randomUUID())
                 .email(email)
                 .nickname(nickname)
-                .role(UserRole.USER)
+                .role(role)
                 .status(status)
                 .build();
     }

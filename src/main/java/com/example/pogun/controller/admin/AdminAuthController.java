@@ -45,7 +45,7 @@ public class AdminAuthController {
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
-            throw ApiException.internal("ADMIN_LOGIN_UNHANDLED", e.getClass().getName() + ": " + e.getMessage());
+            throw ApiException.internal("ADMIN_LOGIN_UNHANDLED", "관리자 로그인 처리 중 오류가 발생했습니다.");
         }
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "관리자 로그인 처리 성공", data));
     }

@@ -70,7 +70,7 @@ public class FirebaseTokenRefreshService {
             long expiresIn = parseLongOrDefault(expiresInRaw, 3600L);
             return new TokenRefreshResponse(idToken, newRefreshToken, expiresIn, firebaseUid, projectId);
         } catch (WebClientResponseException e) {
-            log.warn("Firebase token refresh rejected: status={} body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
+            log.warn("Firebase token refresh rejected: status={}", e.getStatusCode().value());
             throw ApiException.unauthorized("TOKEN_REFRESH_FAILED", "Firebase 토큰 갱신에 실패했습니다.");
         } catch (WebClientRequestException e) {
             log.warn("Firebase token refresh request failed: {}", e.getMessage());
