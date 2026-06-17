@@ -37,9 +37,18 @@ class AdminTrafficLogbookConfigTest {
     @Test
     void sanitizePath_redactsSensitiveQueryParameters() {
         String sanitized = AdminTrafficLogbookConfig.sanitizePath(
-                "/api/auth/refresh?refresh_token=secret-refresh-token&token=abc123&safe=value"
+                "/api/auth/refresh?refresh_token=secret-refresh-token&token=abc123&ServiceKey=public-api-secret&PurchaseToken=purchase-secret&safe=value"
         );
 
-        assertThat(sanitized).isEqualTo("/api/auth/refresh?refresh_token=%5BREDACTED%5D&token=%5BREDACTED%5D&safe=value");
+        assertThat(sanitized).isEqualTo("/api/auth/refresh?refresh_token=%5BREDACTED%5D&token=%5BREDACTED%5D&ServiceKey=%5BREDACTED%5D&PurchaseToken=%5BREDACTED%5D&safe=value");
+    }
+
+    @Test
+    void sanitizePath_redactsAbsoluteUrlWithoutDoubleEncoding() {
+        String sanitized = AdminTrafficLogbookConfig.sanitizePath(
+                "https://securetoken.googleapis.com/v1/token?key=firebase-secret&safe=value"
+        );
+
+        assertThat(sanitized).isEqualTo("https://securetoken.googleapis.com/v1/token?key=%5BREDACTED%5D&safe=value");
     }
 }

@@ -60,6 +60,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NotificationService {
     private static final int MIN_INACTIVE_TOKEN_RETENTION_DAYS = 1;
+    private static final String REDACTED_TOKEN = "[REDACTED]";
 
     private final NotificationRepository notificationRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
@@ -416,7 +417,7 @@ public class NotificationService {
 
         UserFcmToken saved = userFcmTokenRepository.save(fcmToken);
         deactivateOtherActiveTokensForSameDevice(user, platform, deviceId, token);
-        return new NotificationFcmTokenResponse(saved.getId(), saved.getToken(), saved.getPlatform(), saved.getDeviceId(), saved.getActive());
+        return new NotificationFcmTokenResponse(saved.getId(), REDACTED_TOKEN, saved.getPlatform(), saved.getDeviceId(), saved.getActive());
     }
 
     @Transactional(readOnly = true)

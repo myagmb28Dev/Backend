@@ -3,6 +3,9 @@ package com.example.pogun.service.admin;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -10,11 +13,29 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class AdminTrafficLogService {
 
     private static final int MAX_LOG_SIZE = 500;
+    private static final String REDACTED_VALUE = "[REDACTED]";
+    private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
+            "accesstoken",
+            "apikey",
+            "clientsecret",
+            "firebaseidtoken",
+            "idtoken",
+            "key",
+            "password",
+            "purchasetoken",
+            "refreshtoken",
+            "secret",
+            "servicekey",
+            "token",
+            "xaiapikey"
+    );
     private static final List<String> TRACKED_API_PREFIXES = List.of(
             "/api/"
     );
@@ -26,11 +47,12 @@ public class AdminTrafficLogService {
         if (isExcludedTrafficPath(path)) {
             return;
         }
+        String sanitizedPath = sanitizePath(path);
         push(Map.of(
                 "direction", "IN",
                 "timestamp", Instant.now().toString(),
                 "method", method,
-                "path", path,
+                "path", sanitizedPath,
                 "status", status,
                 "durationMs", durationMs,
                 "remoteAddr", remoteAddr == null ? "" : remoteAddr,
@@ -44,7 +66,7 @@ public class AdminTrafficLogService {
                 "direction", "OUT",
                 "timestamp", Instant.now().toString(),
                 "method", method,
-                "path", url,
+                "path", sanitizePath(url),
                 "status", status,
                 "durationMs", durationMs,
                 "remoteAddr", source == null ? "" : source
@@ -140,5 +162,81 @@ public class AdminTrafficLogService {
             value = value.substring(0, hashIndex);
         }
         return value;
+    }
+
+    public static String sanitizePath(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            return "";
+        }
+        String value = rawPath.trim();
+        try {
+            URI uri = URI.create(value);
+            String rawQuery = uri.getRawQuery();
+            if (rawQuery == null || rawQuery.isBlank()) {
+                return value;
+            }
+            String sanitizedQuery = sanitizeQuery(rawQuery);
+            if (uri.getScheme() != null) {
+                return rebuildUri(uri, sanitizedQuery);
+            }
+            return (uri.getRawPath() == null ? "" : uri.getRawPath())
+                    + "?"
+                    + sanitizedQuery
+                    + (uri.getRawFragment() == null ? "" : "#" + uri.getRawFragment());
+        } catch (Exception ignored) {
+            int queryIndex = value.indexOf('?');
+            if (queryIndex < 0) {
+                return value;
+            }
+            return value.substring(0, queryIndex + 1) + sanitizeQuery(value.substring(queryIndex + 1));
+        }
+    }
+
+    private static String rebuildUri(URI uri, String sanitizedQuery) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(uri.getScheme()).append(":");
+        if (uri.getRawAuthority() != null) {
+            builder.append("//").append(uri.getRawAuthority());
+        }
+        if (uri.getRawPath() != null) {
+            builder.append(uri.getRawPath());
+        }
+        builder.append("?").append(sanitizedQuery);
+        if (uri.getRawFragment() != null) {
+            builder.append("#").append(uri.getRawFragment());
+        }
+        return builder.toString();
+    }
+
+    private static String sanitizeQuery(String rawQuery) {
+        return java.util.Arrays.stream(rawQuery.split("&"))
+                .map(AdminTrafficLogService::sanitizeQueryPair)
+                .collect(Collectors.joining("&"));
+    }
+
+    private static String sanitizeQueryPair(String pair) {
+        int separator = pair.indexOf('=');
+        String rawKey = separator >= 0 ? pair.substring(0, separator) : pair;
+        String decodedKey;
+        try {
+            decodedKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return pair;
+        }
+        if (!isSensitiveQueryKey(decodedKey)) {
+            return pair;
+        }
+        return rawKey + "=" + URLEncoder.encode(REDACTED_VALUE, StandardCharsets.UTF_8);
+    }
+
+    private static boolean isSensitiveQueryKey(String key) {
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+        String normalized = key.trim()
+                .replace("_", "")
+                .replace("-", "")
+                .toLowerCase(Locale.ROOT);
+        return SENSITIVE_QUERY_KEYS.contains(normalized);
     }
 }

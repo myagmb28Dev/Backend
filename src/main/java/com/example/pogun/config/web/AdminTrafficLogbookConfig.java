@@ -49,6 +49,12 @@ public class AdminTrafficLogbookConfig {
             "firebase_id_token",
             "refreshtoken",
             "refreshToken",
+            "purchaseToken",
+            "purchasetoken",
+            "purchase_token",
+            "serviceKey",
+            "servicekey",
+            "service_key",
             "idToken",
             "accessToken",
             "client_secret",
@@ -57,6 +63,7 @@ public class AdminTrafficLogbookConfig {
             "apikey",
             "x-ai-api-key"
     );
+    private static final Set<String> SENSITIVE_QUERY_ONLY_KEYS = Set.of("key");
 
     @Bean
     public Logbook adminTrafficLogbook(Sink adminTrafficSink) {
@@ -220,18 +227,12 @@ public class AdminTrafficLogbookConfig {
             }
             String sanitizedQuery = sanitizeFormEncoded(rawQuery, true);
             if (uri.getScheme() != null) {
-                return new URI(
-                        uri.getScheme(),
-                        uri.getAuthority(),
-                        uri.getPath(),
-                        sanitizedQuery,
-                        uri.getFragment()
-                ).toString();
+                return rebuildUri(uri, sanitizedQuery);
             }
-            return (uri.getPath() == null ? "" : uri.getPath())
+            return (uri.getRawPath() == null ? "" : uri.getRawPath())
                     + "?"
                     + sanitizedQuery
-                    + (uri.getFragment() == null ? "" : "#" + uri.getFragment());
+                    + (uri.getRawFragment() == null ? "" : "#" + uri.getRawFragment());
         } catch (Exception ignored) {
             int queryIndex = trimmed.indexOf('?');
             if (queryIndex < 0) {
@@ -241,6 +242,22 @@ public class AdminTrafficLogbookConfig {
             String query = trimmed.substring(queryIndex + 1);
             return base + "?" + sanitizeFormEncoded(query, true);
         }
+    }
+
+    private static String rebuildUri(URI uri, String sanitizedQuery) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(uri.getScheme()).append(":");
+        if (uri.getRawAuthority() != null) {
+            builder.append("//").append(uri.getRawAuthority());
+        }
+        if (uri.getRawPath() != null) {
+            builder.append(uri.getRawPath());
+        }
+        builder.append("?").append(sanitizedQuery);
+        if (uri.getRawFragment() != null) {
+            builder.append("#").append(uri.getRawFragment());
+        }
+        return builder.toString();
     }
 
     static String sanitizeBody(String body, String contentType) {
@@ -272,7 +289,7 @@ public class AdminTrafficLogbookConfig {
         if (node instanceof ObjectNode objectNode) {
             objectNode.fieldNames().forEachRemaining(fieldName -> {
                 JsonNode child = objectNode.get(fieldName);
-                if (isSensitiveKey(fieldName)) {
+                if (isSensitiveKey(fieldName, false)) {
                     objectNode.put(fieldName, REDACTED_VALUE);
                     return;
                 }
@@ -302,7 +319,7 @@ public class AdminTrafficLogbookConfig {
         String rawKey = separator >= 0 ? pair.substring(0, separator) : pair;
         String rawValue = separator >= 0 ? pair.substring(separator + 1) : "";
         String decodedKey = decode(rawKey, keepEncoding);
-        if (!isSensitiveKey(decodedKey)) {
+        if (!isSensitiveKey(decodedKey, keepEncoding)) {
             return pair;
         }
         String encodedValue = keepEncoding ? encode(REDACTED_VALUE) : REDACTED_VALUE;
@@ -320,12 +337,14 @@ public class AdminTrafficLogbookConfig {
         return redacted;
     }
 
-    private static boolean isSensitiveKey(String key) {
+    private static boolean isSensitiveKey(String key, boolean includeQueryOnlyKeys) {
         if (!StringUtils.hasText(key)) {
             return false;
         }
         String normalized = key.trim().toLowerCase(Locale.ROOT);
-        return SENSITIVE_KEYS.contains(key) || SENSITIVE_KEYS.contains(normalized);
+        return SENSITIVE_KEYS.contains(key)
+                || SENSITIVE_KEYS.contains(normalized)
+                || (includeQueryOnlyKeys && SENSITIVE_QUERY_ONLY_KEYS.contains(normalized));
     }
 
     private static String decode(String value, boolean keepEncoding) {

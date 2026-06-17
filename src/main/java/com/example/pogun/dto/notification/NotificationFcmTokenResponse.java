@@ -7,5 +7,12 @@ import java.util.UUID;
  */
 
 @Schema(description = "FCM 토큰 등록 응답")
-public record NotificationFcmTokenResponse(UUID id, String token, String platform, String deviceId, Boolean active) {
+public record NotificationFcmTokenResponse(
+        UUID id,
+        @Schema(description = "FCM 토큰 원문은 응답하지 않고 마스킹합니다.", example = "[REDACTED]")
+        String token,
+        String platform,
+        String deviceId,
+        Boolean active
+) {
 }

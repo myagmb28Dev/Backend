@@ -358,6 +358,8 @@ class NotificationServiceTest {
         );
 
         assertThat(response.active()).isTrue();
+        assertThat(response.token()).isEqualTo("[REDACTED]");
+        assertThat(response.token()).isNotEqualTo("token-1");
         verify(userFcmTokenRepository).deactivateActiveTokensForSameDeviceExcludingCurrent(
                 user, "WEB", "device-1", "token-1"
         );
@@ -382,6 +384,8 @@ class NotificationServiceTest {
         );
 
         assertThat(response.active()).isTrue();
+        assertThat(response.token()).isEqualTo("[REDACTED]");
+        assertThat(response.token()).isNotEqualTo("token-2");
         verify(userFcmTokenRepository, never()).deactivateActiveTokensForSameDeviceExcludingCurrent(
                 any(), any(), any(), any()
         );
