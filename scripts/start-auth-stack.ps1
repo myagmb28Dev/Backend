@@ -17,7 +17,7 @@ param(
     [switch]$NoDocker,
     [string[]]$DockerServices = @("redis"),
     [switch]$NoAutoOpen,
-    [switch]$NoKeepAlive = $true,
+    [switch]$NoKeepAlive,
     [switch]$WaitForEnd
 )
 
@@ -661,21 +661,45 @@ if ($PrepareTestUser) {
     Write-Host "These token files are emulator-only. Do not use them against real Firebase mode or deployed servers." -ForegroundColor Yellow
 }
 
-if (-not $NoAutoOpen) {
-    try {
-        Start-Process "http://localhost:$BackendPort/Full_Compact.html" | Out-Null
-        Write-Host "Opened: http://localhost:$BackendPort/Full_Compact.html"
-    } catch {
-        Write-Warning "Failed to auto-open browser: $($_.Exception.Message)"
-    }
-}
-
 if (-not $NoKeepAlive) {
     Write-Host ""
-    Write-Host "Launcher is now monitoring. Press Ctrl+C to stop this terminal watcher." -ForegroundColor Cyan
-    Write-Host "Note: Auth/Backend child processes keep running in their own windows." -ForegroundColor DarkGray
+    Write-Host "Launcher is now monitoring. Type 'end' and press Enter to stop backend and emulator." -ForegroundColor Cyan
+    Write-Host "Press Ctrl+C to stop this terminal watcher without stopping child processes." -ForegroundColor DarkGray
+    Write-Host -NoNewline "command: "
+    $commandBuffer = ""
     while ($true) {
-        Start-Sleep -Seconds 5
+        while ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            if ($key.Key -eq [ConsoleKey]::Enter) {
+                Write-Host ""
+                $command = $commandBuffer
+                $commandBuffer = ""
+            } elseif ($key.Key -eq [ConsoleKey]::Backspace) {
+                if ($commandBuffer.Length -gt 0) {
+                    $commandBuffer = $commandBuffer.Substring(0, $commandBuffer.Length - 1)
+                    Write-Host -NoNewline "`b `b"
+                }
+                continue
+            } else {
+                $commandBuffer += $key.KeyChar
+                Write-Host -NoNewline $key.KeyChar
+                continue
+            }
+
+            if ($null -ne $command -and $command.Trim().ToLowerInvariant() -eq "end") {
+                Stop-ProcessesListeningOnPort -Port $BackendPort -Name "backend"
+                Stop-ProcessesListeningOnPort -Port $AuthPort -Name "Firebase Auth Emulator"
+                Stop-ProcessesListeningOnPort -Port $UiPort -Name "Firebase Emulator UI"
+                break
+            }
+            Write-Host "Unknown command. Type 'end' and press Enter to stop backend and emulator." -ForegroundColor Yellow
+            Write-Host -NoNewline "command: "
+        }
+        if ($null -ne $command -and $command.Trim().ToLowerInvariant() -eq "end") {
+            break
+        }
+
+        Start-Sleep -Seconds 1
         $authReady = Test-TcpPort -Port $AuthPort
         $backendReady = Test-TcpPort -Port $BackendPort
         if (-not $authReady -or -not $backendReady) {
@@ -683,18 +707,6 @@ if (-not $NoKeepAlive) {
             if (-not $authReady) { $down += "Auth:$AuthPort" }
             if (-not $backendReady) { $down += "Backend:$BackendPort" }
             Write-Warning ("Detected down service(s): " + ($down -join ", "))
-        }
-    }
-}
-
-if ($WaitForEnd) {
-    Write-Host ""
-    Write-Host "Type 'end' and press Enter to stop backend on port $BackendPort." -ForegroundColor Cyan
-    while ($true) {
-        $command = Read-Host "command"
-        if ($null -ne $command -and $command.Trim().ToLowerInvariant() -eq "end") {
-            Stop-ProcessesListeningOnPort -Port $BackendPort -Name "backend"
-            break
         }
     }
 }
