@@ -341,6 +341,24 @@ flowchart LR
 - `.env.local`
   - local-only overrides
 
+### Apple Sandbox 결제 테스트
+
+- 로컬 결제 검증 테스트는 `SPRING_PROFILES_ACTIVE=local` 기준으로 진행합니다.
+- `application-local.yml` 이 `.env.local` 을 읽도록 구성되어 있습니다.
+- `.env.local` 에 아래 값을 채우면 Apple Sandbox 검증 설정이 로컬 서버에 반영됩니다.
+  - `APPLE_APP_STORE_ENABLED=true`
+  - `APPLE_APP_STORE_KEY_ID`
+  - `APPLE_APP_STORE_ISSUER_ID`
+  - `APPLE_APP_STORE_BUNDLE_ID`
+  - `APPLE_APP_STORE_PRIVATE_KEY_BASE64`
+  - `APPLE_APP_STORE_ENVIRONMENT=sandbox`
+- 테스트 순서:
+  - 로컬 서버 실행
+  - iOS Sandbox Tester 계정으로 결제 수행
+  - 앱/프론트에서 받은 `transactionId` 또는 `signedTransactionInfo` 로 백엔드 결제 검증 API 호출
+  - 결제 적립 후 수동 AI 분석 요청 API 호출로 차감까지 확인
+- Sandbox 결제는 실제 카드 과금이 발생하지 않는 테스트 흐름입니다.
+
 ### 앱 실행 / Run Application
 
 ```bash
