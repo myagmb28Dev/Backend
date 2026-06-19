@@ -80,30 +80,15 @@ public class AuthService {
 
             User user = userRepository.findByFirebaseUid(uid)
                     .map(existingUser -> {
-                        existingUser.setEmail(email);
-                        existingUser.setNickname(resolveNicknameForExistingUser(existingUser.getNickname(), resolvedNickname));
-                        fillProfileImageIfMissing(existingUser, picture);
-                        existingUser.setAuthProvider(normalizedProvider);
-                        existingUser.setLastActiveAt(Instant.now());
-                        if (existingUser.getRole() == null) {
-                            existingUser.setRole(UserRole.USER);
-                        }
-                        existingUser.setStatus(UserStatus.ACTIVE);
-                        return userRepository.save(existingUser);
+                        assertActiveLoginUser(existingUser);
+                        return updateExistingLoginUser(existingUser, email, normalizedProvider, resolvedNickname, picture);
                     })
                     .orElseGet(() -> userRepository.findByEmail(email)
                             .map(existingByEmail -> {
                                 // 에뮬레이터/소셜 재연동 등으로 UID가 바뀐 경우 기존 계정에 새 UID를 연결한다.
+                                assertActiveLoginUser(existingByEmail);
                                 existingByEmail.setFirebaseUid(uid);
-                                existingByEmail.setNickname(resolveNicknameForExistingUser(existingByEmail.getNickname(), resolvedNickname));
-                                fillProfileImageIfMissing(existingByEmail, picture);
-                                existingByEmail.setAuthProvider(normalizedProvider);
-                                existingByEmail.setLastActiveAt(Instant.now());
-                                if (existingByEmail.getRole() == null) {
-                                    existingByEmail.setRole(UserRole.USER);
-                                }
-                                existingByEmail.setStatus(UserStatus.ACTIVE);
-                                return userRepository.save(existingByEmail);
+                                return updateExistingLoginUser(existingByEmail, email, normalizedProvider, resolvedNickname, picture);
                             })
                     .orElse(null));
 
@@ -117,6 +102,8 @@ public class AuthService {
             pendingSocialSignupRepository.deleteByFirebaseUid(uid);
             touchAndPublishPresenceSafely(uid, RequestHostResolver.resolve(httpRequest));
             return buildAuthResponse(user);
+        } catch (ApiException e) {
+            throw e;
         } catch (FirebaseAuthException | IllegalArgumentException e) {
             log.error("Firebase 토큰 검증 중 오류 발생: {}", e.getMessage());
             throw ApiException.unauthorized("INVALID_TOKEN", "인증에 실패했습니다. 다시 로그인해주세요.");
@@ -287,6 +274,32 @@ public class AuthService {
             return;
         }
         user.setProfileImageUrl(incomingProfileImageUrl.trim());
+    }
+
+    private User updateExistingLoginUser(User user, String email, String normalizedProvider, String resolvedNickname, String picture) {
+        user.setEmail(email);
+        user.setNickname(resolveNicknameForExistingUser(user.getNickname(), resolvedNickname));
+        fillProfileImageIfMissing(user, picture);
+        user.setAuthProvider(normalizedProvider);
+        user.setLastActiveAt(Instant.now());
+        if (user.getRole() == null) {
+            user.setRole(UserRole.USER);
+        }
+        if (user.getStatus() == null) {
+            user.setStatus(UserStatus.ACTIVE);
+        }
+        return userRepository.save(user);
+    }
+
+    private void assertActiveLoginUser(User user) {
+        if (user == null || user.getStatus() == null || user.getStatus() == UserStatus.ACTIVE) {
+            return;
+        }
+        UserStatus status = user.getStatus();
+        throw ApiException.forbidden(
+                status == UserStatus.BANNED ? "USER_BANNED" : "USER_WITHDRAWN",
+                status == UserStatus.BANNED ? "Banned users cannot sign in." : "Withdrawn users cannot sign in."
+        );
     }
 
     private String resolveDisplayName(FirebaseIdentityService.FirebaseIdentity identity, String email) {

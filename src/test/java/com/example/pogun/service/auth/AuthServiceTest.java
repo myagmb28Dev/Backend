@@ -551,6 +551,74 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginOrSignUp_rejectsBannedExistingUserWithoutReactivating() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "banned-uid",
+                "banned@example.com",
+                "Banned User",
+                null,
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "banned@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("banned-uid")
+                .email("banned@example.com")
+                .nickname("banned-user")
+                .role(UserRole.USER)
+                .status(UserStatus.BANNED)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("banned-uid")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.loginOrSignUp("id-token", httpServletRequest))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getCode()).isEqualTo("USER_BANNED");
+                });
+        assertThat(existing.getStatus()).isEqualTo(UserStatus.BANNED);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void loginOrSignUp_rejectsWithdrawnExistingEmailWithoutLinkingUid() throws Exception {
+        FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
+                "new-uid",
+                "withdrawn@example.com",
+                "Withdrawn User",
+                null,
+                "google.com",
+                List.of(new FirebaseIdentityService.ProviderIdentity("google.com", "google-uid", "withdrawn@example.com")),
+                java.util.Map.of()
+        );
+        User existing = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("old-uid")
+                .email("withdrawn@example.com")
+                .nickname("withdrawn-user")
+                .role(UserRole.USER)
+                .status(UserStatus.WITHDRAWN)
+                .build();
+
+        when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
+        when(userRepository.findByFirebaseUid("new-uid")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("withdrawn@example.com")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.loginOrSignUp("id-token", httpServletRequest))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getCode()).isEqualTo("USER_WITHDRAWN");
+                });
+        assertThat(existing.getFirebaseUid()).isEqualTo("old-uid");
+        assertThat(existing.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
     void loginAdmin_allowsExistingAdminUserWithFirebaseProvider() throws Exception {
         FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
                 "admin-uid",

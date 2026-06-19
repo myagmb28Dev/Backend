@@ -79,20 +79,20 @@ public class AiService {
     }
 
     public AiAnalysisResultCallbackResponse saveMissingPetAnalysisResult(String missingPetId, String apiKey, AiAnalysisResultCallbackRequest request) {
+        verifyAiApiKey(apiKey);
         PetNotice notice = petNoticeRepository.findById(parseNoticeId(missingPetId))
                 .orElseThrow(() -> ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다."));
         if (Boolean.TRUE.equals(notice.getHidden())) {
             throw ApiException.notFound("NOTICE_NOT_FOUND", "실종 공고를 찾을 수 없습니다.");
         }
-        verifyAiApiKey(apiKey);
         return saveAnalysisResult(AiAnalysisTargetType.MISSING_PET, notice.getId().toString(), request);
     }
 
     public AiAnalysisResultCallbackResponse saveShelterAnalysisResult(String shelterId, String apiKey, AiAnalysisResultCallbackRequest request) {
+        verifyAiApiKey(apiKey);
         if (shelterPetRepository.findById(shelterId).isEmpty()) {
             shelterPublicApiClient.fetchShelterPet(shelterId);
         }
-        verifyAiApiKey(apiKey);
         return saveAnalysisResult(AiAnalysisTargetType.SHELTER, shelterId, request);
     }
 
