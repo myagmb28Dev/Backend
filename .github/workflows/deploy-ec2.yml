@@ -242,8 +242,41 @@ jobs:
             sudo docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" "$@"
           }
 
+          cleanup_app_images() {
+            app_repository="${APP_IMAGE%:*}"
+            app_repository_without_registry="${app_repository#docker.io/}"
+            keep_count=2
+
+            echo "Cleaning old app images for $app_repository. Keeping latest $keep_count image(s)."
+            image_refs="$(
+              sudo docker image ls --format '{{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}' |
+                awk -F '\t' -v repo="$app_repository" -v short_repo="$app_repository_without_registry" '
+                  $2 != "<none>" && ($1 == repo || $1 == short_repo) {
+                    print $3 "\t" $1 ":" $2
+                  }
+                ' |
+                sort -r |
+                cut -f2-
+            )"
+
+            if [ -z "$image_refs" ]; then
+              echo "No app images found for cleanup."
+            else
+              printf '%s\n' "$image_refs" |
+                awk -v keep_count="$keep_count" 'NR > keep_count { print }' |
+                while IFS= read -r image_ref; do
+                  [ -z "$image_ref" ] && continue
+                  echo "Removing old app image: $image_ref"
+                  sudo docker rmi "$image_ref" || true
+                done
+            fi
+
+            sudo docker image prune -f || true
+          }
+
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          cleanup_app_images
           compose pull --quiet app
           redis_state="$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
           if ! echo "$redis_state" | grep -q '^true healthy'; then
@@ -277,37 +310,6 @@ jobs:
             echo "Waiting for app healthcheck... status=$app_status health=$app_health attempt=$attempt/60"
             sleep 2
           done
-
-          cleanup_app_images() {
-            app_repository="${APP_IMAGE%:*}"
-            app_repository_without_registry="${app_repository#docker.io/}"
-            keep_count=2
-
-            echo "Cleaning old app images for $app_repository. Keeping latest $keep_count image(s)."
-            image_refs="$(
-              sudo docker image ls --format '{{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}' |
-                awk -F '\t' -v repo="$app_repository" -v short_repo="$app_repository_without_registry" '
-                  $2 != "<none>" && ($1 == repo || $1 == short_repo) {
-                    print $3 "\t" $1 ":" $2
-                  }
-                ' |
-                sort -r |
-                cut -f2-
-            )"
-
-            if [ -z "$image_refs" ]; then
-              echo "No app images found for cleanup."
-              return
-            fi
-
-            printf '%s\n' "$image_refs" |
-              awk -v keep_count="$keep_count" 'NR > keep_count { print }' |
-              while IFS= read -r image_ref; do
-                [ -z "$image_ref" ] && continue
-                echo "Removing old app image: $image_ref"
-                sudo docker rmi "$image_ref" || true
-              done
-          }
 
           cleanup_app_images
 
