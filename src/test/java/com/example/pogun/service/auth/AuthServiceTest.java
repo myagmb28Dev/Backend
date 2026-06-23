@@ -390,6 +390,60 @@ class AuthServiceTest {
     }
 
     @Test
+    void completeOnboarding_reactivatesWithdrawnExistingEmailFromPendingSignup() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("new-uid", "id-token")
+        );
+        OnboardingCompleteRequest request = new OnboardingCompleteRequest();
+        request.setX(127.1086228);
+        request.setY(37.4012191);
+
+        PendingSocialSignup pending = PendingSocialSignup.builder()
+                .id(UUID.fromString("66666666-6666-6666-6666-666666666666"))
+                .firebaseUid("new-uid")
+                .email("withdrawn@example.com")
+                .nickname("Returned User")
+                .profileImageUrl("https://cdn.example.com/returned.png")
+                .provider("GOOGLE")
+                .linkedProviders("GOOGLE")
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+        User existing = User.builder()
+                .id(UUID.fromString("77777777-7777-7777-7777-777777777777"))
+                .firebaseUid("old-uid")
+                .email("withdrawn@example.com")
+                .nickname("withdrawn-user")
+                .role(UserRole.USER)
+                .status(UserStatus.WITHDRAWN)
+                .build();
+
+        when(userRepository.findByFirebaseUid("new-uid")).thenReturn(Optional.empty());
+        when(pendingSocialSignupRepository.findByFirebaseUid("new-uid")).thenReturn(Optional.of(pending));
+        when(userRepository.findByEmail("withdrawn@example.com")).thenReturn(Optional.of(existing));
+        when(kakaoLocalService.resolveRegion(127.1086228, 37.4012191)).thenReturn(new RegionResponse(
+                "H",
+                "Gyeonggi Seongnam Bundang Sampyeong",
+                "Gyeonggi",
+                "Seongnam Bundang",
+                "Sampyeong"
+        ));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndProvider(existing, "GOOGLE")).thenReturn(Optional.empty());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(existing)).thenReturn(List.of());
+
+        AuthResponse response = authService.completeOnboarding(request);
+
+        assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
+        assertThat(response.id()).isEqualTo(existing.getId());
+        assertThat(response.firebaseUid()).isEqualTo("new-uid");
+        assertThat(response.region()).isEqualTo("Gyeonggi Seongnam Bundang Sampyeong");
+        assertThat(existing.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(existing.getNickname()).isEqualTo("Returned User");
+        assertThat(existing.getProfileImageUrl()).isEqualTo("https://cdn.example.com/returned.png");
+        verify(pendingSocialSignupRepository).deleteByEmailIgnoreCase("withdrawn@example.com");
+    }
+
+    @Test
     void logoutForcesUserOfflineAndPublishesPresence() throws Exception {
         User user = User.builder()
                 .id(UUID.randomUUID())
@@ -584,7 +638,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginOrSignUp_rejectsWithdrawnExistingEmailWithoutLinkingUid() throws Exception {
+    void loginOrSignUp_reactivatesWithdrawnExistingEmailWithNewFirebaseUid() throws Exception {
         FirebaseIdentityService.FirebaseIdentity identity = new FirebaseIdentityService.FirebaseIdentity(
                 "new-uid",
                 "withdrawn@example.com",
@@ -606,16 +660,21 @@ class AuthServiceTest {
         when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
         when(userRepository.findByFirebaseUid("new-uid")).thenReturn(Optional.empty());
         when(userRepository.findByEmail("withdrawn@example.com")).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userSocialAccountRepository.findByUserAndProvider(existing, "GOOGLE")).thenReturn(Optional.empty());
+        when(userSocialAccountRepository.findByUserAndLinkedTrueOrderByCreatedAtAsc(existing))
+                .thenReturn(List.<UserSocialAccount>of())
+                .thenReturn(List.<UserSocialAccount>of());
 
-        assertThatThrownBy(() -> authService.loginOrSignUp("id-token", httpServletRequest))
-                .isInstanceOf(ApiException.class)
-                .satisfies(ex -> {
-                    ApiException apiException = (ApiException) ex;
-                    assertThat(apiException.getCode()).isEqualTo("USER_WITHDRAWN");
-                });
-        assertThat(existing.getFirebaseUid()).isEqualTo("old-uid");
-        assertThat(existing.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
-        verify(userRepository, never()).save(any(User.class));
+        AuthResponse response = authService.loginOrSignUp("id-token", httpServletRequest);
+
+        assertThat(response.registrationStatus()).isEqualTo("COMPLETED");
+        assertThat(response.id()).isEqualTo(existing.getId());
+        assertThat(response.firebaseUid()).isEqualTo("new-uid");
+        assertThat(response.provider()).isEqualTo("GOOGLE");
+        assertThat(existing.getFirebaseUid()).isEqualTo("new-uid");
+        assertThat(existing.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        verify(pendingSocialSignupRepository, never()).save(any(PendingSocialSignup.class));
     }
 
     @Test

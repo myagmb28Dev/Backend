@@ -79,16 +79,11 @@ public class AuthService {
             String resolvedNickname = resolveNickname(identity, email, uid);
 
             User user = userRepository.findByFirebaseUid(uid)
-                    .map(existingUser -> {
-                        assertActiveLoginUser(existingUser);
-                        return updateExistingLoginUser(existingUser, email, normalizedProvider, resolvedNickname, picture);
-                    })
+                    .map(existingUser -> updateRegularLoginUser(existingUser, uid, email, normalizedProvider, resolvedNickname, picture))
                     .orElseGet(() -> userRepository.findByEmail(email)
                             .map(existingByEmail -> {
                                 // 에뮬레이터/소셜 재연동 등으로 UID가 바뀐 경우 기존 계정에 새 UID를 연결한다.
-                                assertActiveLoginUser(existingByEmail);
-                                existingByEmail.setFirebaseUid(uid);
-                                return updateExistingLoginUser(existingByEmail, email, normalizedProvider, resolvedNickname, picture);
+                                return updateRegularLoginUser(existingByEmail, uid, email, normalizedProvider, resolvedNickname, picture);
                             })
                     .orElse(null));
 
@@ -121,7 +116,8 @@ public class AuthService {
         String firebaseUid = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         RegionResponse region = kakaoLocalService.resolveRegion(request.getX(), request.getY());
 
-        if (userRepository.findByFirebaseUid(firebaseUid).isPresent()) {
+        var existingByUid = userRepository.findByFirebaseUid(firebaseUid);
+        if (existingByUid.isPresent() && existingByUid.get().getStatus() != UserStatus.WITHDRAWN) {
             throw ApiException.conflict("ALREADY_REGISTERED", "이미 회원가입이 완료된 사용자입니다.");
         }
 
@@ -133,26 +129,19 @@ public class AuthService {
             throw ApiException.unauthorized("PENDING_SIGNUP_EXPIRED", "온보딩 세션이 만료되었습니다. 다시 로그인해주세요.");
         }
 
-        if (userRepository.findByEmail(pending.getEmail()).isPresent()) {
+        var existingByEmail = userRepository.findByEmail(pending.getEmail());
+        if (existingByEmail.isPresent() && existingByEmail.get().getStatus() != UserStatus.WITHDRAWN) {
             throw ApiException.conflict("EMAIL_ALREADY_REGISTERED", "이미 가입된 이메일입니다. 다시 로그인해주세요.");
         }
 
-        User user = User.builder()
-                .firebaseUid(pending.getFirebaseUid())
-                .email(pending.getEmail())
-                .nickname(pending.getNickname())
-                .profileImageUrl(pending.getProfileImageUrl())
-                .region(region.addressName())
-                .regionType(region.regionType())
-                .regionAddressName(region.addressName())
-                .region1DepthName(region.region1DepthName())
-                .region2DepthName(region.region2DepthName())
-                .region3DepthName(region.region3DepthName())
-                .authProvider(pending.getProvider())
-                .lastActiveAt(Instant.now())
-                .role(UserRole.USER)
-                .status(UserStatus.ACTIVE)
-                .build();
+        User user = existingByEmail
+                .filter(existing -> existing.getStatus() == UserStatus.WITHDRAWN)
+                .or(() -> existingByUid.filter(existing -> existing.getStatus() == UserStatus.WITHDRAWN))
+                .orElseGet(() -> User.builder()
+                        .role(UserRole.USER)
+                        .status(UserStatus.ACTIVE)
+                        .build());
+        applyOnboardingSignup(user, pending, region);
         User saved = userRepository.save(user);
 
         for (String provider : parseLinkedProviders(pending.getLinkedProviders())) {
@@ -276,6 +265,25 @@ public class AuthService {
         user.setProfileImageUrl(incomingProfileImageUrl.trim());
     }
 
+    private void applyOnboardingSignup(User user, PendingSocialSignup pending, RegionResponse region) {
+        user.setFirebaseUid(pending.getFirebaseUid());
+        user.setEmail(pending.getEmail());
+        user.setNickname(pending.getNickname());
+        user.setProfileImageUrl(pending.getProfileImageUrl());
+        user.setRegion(region.addressName());
+        user.setRegionType(region.regionType());
+        user.setRegionAddressName(region.addressName());
+        user.setRegion1DepthName(region.region1DepthName());
+        user.setRegion2DepthName(region.region2DepthName());
+        user.setRegion3DepthName(region.region3DepthName());
+        user.setAuthProvider(pending.getProvider());
+        user.setLastActiveAt(Instant.now());
+        if (user.getRole() == null) {
+            user.setRole(UserRole.USER);
+        }
+        user.setStatus(UserStatus.ACTIVE);
+    }
+
     private User updateExistingLoginUser(User user, String email, String normalizedProvider, String resolvedNickname, String picture) {
         user.setEmail(email);
         user.setNickname(resolveNicknameForExistingUser(user.getNickname(), resolvedNickname));
@@ -291,14 +299,32 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    private void assertActiveLoginUser(User user) {
-        if (user == null || user.getStatus() == null || user.getStatus() == UserStatus.ACTIVE) {
+    private User updateRegularLoginUser(
+            User user,
+            String firebaseUid,
+            String email,
+            String normalizedProvider,
+            String resolvedNickname,
+            String picture
+    ) {
+        assertRegularLoginUserCanContinue(user);
+        user.setFirebaseUid(firebaseUid);
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            user.setStatus(UserStatus.ACTIVE);
+        }
+        return updateExistingLoginUser(user, email, normalizedProvider, resolvedNickname, picture);
+    }
+
+    private void assertRegularLoginUserCanContinue(User user) {
+        if (user == null
+                || user.getStatus() == null
+                || user.getStatus() == UserStatus.ACTIVE
+                || user.getStatus() == UserStatus.WITHDRAWN) {
             return;
         }
-        UserStatus status = user.getStatus();
         throw ApiException.forbidden(
-                status == UserStatus.BANNED ? "USER_BANNED" : "USER_WITHDRAWN",
-                status == UserStatus.BANNED ? "Banned users cannot sign in." : "Withdrawn users cannot sign in."
+                "USER_BANNED",
+                "Banned users cannot sign in."
         );
     }
 
