@@ -25,6 +25,7 @@ repositories {
 }
 
 dependencies {
+	implementation 'com.apple.itunes.storekit:app-store-server-library:5.2.0'
 	implementation 'com.google.firebase:firebase-admin:9.4.2'
 	implementation 'com.yubico:webauthn-server-core:2.8.1'
 	implementation 'org.sejda.imageio:webp-imageio:0.1.6'

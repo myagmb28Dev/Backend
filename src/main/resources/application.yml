@@ -90,8 +90,10 @@ app:
       key-id: ${APPLE_APP_STORE_KEY_ID:}
       issuer-id: ${APPLE_APP_STORE_ISSUER_ID:}
       bundle-id: ${APPLE_APP_STORE_BUNDLE_ID:}
+      app-apple-id: ${APPLE_APP_STORE_APP_APPLE_ID:}
       private-key-base64: ${APPLE_APP_STORE_PRIVATE_KEY_BASE64:}
       environment: ${APPLE_APP_STORE_ENVIRONMENT:sandbox}
+      app-account-token-required: ${APPLE_APP_STORE_APP_ACCOUNT_TOKEN_REQUIRED:false}
     google:
       enabled: ${GOOGLE_PLAY_ENABLED:false}
       package-name: ${GOOGLE_PLAY_PACKAGE_NAME:}

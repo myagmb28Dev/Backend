@@ -74,6 +74,9 @@ public class Purchase {
     @Column(name = "original_transaction_id", length = 150)
     private String originalTransactionId;
 
+    @Column(name = "app_account_token", length = 36)
+    private String appAccountToken;
+
     @Column(name = "purchase_token", length = 512)
     private String purchaseToken;
 
@@ -89,6 +92,12 @@ public class Purchase {
 
     @Column(name = "provider_environment", length = 30)
     private String providerEnvironment;
+
+    @Column(name = "provider_revoked_at")
+    private Instant providerRevokedAt;
+
+    @Column(name = "provider_revocation_reason", length = 100)
+    private String providerRevocationReason;
 
     @Column(name = "verification_payload", length = 8000)
     private String verificationPayload;

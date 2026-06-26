@@ -156,6 +156,36 @@ public class CreditService {
         return after;
     }
 
+    @Transactional
+    public int revokeUnusedCreditsForPurchase(User user, Purchase purchase, String description) {
+        int unusedCredits = Math.max(0, safeCreditedCredits(purchase) - safeConsumedCredits(purchase));
+        if (unusedCredits == 0) {
+            return 0;
+        }
+
+        UserCreditBalance balance = lockOrCreateBalance(user);
+        int before = safeBalance(balance);
+        int revokedCredits = Math.min(unusedCredits, before);
+        if (revokedCredits == 0) {
+            return 0;
+        }
+
+        int after = before - revokedCredits;
+        balance.setBalance(after);
+        userCreditBalanceRepository.save(balance);
+        creditLedgerRepository.save(CreditLedgerEntry.builder()
+                .user(user)
+                .type(CreditLedgerType.ADJUST)
+                .delta(-revokedCredits)
+                .balanceBefore(before)
+                .balanceAfter(after)
+                .referenceType("PURCHASE")
+                .referenceId(purchase.getId().toString())
+                .description(description)
+                .build());
+        return revokedCredits;
+    }
+
     public void validateRequestCharacters(AiCreditPolicy policy, String content) {
         int length = content == null ? 0 : content.length();
         if (length > policy.getMaxCharacters()) {
@@ -187,6 +217,10 @@ public class CreditService {
 
     private int safeConsumedCredits(Purchase purchase) {
         return purchase.getConsumedCredits() == null ? 0 : purchase.getConsumedCredits();
+    }
+
+    private int safeCreditedCredits(Purchase purchase) {
+        return purchase.getCreditedCredits() == null ? 0 : purchase.getCreditedCredits();
     }
 
     private Purchase findEligiblePurchase(User user, String description) {

@@ -18,6 +18,8 @@ import java.util.UUID;
 public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     Optional<Purchase> findByTransactionId(String transactionId);
 
+    Optional<Purchase> findByOriginalTransactionId(String originalTransactionId);
+
     Optional<Purchase> findByPurchaseToken(String purchaseToken);
 
     List<Purchase> findByUserAndStatusOrderByCreatedAtAsc(User user, PurchaseStatus status);

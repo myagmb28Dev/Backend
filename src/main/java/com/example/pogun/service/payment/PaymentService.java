@@ -1,5 +1,6 @@
 package com.example.pogun.service.payment;
 
+import com.example.pogun.config.payment.PaymentProperties;
 import com.example.pogun.dto.common.ApiResponse.ApiException;
 import com.example.pogun.dto.payment.PaymentVerifyRequest;
 import com.example.pogun.dto.payment.PaymentVerifyResponse;
@@ -9,14 +10,18 @@ import com.example.pogun.entity.payment.enums.PurchaseStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.repository.payment.PurchaseRepository;
 import com.example.pogun.service.user.CurrentUserService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Base64;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +31,8 @@ public class PaymentService {
     private final PurchaseRepository purchaseRepository;
     private final CreditService creditService;
     private final CurrentUserService currentUserService;
+    private final PaymentProperties paymentProperties;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public PaymentVerifyResponse verify(PaymentVerifyRequest request) {
@@ -54,6 +61,7 @@ public class PaymentService {
         if (!catalog.getProductId().equals(verified.productId())) {
             throw ApiException.badRequest("PRODUCT_ID_MISMATCH", "검증된 상품 ID가 요청과 일치하지 않습니다.");
         }
+        validateAccountBinding(user, verified);
         ensureNotAlreadyProcessed(verified);
 
         Purchase purchase;
@@ -65,6 +73,7 @@ public class PaymentService {
                     .productId(catalog.getProductId())
                     .transactionId(verified.transactionId())
                     .originalTransactionId(verified.originalTransactionId())
+                    .appAccountToken(verified.appAccountToken() == null ? null : verified.appAccountToken().toString())
                     .purchaseToken(verified.purchaseToken())
                     .creditedCredits(catalog.getCredits())
                     .consumedCredits(0)
@@ -90,13 +99,32 @@ public class PaymentService {
     }
 
     private Purchase findExistingPurchase(PaymentVerifyRequest request) {
-        if (request.getTransactionId() != null && !request.getTransactionId().isBlank()) {
-            return purchaseRepository.findByTransactionId(request.getTransactionId().trim()).orElse(null);
+        String transactionId = firstNonBlank(request.getTransactionId(), transactionIdFromSignedTransactionInfo(request.getSignedTransactionInfo()));
+        if (transactionId != null) {
+            return purchaseRepository.findByTransactionId(transactionId).orElse(null);
         }
         if (request.getPurchaseToken() != null && !request.getPurchaseToken().isBlank()) {
             return purchaseRepository.findByPurchaseToken(request.getPurchaseToken().trim()).orElse(null);
         }
         return null;
+    }
+
+    private void validateAccountBinding(User user, VerifiedPurchase verified) {
+        if (verified.platform() != PaymentPlatform.IOS) {
+            return;
+        }
+
+        UUID appAccountToken = verified.appAccountToken();
+        if (appAccountToken == null) {
+            if (paymentProperties.getApple().isAppAccountTokenRequired()) {
+                throw ApiException.badRequest("APPLE_APP_ACCOUNT_TOKEN_REQUIRED", "Apple 거래의 appAccountToken이 필요합니다.");
+            }
+            return;
+        }
+
+        if (!appAccountToken.equals(user.getId())) {
+            throw ApiException.conflict("APPLE_APP_ACCOUNT_TOKEN_MISMATCH", "Apple 거래 appAccountToken이 현재 사용자와 일치하지 않습니다.");
+        }
     }
 
     private void ensureNotAlreadyProcessed(VerifiedPurchase verified) {
@@ -125,5 +153,44 @@ public class PaymentService {
             throw ApiException.internal("PAYMENT_VERIFIER_NOT_READY", "결제 검증 서비스 구성이 완전하지 않습니다.");
         }
         return map;
+    }
+
+    private String transactionIdFromSignedTransactionInfo(String signedTransactionInfo) {
+        if (signedTransactionInfo == null || signedTransactionInfo.isBlank()) {
+            return null;
+        }
+        try {
+            String[] parts = signedTransactionInfo.split("\\.");
+            if (parts.length < 2) {
+                return null;
+            }
+            byte[] decoded = Base64.getUrlDecoder().decode(padBase64(parts[1]));
+            Map<String, Object> payload = objectMapper.readValue(decoded, new TypeReference<>() {
+            });
+            Object transactionId = payload.get("transactionId");
+            return transactionId == null || String.valueOf(transactionId).isBlank()
+                    ? null
+                    : String.valueOf(transactionId).trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first.trim();
+        }
+        if (second != null && !second.isBlank()) {
+            return second.trim();
+        }
+        return null;
+    }
+
+    private String padBase64(String value) {
+        int remainder = value.length() % 4;
+        if (remainder == 0) {
+            return value;
+        }
+        return value + "=".repeat(4 - remainder);
     }
 }

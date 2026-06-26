@@ -350,14 +350,18 @@ flowchart LR
   - `APPLE_APP_STORE_KEY_ID`
   - `APPLE_APP_STORE_ISSUER_ID`
   - `APPLE_APP_STORE_BUNDLE_ID`
+  - `APPLE_APP_STORE_APP_APPLE_ID` (production 서명 검증용 App Apple ID, sandbox에서는 비워둘 수 있음)
   - `APPLE_APP_STORE_PRIVATE_KEY_BASE64`
   - `APPLE_APP_STORE_ENVIRONMENT=sandbox`
+  - `APPLE_APP_STORE_APP_ACCOUNT_TOKEN_REQUIRED=false`
 - 테스트 순서:
   - 로컬 서버 실행
-  - iOS Sandbox Tester 계정으로 결제 수행
+  - iOS Sandbox Tester 계정으로 결제 수행 (`appAccountToken`에는 백엔드 사용자 UUID를 설정)
   - 앱/프론트에서 받은 `transactionId` 또는 `signedTransactionInfo` 로 백엔드 결제 검증 API 호출
   - 결제 적립 후 수동 AI 분석 요청 API 호출로 차감까지 확인
 - Sandbox 결제는 실제 카드 과금이 발생하지 않는 테스트 흐름입니다.
+- iOS 앱에서 `appAccountToken` 전달이 안정화되면 `APPLE_APP_STORE_APP_ACCOUNT_TOKEN_REQUIRED=true` 로 전환해 결제를 현재 로그인 사용자에게 강제 바인딩합니다.
+- App Store Server Notifications V2 URL은 `POST /api/payments/apple/notifications` 입니다. Apple의 `signedPayload` 를 검증한 뒤 환불/취소 알림은 구매 상태를 `REFUNDED` 또는 `REVOKED` 로 바꾸고 미사용 크레딧만 회수합니다.
 
 ### 앱 실행 / Run Application
 

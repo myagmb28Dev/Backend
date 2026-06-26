@@ -175,6 +175,37 @@ class CreditServiceTest {
                 .hasMessage("사용 가능한 분석 요청권이 없거나 공고 설명 길이에 맞는 상품이 없습니다.");
     }
 
+    @Test
+    void revokeUnusedCreditsForPurchase_deductsOnlyUnusedCreditsFromBalance() {
+        User user = user();
+        UserCreditBalance balance = UserCreditBalance.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .balance(5)
+                .build();
+        Purchase purchase = Purchase.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .platform(PaymentPlatform.IOS)
+                .status(PurchaseStatus.VERIFIED)
+                .productId("paw_ai_credits_3_300")
+                .creditedCredits(3)
+                .consumedCredits(1)
+                .build();
+
+        when(userCreditBalanceRepository.findByUserIdForUpdate(user.getId())).thenReturn(Optional.of(balance));
+        when(userCreditBalanceRepository.save(balance)).thenReturn(balance);
+
+        int revokedCredits = creditService.revokeUnusedCreditsForPurchase(user, purchase, "Apple refund");
+
+        assertThat(revokedCredits).isEqualTo(2);
+        assertThat(balance.getBalance()).isEqualTo(3);
+        ArgumentCaptor<CreditLedgerEntry> captor = ArgumentCaptor.forClass(CreditLedgerEntry.class);
+        verify(creditLedgerRepository).save(captor.capture());
+        assertThat(captor.getValue().getDelta()).isEqualTo(-2);
+        assertThat(captor.getValue().getReferenceId()).isEqualTo(purchase.getId().toString());
+    }
+
     private User user() {
         return User.builder()
                 .id(UUID.randomUUID())

@@ -21,8 +21,10 @@ public class PaymentProperties {
         private String keyId;
         private String issuerId;
         private String bundleId;
+        private Long appAppleId;
         private String privateKeyBase64;
         private String environment = "sandbox";
+        private boolean appAccountTokenRequired = false;
 
         public boolean isEnabled() {
             return enabled;
@@ -56,6 +58,14 @@ public class PaymentProperties {
             this.bundleId = bundleId;
         }
 
+        public Long getAppAppleId() {
+            return appAppleId;
+        }
+
+        public void setAppAppleId(Long appAppleId) {
+            this.appAppleId = appAppleId;
+        }
+
         public String getPrivateKeyBase64() {
             return privateKeyBase64;
         }
@@ -70,6 +80,14 @@ public class PaymentProperties {
 
         public void setEnvironment(String environment) {
             this.environment = environment;
+        }
+
+        public boolean isAppAccountTokenRequired() {
+            return appAccountTokenRequired;
+        }
+
+        public void setAppAccountTokenRequired(boolean appAccountTokenRequired) {
+            this.appAccountTokenRequired = appAccountTokenRequired;
         }
     }
 

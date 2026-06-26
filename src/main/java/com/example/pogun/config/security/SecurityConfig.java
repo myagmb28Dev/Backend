@@ -80,6 +80,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/admin/auth/session").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/apple/notifications").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/notifications/send").hasAuthority("ROLE_ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/admin/users/promote/email").hasAuthority("ROLE_ADMIN_CONSOLE")
                         .requestMatchers("/api/admin/auth/**").hasAuthority("ROLE_ADMIN_CONSOLE")
