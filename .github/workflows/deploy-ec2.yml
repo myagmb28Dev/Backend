@@ -239,15 +239,30 @@ jobs:
           ENVEOF
 
           sed -i '/^DB_PASSWORD=/ s/\$/$$/g' .env
+          APP_IMAGE="$(grep -E '^APP_IMAGE=' .env | cut -d= -f2-)"
+          if [ -z "$APP_IMAGE" ]; then
+            echo "APP_IMAGE is empty in .env"
+            exit 1
+          fi
 
           compose() {
             sudo docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" "$@"
           }
 
+          cleanup_docker_space() {
+            echo "Docker disk usage before cleanup:"
+            sudo docker system df || true
+            sudo docker container prune -f || true
+            sudo docker builder prune -af || true
+            sudo docker image prune -af || true
+            echo "Docker disk usage after cleanup:"
+            sudo docker system df || true
+          }
+
           cleanup_app_images() {
             app_repository="${APP_IMAGE%:*}"
             app_repository_without_registry="${app_repository#docker.io/}"
-            keep_count=2
+            keep_count="${1:-2}"
 
             echo "Cleaning old app images for $app_repository. Keeping latest $keep_count image(s)."
             image_refs="$(
@@ -278,7 +293,8 @@ jobs:
 
           # docker-compose.yml reads .env, then pulls the tagged app image and starts app + redis
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          cleanup_app_images
+          cleanup_app_images 1
+          cleanup_docker_space
           compose pull --quiet app
           redis_state="$(sudo docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pogun-redis 2>/dev/null || true)"
           if ! echo "$redis_state" | grep -q '^true healthy'; then
