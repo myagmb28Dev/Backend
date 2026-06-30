@@ -193,7 +193,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -225,7 +225,7 @@ class NoticeChatServiceTest {
         when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -309,7 +309,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findByRoomAndSenderUserAndClientMessageId(room, currentUser, "client-message-ack-1"))
                 .thenReturn(Optional.empty());
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         noticeChatService.sendMessage(principal(currentUser), request);
 
@@ -467,7 +467,7 @@ class NoticeChatServiceTest {
                         variant(s3Url("uploads/notice-chat/messages/test/two.webp"))
                 ));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, " 이미지와 함께 보낸 글 ", List.of(first, second));
 
@@ -497,7 +497,7 @@ class NoticeChatServiceTest {
         when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
                 .thenReturn(List.of(variant(s3Url("uploads/notice-chat/messages/test/one.webp"))));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, "   ", List.of(file));
 
@@ -593,7 +593,7 @@ class NoticeChatServiceTest {
                         null
                 )));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendImages(roomId.toString(), null, null, List.of(file));
 
@@ -634,7 +634,7 @@ class NoticeChatServiceTest {
         when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(noticeChatMessageRepository.findById(parentMessage.getId())).thenReturn(Optional.of(parentMessage));
         when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(noticeChatMessageRepository.save(any(NoticeChatMessage.class))).thenReturn(savedMessage);
+        when(noticeChatMessageRepository.saveAndFlush(any(NoticeChatMessage.class))).thenReturn(savedMessage);
 
         var response = noticeChatService.sendMessage(principal(currentUser), request);
 
