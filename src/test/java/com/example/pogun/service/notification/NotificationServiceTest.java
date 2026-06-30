@@ -21,15 +21,18 @@ import com.example.pogun.repository.notification.UserNotificationSettingReposito
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.user.UserPresenceService;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -268,6 +271,121 @@ class NotificationServiceTest {
 
         assertThat(result).containsEntry("reason", "NO_ACTIVE_TOKENS");
         verify(userFcmTokenRepository).findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver);
+    }
+
+    @Test
+    void createAndSendNotification_includesDisplayPayloadAndPreservesDataPayload() throws Exception {
+        User receiver = user("receiver");
+        User managedReceiver = user("receiver-managed");
+        managedReceiver.setId(receiver.getId());
+        UUID targetId = UUID.randomUUID();
+        when(userNotificationSettingRepository.findByUserAndType(receiver, NotificationType.ADMIN_BROADCAST))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
+        when(notificationRepository.saveAndFlush(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            notification.setId(UUID.randomUUID());
+            return notification;
+        });
+        when(userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver)).thenReturn(List.of(
+                UserFcmToken.builder()
+                        .id(UUID.randomUUID())
+                        .user(managedReceiver)
+                        .token("token-1")
+                        .active(true)
+                        .build()
+        ));
+
+        notificationService.createAndSendNotification(
+                receiver,
+                null,
+                NotificationType.ADMIN_BROADCAST,
+                NotificationTargetType.ADMIN_BROADCAST,
+                targetId,
+                "admin title",
+                "admin body",
+                NotificationPriority.HIGH,
+                null,
+                Map.of("target", "ALL")
+        );
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(firebaseMessaging).send(messageCaptor.capture());
+        Message message = messageCaptor.getValue();
+        Object displayNotification = field(message, "notification");
+        Object apnsConfig = field(message, "apnsConfig");
+        assertThat(displayNotification).isNotNull();
+        assertThat(field(displayNotification, "title")).isEqualTo("admin title");
+        assertThat(field(displayNotification, "body")).isEqualTo("admin body");
+        assertThat(apnsConfig).isNotNull();
+        assertThat(apnsApsPayload(apnsConfig)).containsEntry("sound", "default");
+        assertThat(messageData(message))
+                .containsEntry("targetId", targetId.toString())
+                .containsEntry("title", "admin title")
+                .containsEntry("body", "admin body")
+                .containsEntry("target", "ALL");
+    }
+
+    @Test
+    void createAndSendDirectMessageNotification_includesDisplayPayloadAndPreservesChatDataPayload() throws Exception {
+        User receiver = user("receiver");
+        User sender = user("sender");
+        User managedReceiver = user("receiver-managed");
+        User managedSender = user("sender-managed");
+        managedReceiver.setId(receiver.getId());
+        managedSender.setId(sender.getId());
+        UUID roomId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        when(userNotificationSettingRepository.findByUserAndType(receiver, NotificationType.DM_MESSAGE))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(receiver.getId())).thenReturn(managedReceiver);
+        when(userRepository.getReferenceById(sender.getId())).thenReturn(managedSender);
+        when(notificationRepository.findByDedupKey("dm-message:" + receiver.getId() + ":" + messageId)).thenReturn(Optional.empty());
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            notification.setId(UUID.randomUUID());
+            return notification;
+        });
+        when(userPresenceService.snapshot(managedReceiver)).thenReturn(new UserPresenceService.PresenceSnapshot(
+                UserAvailabilityStatus.ONLINE,
+                UserAvailabilityStatus.OFFLINE,
+                "disconnected",
+                managedReceiver.getLastActiveAt()
+        ));
+        when(userFcmTokenRepository.findByUserAndActiveTrueOrderByUpdatedAtDesc(managedReceiver)).thenReturn(List.of(
+                UserFcmToken.builder()
+                        .id(UUID.randomUUID())
+                        .user(managedReceiver)
+                        .token("token-1")
+                        .active(true)
+                        .build()
+        ));
+
+        notificationService.createAndSendDirectMessageNotification(
+                receiver,
+                sender,
+                roomId,
+                messageId,
+                false,
+                "chat preview"
+        );
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(firebaseMessaging).send(messageCaptor.capture());
+        Message message = messageCaptor.getValue();
+        Object displayNotification = field(message, "notification");
+        Object apnsConfig = field(message, "apnsConfig");
+        assertThat(displayNotification).isNotNull();
+        assertThat((String) field(displayNotification, "title")).isNotBlank();
+        assertThat(field(displayNotification, "body")).isEqualTo("chat preview");
+        assertThat(apnsConfig).isNotNull();
+        assertThat(apnsApsPayload(apnsConfig)).containsEntry("sound", "default");
+        assertThat(messageData(message))
+                .containsEntry("targetId", messageId.toString())
+                .containsEntry("roomId", roomId.toString())
+                .containsEntry("senderUserId", sender.getId().toString())
+                .containsEntry("body", "chat preview");
     }
 
     @Test
@@ -583,5 +701,20 @@ class NotificationServiceTest {
         request.setPlatform(platform);
         request.setDeviceId(deviceId);
         return request;
+    }
+
+    private Object field(Object target, String name) {
+        return ReflectionTestUtils.getField(target, name);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> messageData(Message message) {
+        return (Map<String, String>) field(message, "data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> apnsApsPayload(Object apnsConfig) {
+        Map<String, Object> payload = (Map<String, Object>) field(apnsConfig, "payload");
+        return (Map<String, Object>) payload.get("aps");
     }
 }

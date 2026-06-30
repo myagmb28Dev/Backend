@@ -27,6 +27,8 @@ import com.example.pogun.repository.notification.UserFcmTokenRepository;
 import com.example.pogun.repository.notification.UserNotificationSettingRepository;
 import com.example.pogun.repository.user.UserRepository;
 import com.example.pogun.service.user.UserPresenceService;
+import com.google.firebase.messaging.ApnsConfig;
+import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
@@ -164,6 +166,11 @@ public class NotificationService {
             try {
                 Message.Builder builder = Message.builder()
                         .setToken(fcmToken.getToken())
+                        .setNotification(com.google.firebase.messaging.Notification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .build())
+                        .setApnsConfig(defaultApnsConfig())
                         .putData("notificationId", notification.getId().toString())
                         .putData("type", type.name())
                         .putData("targetType", NotificationTargetType.NOTICE_CHAT_MESSAGE.name())
@@ -572,6 +579,11 @@ public class NotificationService {
             try {
                 Message.Builder builder = Message.builder()
                         .setToken(fcmToken.getToken())
+                        .setNotification(com.google.firebase.messaging.Notification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .build())
+                        .setApnsConfig(defaultApnsConfig())
                         .putData("notificationId", notification.getId().toString())
                         .putData("type", type.name())
                         .putData("targetType", targetType.name())
@@ -677,6 +689,14 @@ public class NotificationService {
         } catch (IllegalArgumentException | NullPointerException e) {
             throw ApiException.badRequest(code, message);
         }
+    }
+
+    private ApnsConfig defaultApnsConfig() {
+        return ApnsConfig.builder()
+                .setAps(Aps.builder()
+                        .setSound("default")
+                        .build())
+                .build();
     }
 
     private boolean isUnregisteredToken(FirebaseMessagingException e) {
