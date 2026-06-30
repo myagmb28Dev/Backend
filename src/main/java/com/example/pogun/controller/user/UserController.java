@@ -1,5 +1,6 @@
 package com.example.pogun.controller.user;
 
+import com.example.pogun.controller.common.MultipartJsonRequestParser;
 import com.example.pogun.dto.common.ApiResponse;
 import com.example.pogun.dto.user.CreditLedgerListResponse;
 import com.example.pogun.dto.user.UpdateProfileRequest;
@@ -46,6 +47,7 @@ public class UserController {
     private final UserService userService;
     private final UserFollowService userFollowService;
     private final CreditService creditService;
+    private final MultipartJsonRequestParser multipartJsonRequestParser;
 
     @GetMapping("/me")
     @Operation(summary = "프로필 조회", description = "로그인한 사용자의 프로필 정보를 조회합니다.")
@@ -79,10 +81,11 @@ public class UserController {
     @PatchMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "프로필 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `profileImage` 파일을 함께 받아 로그인한 사용자의 프로필과 S3 이미지를 수정합니다.")
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfileWithFile(
-            @Valid @RequestPart("request") UpdateProfileRequest request,
+            @RequestPart("request") String request,
             @RequestPart(value = "profileImage", required = false) MultipartFile profileImage
     ) {
-        UserProfileResponse updated = userService.updateProfile(request, profileImage);
+        UpdateProfileRequest parsedRequest = multipartJsonRequestParser.parse(request, UpdateProfileRequest.class);
+        UserProfileResponse updated = userService.updateProfile(parsedRequest, profileImage);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "프로필 수정 성공", updated));
     }
 

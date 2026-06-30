@@ -1,4 +1,6 @@
 package com.example.pogun.controller.missingpet;
+
+import com.example.pogun.controller.common.MultipartJsonRequestParser;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackRequest;
 import com.example.pogun.dto.ai.AiAnalysisResultCallbackResponse;
 import com.example.pogun.dto.ai.MissingPetAnalysisRequestResponse;
@@ -43,6 +45,7 @@ import java.util.List;
 public class MissingPetController {
 
     private final MissingPetService missingPetService;
+    private final MultipartJsonRequestParser multipartJsonRequestParser;
 
     @GetMapping
     @Operation(summary = "실종 동물 공고 목록 조회", description = "사용자가 작성한 실종 동물 공고 목록을 조회합니다.")
@@ -110,10 +113,11 @@ public class MissingPetController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "실종 공고 생성(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 S3 이미지를 저장합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> createWithFiles(
-            @Valid @RequestPart("request") MissingPetCreateRequest request,
+            @RequestPart("request") String request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images
     ) {
-        MissingPetDetailResponse data = missingPetService.createMissingPet(request.toRequestMap(), images);
+        MissingPetCreateRequest parsedRequest = multipartJsonRequestParser.parse(request, MissingPetCreateRequest.class);
+        MissingPetDetailResponse data = missingPetService.createMissingPet(parsedRequest.toRequestMap(), images);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "행방불명 공고 생성 성공", data));
     }
@@ -178,10 +182,11 @@ public class MissingPetController {
     @Operation(summary = "실종 공고 수정(파일 첨부)", description = "multipart/form-data 요청으로 `request` JSON과 `images` 파일 배열을 함께 받아 실종 공고와 S3 이미지를 수정합니다.")
     public ResponseEntity<ApiResponse<MissingPetDetailResponse>> updateWithFiles(
             @PathVariable String missingPetId,
-            @Valid @RequestPart("request") MissingPetUpdateRequest request,
+            @RequestPart("request") String request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images
     ) {
-        MissingPetDetailResponse data = missingPetService.updateMissingPet(missingPetId, request.toRequestMap(), images);
+        MissingPetUpdateRequest parsedRequest = multipartJsonRequestParser.parse(request, MissingPetUpdateRequest.class);
+        MissingPetDetailResponse data = missingPetService.updateMissingPet(missingPetId, parsedRequest.toRequestMap(), images);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "실종 공고 수정 성공", data));
     }
 

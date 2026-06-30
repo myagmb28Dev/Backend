@@ -506,6 +506,32 @@ class NoticeChatServiceTest {
     }
 
     @Test
+    void sendImages_returnsPersistedTimestamps() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        Instant persistedAt = Instant.parse("2026-06-30T09:20:42Z");
+        when(file.isEmpty()).thenReturn(false);
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(s3ImageStorageService.storeImageVariants(eq("notice-chat"), eq("messages"), eq(currentUser.getId()), anyList()))
+                .thenReturn(List.of(variant(s3Url("uploads/notice-chat/messages/test/one.webp"))));
+        when(noticeChatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(noticeChatMessageRepository.saveAndFlush(org.mockito.ArgumentMatchers.<NoticeChatMessage>any())).thenAnswer(invocation -> {
+            NoticeChatMessage message = invocation.getArgument(0);
+            message.setId(UUID.randomUUID());
+            message.setCreatedAt(persistedAt);
+            return message;
+        });
+
+        var response = noticeChatService.sendImages(roomId.toString(), null, null, List.of(file));
+
+        assertThat(response.createdAt()).isEqualTo(persistedAt);
+        assertThat(response.serverReceivedAt()).isEqualTo(persistedAt);
+    }
+
+    @Test
     void sendImages_rejectsMessageOverLimit() {
         UUID roomId = UUID.randomUUID();
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);

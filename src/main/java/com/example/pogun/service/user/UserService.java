@@ -14,6 +14,7 @@ import com.example.pogun.entity.community.CommunityPost;
 import com.example.pogun.entity.community.enums.CommunityPostStatus;
 import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.missingpet.PetNoticeImage;
+import com.example.pogun.entity.missingpet.enums.PetNoticeStatus;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.UserSocialAccount;
 import com.example.pogun.entity.user.enums.UserAvailabilityStatus;
@@ -215,12 +216,15 @@ public class UserService {
                 notice.getBreed(),
                 notice.getMissingDate(),
                 notice.getMissingRegion(),
-                notice.getStatus().name(),
-                notice.getViewCount(),
+                notice.getStatus() != null ? notice.getStatus().name() : PetNoticeStatus.OPEN.name(),
+                notice.getViewCount() != null ? notice.getViewCount() : 0L,
                 notice.getCreatedAt(),
                 notice.getImages() == null
                         ? List.of()
-                        : notice.getImages().stream().map(PetNoticeImage::getImageUrl).toList()
+                        : notice.getImages().stream()
+                                .map(PetNoticeImage::getImageUrl)
+                                .filter(url -> url != null && !url.isBlank())
+                                .toList()
         );
     }
 

@@ -971,7 +971,7 @@ public class NoticeChatService {
                     .build());
         }
 
-        NoticeChatMessage saved = noticeChatMessageRepository.save(message);
+        NoticeChatMessage saved = noticeChatMessageRepository.saveAndFlush(message);
         lockedRoom.setLastMessageSequence(nextSequence);
         lockedRoom.setLastMessageAt(saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now());
         lockedRoom.setLastMessageType(saved.getMessageType());

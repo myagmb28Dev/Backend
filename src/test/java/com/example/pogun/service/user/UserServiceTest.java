@@ -2,7 +2,9 @@ package com.example.pogun.service.user;
 
 import com.example.pogun.dto.location.RegionResponse;
 import com.example.pogun.dto.user.UserLocationUpdateRequest;
+import com.example.pogun.dto.user.UserPetNoticeSummaryResponse;
 import com.example.pogun.dto.user.UserProfileResponse;
+import com.example.pogun.entity.missingpet.PetNotice;
 import com.example.pogun.entity.user.User;
 import com.example.pogun.entity.user.enums.UserRole;
 import com.example.pogun.entity.user.enums.UserStatus;
@@ -22,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -126,5 +129,42 @@ class UserServiceTest {
 
         assertThat(response.role()).isEqualTo(UserRole.USER.name());
         assertThat(response.status()).isEqualTo(UserStatus.ACTIVE.name());
+    }
+
+    @Test
+    void myPetNotices_defaultsLegacyNullStatusAndViewCount() {
+        String firebaseUid = "firebase-uid-notices";
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(firebaseUid, "N/A")
+        );
+
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid(firebaseUid)
+                .email("notice-owner@example.com")
+                .nickname("notice-owner")
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        PetNotice notice = PetNotice.builder()
+                .id(UUID.randomUUID())
+                .author(user)
+                .title("Legacy notice")
+                .animalType("dog")
+                .missingDate(Instant.parse("2026-06-30T09:30:00Z"))
+                .missingRegion("Seoul")
+                .status(null)
+                .viewCount(null)
+                .build();
+
+        when(userRepository.findByFirebaseUid(firebaseUid)).thenReturn(Optional.of(user));
+        when(petNoticeRepository.findByAuthorOrderByCreatedAtDesc(user)).thenReturn(List.of(notice));
+
+        List<UserPetNoticeSummaryResponse> response = userService.myPetNotices();
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).status()).isEqualTo("OPEN");
+        assertThat(response.get(0).viewCount()).isZero();
+        assertThat(response.get(0).imageUrls()).isEmpty();
     }
 }
