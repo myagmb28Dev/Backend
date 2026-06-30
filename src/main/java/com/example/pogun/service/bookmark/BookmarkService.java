@@ -53,6 +53,7 @@ public class BookmarkService {
         return new BookmarkActionResponse(null, notice.getId(), false);
     }
 
+    @Transactional(readOnly = true)
     public List<BookmarkSummaryResponse> getMyBookmarks() {
         User user = getCurrentUser();
         return noticeBookmarkRepository.findByUserOrderByCreatedAtDesc(user).stream()
