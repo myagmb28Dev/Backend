@@ -901,8 +901,12 @@ public class NoticeChatService {
     }
 
     private void broadcastRoomUpdate(RoomUpdatePayload roomUpdatePayload) {
-        simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.ownerUserId()), roomUpdatePayload.ownerPayload());
-        simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.guestUserId()), roomUpdatePayload.guestPayload());
+        if (roomUpdatePayload.ownerPayload().leftAt() == null) {
+            simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.ownerUserId()), roomUpdatePayload.ownerPayload());
+        }
+        if (roomUpdatePayload.guestPayload().leftAt() == null) {
+            simpMessagingTemplate.convertAndSend(userRoomsTopic(roomUpdatePayload.guestUserId()), roomUpdatePayload.guestPayload());
+        }
     }
 
     private void broadcastRoomUpdateByRoomId(UUID roomId) {

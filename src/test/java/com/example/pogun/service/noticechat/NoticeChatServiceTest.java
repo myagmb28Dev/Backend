@@ -355,6 +355,26 @@ class NoticeChatServiceTest {
     }
 
     @Test
+    void leaveRoom_doesNotBroadcastRoomListUpdateToLeavingUser() {
+        UUID roomId = UUID.randomUUID();
+        NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
+        NoticeChatRoomParticipantState authorState = participantState(room, author);
+        NoticeChatRoomParticipantState currentState = participantState(room, currentUser);
+
+        when(userRepository.findByFirebaseUid(currentUser.getFirebaseUid())).thenReturn(Optional.of(currentUser));
+        when(noticeChatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantStateRepository.findByRoomAndUser(room, author)).thenReturn(Optional.of(authorState));
+        when(participantStateRepository.findByRoomAndUser(room, currentUser)).thenReturn(Optional.of(currentState));
+        when(noticeChatMessageRepository.findTopByRoomAndDeletedAtIsNullOrderByRoomSequenceDescCreatedAtDesc(room)).thenReturn(Optional.empty());
+
+        var response = noticeChatService.leaveRoom(roomId.toString());
+
+        assertThat(response.leftAt()).isNotNull();
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/chat/users/" + author.getId() + "/rooms"), any(Object.class));
+        verify(simpMessagingTemplate, never()).convertAndSend(eq("/topic/chat/users/" + currentUser.getId() + "/rooms"), any(Object.class));
+    }
+
+    @Test
     void updateSettings_savesParticipantPreferences() {
         UUID roomId = UUID.randomUUID();
         NoticeChatRoom room = room(roomId, openNotice, author, currentUser);
