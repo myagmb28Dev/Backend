@@ -28,6 +28,7 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     long countByRole(UserRole role);
     long countByRoleAndStatus(UserRole role, UserStatus status);
     List<User> findByRoleOrderByCreatedAtDesc(UserRole role);
+    List<User> findByStatusAndWithdrawnAtLessThanEqual(UserStatus status, Instant withdrawnAt);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

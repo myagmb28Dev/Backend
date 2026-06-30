@@ -36,7 +36,8 @@ import lombok.Setter;
 @Table(name = "users", indexes = {
         @Index(name = "idx_users_created_at", columnList = "created_at"),
         @Index(name = "idx_users_role_status", columnList = "role,status"),
-        @Index(name = "idx_users_status_last_active_at", columnList = "status,last_active_at")
+        @Index(name = "idx_users_status_last_active_at", columnList = "status,last_active_at"),
+        @Index(name = "idx_users_status_withdrawn_at", columnList = "status,withdrawn_at")
 })
 public class User {
 
@@ -92,6 +93,9 @@ public class User {
 
     @Column(name = "last_active_at")
     private Instant lastActiveAt;
+
+    @Column(name = "withdrawn_at")
+    private Instant withdrawnAt;
 
     @Builder.Default
     @Column(name = "admin_email_verification_required", nullable = false)

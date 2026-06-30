@@ -67,6 +67,9 @@ class AuthServiceTest {
     private PendingSocialSignupRepository pendingSocialSignupRepository;
 
     @Mock
+    private WithdrawnUserPurgeService withdrawnUserPurgeService;
+
+    @Mock
     private KakaoLocalService kakaoLocalService;
 
     @Mock
@@ -415,6 +418,7 @@ class AuthServiceTest {
                 .nickname("withdrawn-user")
                 .role(UserRole.USER)
                 .status(UserStatus.WITHDRAWN)
+                .withdrawnAt(Instant.parse("2026-06-28T00:00:00Z"))
                 .build();
 
         when(userRepository.findByFirebaseUid("new-uid")).thenReturn(Optional.empty());
@@ -438,9 +442,41 @@ class AuthServiceTest {
         assertThat(response.firebaseUid()).isEqualTo("new-uid");
         assertThat(response.region()).isEqualTo("Gyeonggi Seongnam Bundang Sampyeong");
         assertThat(existing.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(existing.getWithdrawnAt()).isNull();
         assertThat(existing.getNickname()).isEqualTo("Returned User");
         assertThat(existing.getProfileImageUrl()).isEqualTo("https://cdn.example.com/returned.png");
         verify(pendingSocialSignupRepository).deleteByEmailIgnoreCase("withdrawn@example.com");
+    }
+
+    @Test
+    void withdrawMarksUserWithdrawnWithRetentionTimestamp() throws Exception {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .firebaseUid("firebase-uid")
+                .email("user@example.com")
+                .nickname("user")
+                .availabilityStatus(UserAvailabilityStatus.ONLINE)
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("firebase-uid", "id-token")
+        );
+
+        when(userRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Instant before = Instant.now();
+
+        authService.withdraw();
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(firebaseAuth).deleteUser("firebase-uid");
+        verify(userRepository).save(userCaptor.capture());
+        verify(firebaseIdentityService).revokeTokenLocally("id-token");
+        assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(userCaptor.getValue().getWithdrawnAt()).isNotNull();
+        assertThat(userCaptor.getValue().getWithdrawnAt()).isAfterOrEqualTo(before);
+        assertThat(userCaptor.getValue().getWithdrawnAt()).isBeforeOrEqualTo(Instant.now());
     }
 
     @Test
@@ -655,6 +691,7 @@ class AuthServiceTest {
                 .nickname("withdrawn-user")
                 .role(UserRole.USER)
                 .status(UserStatus.WITHDRAWN)
+                .withdrawnAt(Instant.parse("2026-06-28T00:00:00Z"))
                 .build();
 
         when(firebaseIdentityService.verifyIdToken("id-token")).thenReturn(identity);
@@ -674,6 +711,7 @@ class AuthServiceTest {
         assertThat(response.provider()).isEqualTo("GOOGLE");
         assertThat(existing.getFirebaseUid()).isEqualTo("new-uid");
         assertThat(existing.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(existing.getWithdrawnAt()).isNull();
         verify(pendingSocialSignupRepository, never()).save(any(PendingSocialSignup.class));
     }
 
